@@ -12,18 +12,17 @@ dependencies:
   cupertino_icons: ^1.0.2
   ffi: ^2.0.1
   path_provider: ^2.1.1
-  file_picker: ^5.5.0  # 降级到兼容 Flutter 3.19 的版本
+  file_picker: ^8.0.0
   http: ^1.1.0
   shared_preferences: ^2.2.2
   intl: ^0.19.0
-  # media_kit 降级到不使用 onPopInvokedWithResult 的版本
-  media_kit: ^1.1.10
-  media_kit_video: ^1.2.4
-  media_kit_libs_video: ^1.0.4  # 使用更低版本避免 Embedding 问题
-  # 字幕支持（使用支持 null safety 的版本）
+  # 使用最新版本的 media_kit
+  media_kit: ^2.0.1
+  media_kit_video: ^2.0.1
+  media_kit_libs_video: ^2.0.1
+  # 字幕支持
   subtitle_wrapper_package: ^2.2.1
-  # 强制使用兼容的 package_info_plus 版本
-  package_info_plus: 8.0.2
+  package_info_plus: ^8.0.0
 
 dev_dependencies:
   flutter_test:

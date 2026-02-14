@@ -188,7 +188,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.6'
+          flutter-version: '3.27.1'
           channel: 'stable'
 
       - name: Setup Rust (用于 FFI 交叉编译)
@@ -213,9 +213,6 @@ jobs:
           flutter clean
           rm -rf .dart_tool
           rm -rf build
-          # 清理可能冲突的缓存
-          rm -rf ~/.pub-cache/hosted/pub.dev/media_kit_video-2.0.1 || true
-          rm -rf ~/.pub-cache/hosted/pub.dev/media_kit_video-1.3.1 || true
           # 确保 local.properties 存在并包含正确的 Flutter SDK 路径
           echo "flutter.sdk=$FLUTTER_ROOT" > android/local.properties
           echo "sdk.dir=$ANDROID_HOME" >> android/local.properties
@@ -224,6 +221,53 @@ jobs:
           # 显示实际安装的版本
           echo "=== 已安装的 media_kit 相关包版本 ==="
           flutter pub deps | grep media_kit || true
+          
+      - name: 修补 media_kit_video 的 Android 代码（添加 onSurfaceDestroyed 方法）
+        run: |
+          cd ui/flutter_app
+          # 查找 VideoOutput.java 文件
+          VIDEO_OUTPUT_FILE=$(find ~/.pub-cache -name "VideoOutput.java" -path "*/media_kit_video/android/*" | head -1)
+          
+          if [ -n "$VIDEO_OUTPUT_FILE" ]; then
+            echo "找到 VideoOutput.java: $VIDEO_OUTPUT_FILE"
+            
+            # 检查是否已经有 onSurfaceDestroyed 方法
+            if ! grep -q "onSurfaceDestroyed" "$VIDEO_OUTPUT_FILE"; then
+              echo "添加 onSurfaceDestroyed 方法..."
+              
+              # 创建临时文件
+              TEMP_FILE=$(mktemp)
+              
+              # 使用 awk 在文件末尾的最后一个 } 之前插入新方法
+              awk '
+              BEGIN { found = 0; }
+              /public void onSurfaceChanged/ { found = 1; }
+              found && /^  \}$/ && !done {
+                print $0;
+                print "";
+                print "  @Override";
+                print "  public void onSurfaceDestroyed() {";
+                print "    // Surface destroyed, cleanup if needed";
+                print "  }";
+                done = 1;
+                next;
+              }
+              { print $0; }
+              ' "$VIDEO_OUTPUT_FILE" > "$TEMP_FILE"
+              
+              # 替换原文件
+              mv "$TEMP_FILE" "$VIDEO_OUTPUT_FILE"
+              
+              echo "✓ 已添加 onSurfaceDestroyed 方法"
+              echo "=== 验证修改 ==="
+              grep -A 3 "onSurfaceDestroyed" "$VIDEO_OUTPUT_FILE" || echo "⚠️ 验证失败"
+            else
+              echo "✓ onSurfaceDestroyed 方法已存在"
+            fi
+          else
+            echo "⚠️ 未找到 VideoOutput.java 文件，尝试其他路径..."
+            find ~/.pub-cache -name "VideoOutput.java" || echo "完全找不到文件"
+          fi
           flutter pub get
           # 显示实际安装的版本
           echo "=== 已安装的 media_kit 相关包版本 ==="
@@ -246,8 +290,7 @@ jobs:
       - name: 构建 APK
         run: |
           cd ui/flutter_app
-          # 使用 --no-sound-null-safety 避免旧版本插件的兼容性问题
-          flutter build apk --release --no-sound-null-safety
+          flutter build apk --release
           cp build/app/outputs/flutter-apk/app-release.apk ../../BovaPlayer-Android.apk
 
       - name: Upload Android APK
