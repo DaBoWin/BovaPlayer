@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'video_player_page.dart';
+import 'media_kit_player_page.dart';
 
 // ============== 数据模型 ==============
 
@@ -328,12 +328,12 @@ class _EmbyPageState extends State<EmbyPage> {
     // 获取字幕列表
     final subtitles = await _fetchSubtitles(itemId);
     
-    // 使用 Flutter 官方 video_player
+    // 使用 media_kit 播放器（所有平台）
     if (mounted) {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => VideoPlayerPage(
+          builder: (_) => MediaKitPlayerPage(
             url: url,
             title: name,
             httpHeaders: headers,
