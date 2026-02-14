@@ -190,12 +190,32 @@ jobs:
         with:
           flutter-version: '3.27.1'
           channel: 'stable'
+          cache: true
+
+      - name: 缓存 Gradle 依赖
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ui/flutter_app/android/.gradle
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: 缓存 pub 依赖
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
 
       - name: Flutter 依赖安装
         run: |
           cd ui/flutter_app
-          flutter clean
-          rm -rf .dart_tool
+          # 只在必要时清理
           rm -rf build
           # 确保 local.properties 存在并包含正确的 Flutter SDK 路径
           echo "flutter.sdk=$FLUTTER_ROOT" > android/local.properties
@@ -246,14 +266,16 @@ jobs:
       - name: 构建 APK
         run: |
           cd ui/flutter_app
-          flutter build apk --release
-          cp build/app/outputs/flutter-apk/app-release.apk ../../BovaPlayer-Android.apk
+          # 使用 split-per-abi 生成更小的 APK，构建更快
+          flutter build apk --release --split-per-abi --target-platform android-arm64
+          # 只复制 arm64 版本（大多数现代手机）
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk ../../BovaPlayer-Android-arm64.apk
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
           name: BovaPlayer-Android
-          path: BovaPlayer-Android.apk
+          path: BovaPlayer-Android-arm64.apk
 
   # ============================================================
   #  创建 Release（仅在推送 tag 时触发）
@@ -280,7 +302,7 @@ jobs:
           # 只复制存在的文件
           [ -f artifacts/BovaPlayer-Windows/BovaPlayer-Windows.zip ] && cp artifacts/BovaPlayer-Windows/BovaPlayer-Windows.zip release-files/ || echo "⚠️ Windows 构建不存在"
           [ -f artifacts/BovaPlayer-macOS/BovaPlayer-macOS.dmg ] && cp artifacts/BovaPlayer-macOS/BovaPlayer-macOS.dmg release-files/ || echo "⚠️ macOS 构建不存在"
-          [ -f artifacts/BovaPlayer-Android/BovaPlayer-Android.apk ] && cp artifacts/BovaPlayer-Android/BovaPlayer-Android.apk release-files/ || echo "⚠️ Android 构建不存在"
+          [ -f artifacts/BovaPlayer-Android/BovaPlayer-Android-arm64.apk ] && cp artifacts/BovaPlayer-Android/BovaPlayer-Android-arm64.apk release-files/ || echo "⚠️ Android 构建不存在"
           ls -la release-files/
           
       - name: 生成 Release 说明
@@ -297,8 +319,8 @@ jobs:
             NOTES="${NOTES}| 🍎 macOS | \`BovaPlayer-macOS.dmg\` | 打开 DMG，拖入 Applications |\n"
           fi
           
-          if [ -f release-files/BovaPlayer-Android.apk ]; then
-            NOTES="${NOTES}| 🤖 Android | \`BovaPlayer-Android.apk\` | 直接安装 APK |\n"
+          if [ -f release-files/BovaPlayer-Android-arm64.apk ]; then
+            NOTES="${NOTES}| 🤖 Android | \`BovaPlayer-Android-arm64.apk\` | ARM64 设备（大多数现代手机） |\n"
           fi
           
           NOTES="${NOTES}\n> **macOS 用户注意**: 首次打开如提示\"已损坏\"，请在终端执行:\n> \`\`\`bash\n> xattr -cr /Applications/BovaPlayer.app\n> \`\`\`"
