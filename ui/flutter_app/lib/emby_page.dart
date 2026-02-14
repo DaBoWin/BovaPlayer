@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 
-// ============== 服务器数据模型 ==============
+// ============== 数据模型 ==============
 
 class EmbyServer {
   String name;
@@ -17,7 +17,6 @@ class EmbyServer {
   String? userId;
 
   EmbyServer({required this.name, required this.url, required this.username, this.password = '', this.accessToken, this.userId});
-
   Map<String, dynamic> toJson() => {'name': name, 'url': url, 'username': username, 'password': password};
   factory EmbyServer.fromJson(Map<String, dynamic> j) => EmbyServer(
     name: j['name'] ?? '', url: j['url'] ?? '', username: j['username'] ?? '', password: j['password'] ?? '',
@@ -28,7 +27,6 @@ class EmbyServer {
 
 class EmbyPage extends StatefulWidget {
   const EmbyPage({super.key});
-
   @override
   State<EmbyPage> createState() => _EmbyPageState();
 }
@@ -39,13 +37,15 @@ class _EmbyPageState extends State<EmbyPage> {
   bool _isLoading = false;
   String? _errorMsg;
 
-  // 登录后数据
+  // 仪表板
   bool _isConnected = false;
   List<Map<String, dynamic>> _libraries = [];
-  List<Map<String, dynamic>> _resumeItems = [];
-  List<Map<String, dynamic>> _latestItems = [];
+  Map<String, List<Map<String, dynamic>>> _viewItems = {}; // viewId -> items
+  
+  // 浏览
   List<Map<String, dynamic>> _browseItems = [];
   String _browseLibraryName = '';
+  String _browseLibraryId = '';
   bool _isLoadingBrowse = false;
 
   VideoPlayerController? _playerController;
@@ -101,7 +101,6 @@ class _EmbyPageState extends State<EmbyPage> {
 
   Future<void> _connectServer(EmbyServer server) async {
     setState(() { _isLoading = true; _errorMsg = null; _activeServer = server; });
-
     try {
       final response = await http.post(
         Uri.parse('${server.url}/emby/Users/AuthenticateByName'),
@@ -113,9 +112,8 @@ class _EmbyPageState extends State<EmbyPage> {
         final data = jsonDecode(response.body);
         server.accessToken = data['AccessToken'];
         server.userId = data['User']['Id'];
-
         setState(() { _isConnected = true; _isLoading = false; });
-        await _loadHomePage();
+        await _loadDashboard();
       } else {
         setState(() { _isLoading = false; _errorMsg = '登录失败: 用户名或密码错误'; });
       }
@@ -124,9 +122,13 @@ class _EmbyPageState extends State<EmbyPage> {
     }
   }
 
-  Future<void> _loadHomePage() async {
+  Future<void> _loadDashboard() async {
     if (_activeServer == null) return;
-    await Future.wait([_loadLibraries(), _loadResumeItems(), _loadLatestItems()]);
+    await _loadLibraries();
+    // 为每个媒体库加载前 12 个项目
+    for (final lib in _libraries) {
+      _loadViewItems(lib['Id'], limit: 12);
+    }
   }
 
   Future<void> _loadLibraries() async {
@@ -139,38 +141,26 @@ class _EmbyPageState extends State<EmbyPage> {
     } catch (_) {}
   }
 
-  Future<void> _loadResumeItems() async {
+  Future<void> _loadViewItems(String viewId, {int limit = 12}) async {
     try {
       final s = _activeServer!;
       final r = await http.get(
-        Uri.parse('${s.url}/emby/Users/${s.userId}/Items/Resume?Limit=10&Fields=Overview,MediaSources'),
+        Uri.parse('${s.url}/emby/Users/${s.userId}/Items?ParentId=$viewId&Limit=$limit&Fields=Overview,MediaSources&SortBy=SortName'),
         headers: _headers(s),
       );
       if (r.statusCode == 200) {
-        setState(() => _resumeItems = List<Map<String, dynamic>>.from(jsonDecode(r.body)['Items'] ?? []));
-      }
-    } catch (_) {}
-  }
-
-  Future<void> _loadLatestItems() async {
-    try {
-      final s = _activeServer!;
-      final r = await http.get(
-        Uri.parse('${s.url}/emby/Users/${s.userId}/Items/Latest?Limit=16&Fields=Overview,MediaSources'),
-        headers: _headers(s),
-      );
-      if (r.statusCode == 200) {
-        setState(() => _latestItems = List<Map<String, dynamic>>.from(jsonDecode(r.body)));
+        final items = List<Map<String, dynamic>>.from(jsonDecode(r.body)['Items'] ?? []);
+        setState(() => _viewItems[viewId] = items);
       }
     } catch (_) {}
   }
 
   Future<void> _loadLibraryItems(String libraryId, String name) async {
-    setState(() { _isLoadingBrowse = true; _browseLibraryName = name; });
+    setState(() { _isLoadingBrowse = true; _browseLibraryName = name; _browseLibraryId = libraryId; });
     try {
       final s = _activeServer!;
       final r = await http.get(
-        Uri.parse('${s.url}/emby/Users/${s.userId}/Items?ParentId=$libraryId&Limit=50&Fields=Overview,MediaSources&SortBy=SortName'),
+        Uri.parse('${s.url}/emby/Users/${s.userId}/Items?ParentId=$libraryId&Limit=100&Fields=Overview,MediaSources&SortBy=SortName'),
         headers: _headers(s),
       );
       if (r.statusCode == 200) {
@@ -189,7 +179,6 @@ class _EmbyPageState extends State<EmbyPage> {
     final name = item['Name'] ?? '未知';
     final s = _activeServer!;
     final playUrl = '${s.url}/emby/Videos/$itemId/stream?Static=true&api_key=${s.accessToken}';
-
     try {
       _playerController?.dispose();
       _playerController = VideoPlayerController.networkUrl(
@@ -198,7 +187,6 @@ class _EmbyPageState extends State<EmbyPage> {
       );
       await _playerController!.initialize();
       await _playerController!.play();
-
       if (mounted) {
         Navigator.push(context, MaterialPageRoute(
           builder: (_) => _EmbyPlayerPage(controller: _playerController!, title: name),
@@ -216,8 +204,7 @@ class _EmbyPageState extends State<EmbyPage> {
       _activeServer?.userId = null;
       _activeServer = null;
       _libraries = [];
-      _resumeItems = [];
-      _latestItems = [];
+      _viewItems = {};
       _browseItems = [];
       _browseLibraryName = '';
     });
@@ -229,7 +216,7 @@ class _EmbyPageState extends State<EmbyPage> {
   Widget build(BuildContext context) {
     if (_isConnected && _activeServer != null) {
       if (_browseLibraryName.isNotEmpty) return _buildBrowsePage();
-      return _buildHomePage();
+      return _buildDashboard();
     }
     return _buildServerListPage();
   }
@@ -259,23 +246,17 @@ class _EmbyPageState extends State<EmbyPage> {
 
   Widget _buildEmptyServerList() {
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 80, height: 80,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.deepPurple.withValues(alpha: 0.15),
-            ),
-            child: Icon(Icons.dns_outlined, size: 40, color: Colors.deepPurple.shade200),
-          ),
-          const SizedBox(height: 20),
-          const Text('还没有添加服务器', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
-          const Text('点击右下角 + 添加 Emby 服务器', style: TextStyle(color: Colors.white38, fontSize: 13)),
-        ],
-      ),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          width: 80, height: 80,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.deepPurple.withValues(alpha: 0.15)),
+          child: Icon(Icons.dns_outlined, size: 40, color: Colors.deepPurple.shade200),
+        ),
+        const SizedBox(height: 20),
+        const Text('还没有添加服务器', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        const Text('点击右下角 + 添加 Emby 服务器', style: TextStyle(color: Colors.white38, fontSize: 13)),
+      ]),
     );
   }
 
@@ -289,40 +270,25 @@ class _EmbyPageState extends State<EmbyPage> {
           margin: const EdgeInsets.only(bottom: 10),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            gradient: LinearGradient(
-              colors: [Colors.deepPurple.withValues(alpha: 0.15), const Color(0xFF16213E)],
-              begin: Alignment.topLeft, end: Alignment.bottomRight,
-            ),
+            gradient: LinearGradient(colors: [Colors.deepPurple.withValues(alpha: 0.15), const Color(0xFF16213E)], begin: Alignment.topLeft, end: Alignment.bottomRight),
             border: Border.all(color: Colors.white10),
           ),
           child: ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             leading: Container(
               width: 44, height: 44,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.deepPurple.withValues(alpha: 0.2),
-              ),
+              decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.deepPurple.withValues(alpha: 0.2)),
               child: Icon(Icons.dns, color: Colors.deepPurple.shade200, size: 22),
             ),
             title: Text(s.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 2),
-                Text(s.url, style: const TextStyle(color: Colors.white38, fontSize: 12)),
-                Text('用户: ${s.username}', style: const TextStyle(color: Colors.white24, fontSize: 11)),
-              ],
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (_isLoading && _activeServer == s)
-                  const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.deepPurple))
-                else
-                  const Icon(Icons.chevron_right, color: Colors.white24),
-              ],
-            ),
+            subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const SizedBox(height: 2),
+              Text(s.url, style: const TextStyle(color: Colors.white38, fontSize: 12)),
+              Text('用户: ${s.username}', style: const TextStyle(color: Colors.white24, fontSize: 11)),
+            ]),
+            trailing: (_isLoading && _activeServer == s)
+                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.deepPurple))
+                : const Icon(Icons.chevron_right, color: Colors.white24),
             onTap: _isLoading ? null : () => _connectServer(s),
             onLongPress: () => _showServerOptions(i),
           ),
@@ -336,33 +302,22 @@ class _EmbyPageState extends State<EmbyPage> {
       context: context,
       backgroundColor: const Color(0xFF16213E),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 8),
-            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
-            const SizedBox(height: 16),
-            ListTile(
-              leading: const Icon(Icons.edit, color: Colors.white70),
-              title: const Text('编辑', style: TextStyle(color: Colors.white)),
-              onTap: () {
-                Navigator.pop(ctx);
-                _showAddServerDialog(editIndex: index);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete, color: Colors.redAccent),
-              title: const Text('删除', style: TextStyle(color: Colors.redAccent)),
-              onTap: () {
-                Navigator.pop(ctx);
-                _removeServer(index);
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
+      builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const SizedBox(height: 8),
+        Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+        const SizedBox(height: 16),
+        ListTile(
+          leading: const Icon(Icons.edit, color: Colors.white70),
+          title: const Text('编辑', style: TextStyle(color: Colors.white)),
+          onTap: () { Navigator.pop(ctx); _showAddServerDialog(editIndex: index); },
         ),
-      ),
+        ListTile(
+          leading: const Icon(Icons.delete, color: Colors.redAccent),
+          title: const Text('删除', style: TextStyle(color: Colors.redAccent)),
+          onTap: () { Navigator.pop(ctx); _removeServer(index); },
+        ),
+        const SizedBox(height: 8),
+      ])),
     );
   }
 
@@ -379,45 +334,29 @@ class _EmbyPageState extends State<EmbyPage> {
         backgroundColor: const Color(0xFF1A1A2E),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(isEdit ? '编辑服务器' : '添加服务器', style: const TextStyle(color: Colors.white, fontSize: 18)),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _dialogField(nameCtrl, '名称', '我的 Emby 服务器'),
-              const SizedBox(height: 12),
-              _dialogField(urlCtrl, '服务器地址', 'https://your-server:8096'),
-              const SizedBox(height: 12),
-              _dialogField(userCtrl, '用户名', ''),
-              const SizedBox(height: 12),
-              _dialogField(passCtrl, '密码', '', obscure: true),
-
-              if (_errorMsg != null) ...[
-                const SizedBox(height: 12),
-                Text(_errorMsg!, style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
-              ],
-            ],
-          ),
-        ),
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          _dialogField(nameCtrl, '名称', '我的 Emby'),
+          const SizedBox(height: 12),
+          _dialogField(urlCtrl, '服务器地址', 'https://your-server:8096'),
+          const SizedBox(height: 12),
+          _dialogField(userCtrl, '用户名', ''),
+          const SizedBox(height: 12),
+          _dialogField(passCtrl, '密码', '', obscure: true),
+          if (_errorMsg != null) ...[
+            const SizedBox(height: 12),
+            Text(_errorMsg!, style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
+          ],
+        ])),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消', style: TextStyle(color: Colors.white38)),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消', style: TextStyle(color: Colors.white38))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white),
             onPressed: () {
-              final name = nameCtrl.text.trim();
-              final url = urlCtrl.text.trim();
-              final user = userCtrl.text.trim();
+              final name = nameCtrl.text.trim(); final url = urlCtrl.text.trim(); final user = userCtrl.text.trim();
               if (name.isEmpty || url.isEmpty || user.isEmpty) return;
-
               final server = EmbyServer(name: name, url: url, username: user, password: passCtrl.text);
-              if (isEdit) {
-                setState(() => _servers[editIndex] = server);
-                _saveServers();
-              } else {
-                _addServer(server);
-              }
+              if (isEdit) { setState(() => _servers[editIndex] = server); _saveServers(); }
+              else { _addServer(server); }
               Navigator.pop(ctx);
             },
             child: Text(isEdit ? '保存' : '添加'),
@@ -429,8 +368,7 @@ class _EmbyPageState extends State<EmbyPage> {
 
   Widget _dialogField(TextEditingController c, String label, String hint, {bool obscure = false}) {
     return TextField(
-      controller: c,
-      obscureText: obscure,
+      controller: c, obscureText: obscure,
       style: const TextStyle(color: Colors.white, fontSize: 14),
       decoration: InputDecoration(
         labelText: label, hintText: hint,
@@ -446,169 +384,176 @@ class _EmbyPageState extends State<EmbyPage> {
   }
 
   // ===================================
-  //  2) 首页仪表板
+  //  2) 仪表板 - 每个媒体库一行 (和 egui 一致)
   // ===================================
 
-  Widget _buildHomePage() {
+  Widget _buildDashboard() {
     final s = _activeServer!;
     return Scaffold(
       backgroundColor: const Color(0xFF1A1A2E),
       body: CustomScrollView(
         slivers: [
+          // 顶部栏
           SliverAppBar(
             floating: true,
             backgroundColor: const Color(0xFF16213E),
             foregroundColor: Colors.white,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: _disconnect,
-            ),
+            leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: _disconnect),
             title: Row(children: [
               const Icon(Icons.play_arrow_rounded, color: Colors.deepPurple, size: 24),
               const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(s.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-                  Text('${s.username}@${Uri.parse(s.url).host}', style: const TextStyle(fontSize: 11, color: Colors.white38)),
-                ],
-              ),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(s.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                Text('${s.username}@${Uri.parse(s.url).host}', style: const TextStyle(fontSize: 11, color: Colors.white38)),
+              ])),
             ]),
             actions: [
-              IconButton(icon: const Icon(Icons.refresh, size: 20), onPressed: _loadHomePage, tooltip: '刷新'),
+              IconButton(icon: const Icon(Icons.refresh, size: 20), onPressed: _loadDashboard, tooltip: '刷新'),
             ],
           ),
 
-          if (_resumeItems.isNotEmpty) ...[
-            _sectionTitle('继续观看', Icons.play_circle_outline),
-            SliverToBoxAdapter(child: _horizontalList(_resumeItems, showProgress: true)),
-          ],
-
-          if (_latestItems.isNotEmpty) ...[
-            _sectionTitle('最近添加', Icons.new_releases_outlined),
-            SliverToBoxAdapter(child: _horizontalList(_latestItems)),
-          ],
-
-          _sectionTitle('媒体库', Icons.folder_outlined),
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            sliver: SliverGrid(
-              delegate: SliverChildBuilderDelegate((ctx, i) => _libraryCard(_libraries[i]), childCount: _libraries.length),
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 200, childAspectRatio: 2.2, crossAxisSpacing: 10, mainAxisSpacing: 10),
+          // 每个媒体库作为一个 section
+          for (final lib in _libraries) ...[
+            // 标题行: 名称 + "更多 →"
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 24, 16, 10),
+                child: Row(children: [
+                  Icon(_libraryIcon(lib['CollectionType'] ?? ''), color: Colors.deepPurple.shade200, size: 22),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(
+                    lib['Name'] ?? '',
+                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                  )),
+                  TextButton(
+                    onPressed: () => _loadLibraryItems(lib['Id'], lib['Name'] ?? ''),
+                    child: const Text('更多 →', style: TextStyle(color: Colors.deepPurple, fontSize: 13)),
+                  ),
+                ]),
+              ),
             ),
-          ),
+
+            // 横向滚动项目行
+            SliverToBoxAdapter(
+              child: _buildViewItemsRow(lib['Id'] ?? ''),
+            ),
+
+            // 分隔线
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Divider(color: Colors.white10, height: 1),
+              ),
+            ),
+          ],
+
           const SliverToBoxAdapter(child: SizedBox(height: 32)),
         ],
       ),
     );
   }
 
-  SliverToBoxAdapter _sectionTitle(String title, IconData icon) {
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
-        child: Row(children: [
-          Icon(icon, color: Colors.deepPurple.shade200, size: 20),
-          const SizedBox(width: 8),
-          Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-        ]),
-      ),
-    );
+  IconData _libraryIcon(String type) {
+    switch (type) {
+      case 'movies': return Icons.movie_outlined;
+      case 'tvshows': return Icons.tv;
+      case 'music': return Icons.music_note;
+      default: return Icons.folder_outlined;
+    }
   }
 
-  Widget _horizontalList(List<Map<String, dynamic>> items, {bool showProgress = false}) {
+  Widget _buildViewItemsRow(String viewId) {
+    final items = _viewItems[viewId];
+    if (items == null) {
+      // 加载中占位
+      return SizedBox(
+        height: 210,
+        child: ListView.builder(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          itemCount: 6,
+          itemBuilder: (_, __) => Container(
+            width: 130, margin: const EdgeInsets.only(right: 12),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(child: Container(
+                decoration: BoxDecoration(color: const Color(0xFF16213E), borderRadius: BorderRadius.circular(4)),
+                child: const Center(child: Icon(Icons.hourglass_empty, color: Colors.white12, size: 30)),
+              )),
+              const SizedBox(height: 6),
+              Container(height: 12, width: 80, decoration: BoxDecoration(color: const Color(0xFF16213E), borderRadius: BorderRadius.circular(2))),
+            ]),
+          ),
+        ),
+      );
+    }
+
+    if (items.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        child: Text('暂无内容', style: TextStyle(color: Colors.white24, fontSize: 13)),
+      );
+    }
+
     return SizedBox(
-      height: 200,
+      height: 210,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         itemCount: items.length,
-        itemBuilder: (ctx, i) => _posterCard(items[i], showProgress: showProgress),
+        itemBuilder: (_, i) => _posterCard(items[i]),
       ),
     );
   }
 
-  Widget _posterCard(Map<String, dynamic> item, {bool showProgress = false}) {
+  Widget _posterCard(Map<String, dynamic> item) {
     final name = item['Name'] ?? '';
     final year = item['ProductionYear']?.toString() ?? '';
     final itemId = item['Id'] ?? '';
     final type = item['Type'] ?? '';
-    double progress = 0;
-    if (showProgress) {
-      final ticks = item['UserData']?['PlaybackPositionTicks'] ?? 0;
-      final runTicks = item['RunTimeTicks'] ?? 1;
-      if (runTicks > 0) progress = ticks / runTicks;
-    }
 
     return GestureDetector(
       onTap: () => _playItem(item),
       child: Container(
-        width: 120, margin: const EdgeInsets.only(right: 12),
+        width: 130, margin: const EdgeInsets.only(right: 12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // 封面 - 直角 (和 egui 一致)
           Expanded(
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(4),
               child: Stack(fit: StackFit.expand, children: [
                 Container(
                   color: const Color(0xFF16213E),
-                  child: Image.network(_imageUrl(itemId), fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Center(child: Icon(type == 'Movie' ? Icons.movie : Icons.tv, color: Colors.white24, size: 36))),
+                  child: Image.network(
+                    _imageUrl(itemId),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Center(child: Icon(
+                      type == 'Movie' ? Icons.movie : type == 'Series' ? Icons.tv : Icons.folder,
+                      color: Colors.white24, size: 36,
+                    )),
+                  ),
                 ),
+                // 底部渐变
                 Positioned.fill(child: Container(
                   decoration: BoxDecoration(gradient: LinearGradient(
                     begin: Alignment.bottomCenter, end: Alignment.center,
-                    colors: [Colors.black.withValues(alpha: 0.6), Colors.transparent],
+                    colors: [Colors.black.withValues(alpha: 0.5), Colors.transparent],
                   )),
                 )),
-                if (showProgress && progress > 0)
-                  Positioned(left: 0, right: 0, bottom: 0,
-                    child: LinearProgressIndicator(value: progress.clamp(0.0, 1.0), backgroundColor: Colors.black45,
-                      valueColor: const AlwaysStoppedAnimation(Colors.deepPurple), minHeight: 3)),
               ]),
             ),
           ),
           const SizedBox(height: 6),
-          Text(name, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
-          if (year.isNotEmpty) Text(year, style: const TextStyle(color: Colors.white30, fontSize: 10)),
+          Text(name, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+              maxLines: 1, overflow: TextOverflow.ellipsis),
+          if (year.isNotEmpty)
+            Text(year, style: const TextStyle(color: Colors.white30, fontSize: 10)),
         ]),
-      ),
-    );
-  }
-
-  Widget _libraryCard(Map<String, dynamic> lib) {
-    final name = lib['Name'] ?? '';
-    final type = lib['CollectionType'] ?? '';
-    final id = lib['Id'] ?? '';
-    IconData icon;
-    switch (type) {
-      case 'movies': icon = Icons.movie_outlined; break;
-      case 'tvshows': icon = Icons.tv; break;
-      case 'music': icon = Icons.music_note; break;
-      default: icon = Icons.folder_outlined;
-    }
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => _loadLibraryItems(id, name),
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            gradient: LinearGradient(colors: [Colors.deepPurple.withValues(alpha: 0.2), const Color(0xFF16213E)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-            border: Border.all(color: Colors.white10),
-          ),
-          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(icon, size: 22, color: Colors.deepPurple.shade200),
-            const SizedBox(width: 8),
-            Flexible(child: Text(name, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis)),
-          ]),
-        ),
       ),
     );
   }
 
   // ===================================
-  //  3) 媒体库浏览页
+  //  3) 媒体库浏览页 (点击"更多"后)
   // ===================================
 
   Widget _buildBrowsePage() {
@@ -626,7 +571,10 @@ class _EmbyPageState extends State<EmbyPage> {
               ? const Center(child: Text('暂无内容', style: TextStyle(color: Colors.white38)))
               : GridView.builder(
                   padding: const EdgeInsets.all(12),
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 140, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10),
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 140, childAspectRatio: 0.55,
+                    crossAxisSpacing: 10, mainAxisSpacing: 10,
+                  ),
                   itemCount: _browseItems.length,
                   itemBuilder: (ctx, i) => _posterCard(_browseItems[i]),
                 ),
@@ -640,7 +588,6 @@ class _EmbyPlayerPage extends StatefulWidget {
   final VideoPlayerController controller;
   final String title;
   const _EmbyPlayerPage({required this.controller, required this.title});
-
   @override
   State<_EmbyPlayerPage> createState() => _EmbyPlayerPageState();
 }
@@ -689,24 +636,31 @@ class _EmbyPlayerPageState extends State<_EmbyPlayerPage> {
       body: GestureDetector(
         onTap: () { setState(() => _showControls = !_showControls); if (_showControls) _startTimer(); },
         child: Stack(children: [
-          Center(child: v.isInitialized ? AspectRatio(aspectRatio: v.aspectRatio, child: VideoPlayer(widget.controller)) : const CircularProgressIndicator(color: Colors.white)),
+          Center(child: v.isInitialized
+              ? AspectRatio(aspectRatio: v.aspectRatio, child: VideoPlayer(widget.controller))
+              : const CircularProgressIndicator(color: Colors.white)),
           if (_showControls) Positioned.fill(child: Container(
             color: Colors.black38,
             child: Column(children: [
+              // 顶部
               SafeArea(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Row(children: [
                 IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context)),
                 Expanded(child: Text(widget.title, style: const TextStyle(color: Colors.white, fontSize: 15), overflow: TextOverflow.ellipsis)),
               ]))),
               const Spacer(),
+              // 中间控制
               Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                IconButton(icon: const Icon(Icons.replay_10, color: Colors.white, size: 32), onPressed: () => widget.controller.seekTo(v.position - const Duration(seconds: 10))),
+                IconButton(icon: const Icon(Icons.replay_10, color: Colors.white, size: 32),
+                  onPressed: () => widget.controller.seekTo(v.position - const Duration(seconds: 10))),
                 const SizedBox(width: 32),
                 IconButton(iconSize: 56, icon: Icon(v.isPlaying ? Icons.pause_circle : Icons.play_circle, color: Colors.white),
                   onPressed: () { v.isPlaying ? widget.controller.pause() : widget.controller.play(); _startTimer(); }),
                 const SizedBox(width: 32),
-                IconButton(icon: const Icon(Icons.forward_10, color: Colors.white, size: 32), onPressed: () => widget.controller.seekTo(v.position + const Duration(seconds: 10))),
+                IconButton(icon: const Icon(Icons.forward_10, color: Colors.white, size: 32),
+                  onPressed: () => widget.controller.seekTo(v.position + const Duration(seconds: 10))),
               ]),
               const Spacer(),
+              // 底部进度
               Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: Row(children: [
                 Text(_fmt(v.position), style: const TextStyle(color: Colors.white70, fontSize: 12)),
                 Expanded(child: SliderTheme(
