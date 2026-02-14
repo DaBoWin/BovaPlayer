@@ -2,14 +2,26 @@ name: Build All Platforms
 
 on:
   push:
-    tags: [ 'v*' ]          # 只在推送 tag 时自动构建 + Release
-  workflow_dispatch:          # 手动触发（用于测试）
+    tags: 
+      - 'v*'              # 所有 v* tag 都会触发
+  workflow_dispatch:      # 手动触发（用于测试）
+    inputs:
+      platforms:
+        description: '选择要构建的平台 (all/windows/macos/android)'
+        required: false
+        default: 'all'
 
 jobs:
   # ============================================================
   #  Windows 构建 (MSYS2 + MPV)
   # ============================================================
   build-windows:
+    # 只在以下情况运行：
+    # 1. tag 不包含 -android 或 -macos
+    # 2. 手动触发且选择了 windows 或 all
+    if: |
+      (github.event_name == 'push' && !contains(github.ref, '-android') && !contains(github.ref, '-macos')) ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.platforms == 'all' || github.event.inputs.platforms == 'windows'))
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -68,6 +80,12 @@ jobs:
   #  macOS 构建 (Homebrew MPV)
   # ============================================================
   build-macos:
+    # 只在以下情况运行：
+    # 1. tag 不包含 -android 或 -windows
+    # 2. 手动触发且选择了 macos 或 all
+    if: |
+      (github.event_name == 'push' && !contains(github.ref, '-android') && !contains(github.ref, '-windows')) ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.platforms == 'all' || github.event.inputs.platforms == 'macos'))
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -151,6 +169,12 @@ jobs:
   #  Android 构建 (Flutter + Rust FFI)
   # ============================================================
   build-android:
+    # 只在以下情况运行：
+    # 1. tag 不包含 -windows 或 -macos
+    # 2. 手动触发且选择了 android 或 all
+    if: |
+      (github.event_name == 'push' && !contains(github.ref, '-windows') && !contains(github.ref, '-macos')) ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.platforms == 'all' || github.event.inputs.platforms == 'android'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -236,8 +260,9 @@ jobs:
   #  创建 Release（仅在推送 tag 时触发）
   # ============================================================
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && always()
     needs: [build-windows, build-macos, build-android]
+    # 即使某些 job 被跳过也继续执行
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -248,37 +273,47 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts/
+        continue-on-error: true
 
       - name: 整理发布文件
         run: |
           mkdir -p release-files
-          cp artifacts/BovaPlayer-Windows/BovaPlayer-Windows.zip  release-files/
-          cp artifacts/BovaPlayer-macOS/BovaPlayer-macOS.dmg      release-files/
-          cp artifacts/BovaPlayer-Android/BovaPlayer-Android.apk  release-files/
+          # 只复制存在的文件
+          [ -f artifacts/BovaPlayer-Windows/BovaPlayer-Windows.zip ] && cp artifacts/BovaPlayer-Windows/BovaPlayer-Windows.zip release-files/ || echo "⚠️ Windows 构建不存在"
+          [ -f artifacts/BovaPlayer-macOS/BovaPlayer-macOS.dmg ] && cp artifacts/BovaPlayer-macOS/BovaPlayer-macOS.dmg release-files/ || echo "⚠️ macOS 构建不存在"
+          [ -f artifacts/BovaPlayer-Android/BovaPlayer-Android.apk ] && cp artifacts/BovaPlayer-Android/BovaPlayer-Android.apk release-files/ || echo "⚠️ Android 构建不存在"
           ls -la release-files/
+          
+      - name: 生成 Release 说明
+        id: release_notes
+        run: |
+          TAG_NAME="${{ github.ref_name }}"
+          NOTES="## BovaPlayer ${TAG_NAME}\n\n### 📦 下载\n\n| 平台 | 文件 | 说明 |\n|------|------|------|\n"
+          
+          if [ -f release-files/BovaPlayer-Windows.zip ]; then
+            NOTES="${NOTES}| 🪟 Windows | \`BovaPlayer-Windows.zip\` | 解压即用，包含 MPV 播放引擎 |\n"
+          fi
+          
+          if [ -f release-files/BovaPlayer-macOS.dmg ]; then
+            NOTES="${NOTES}| 🍎 macOS | \`BovaPlayer-macOS.dmg\` | 打开 DMG，拖入 Applications |\n"
+          fi
+          
+          if [ -f release-files/BovaPlayer-Android.apk ]; then
+            NOTES="${NOTES}| 🤖 Android | \`BovaPlayer-Android.apk\` | 直接安装 APK |\n"
+          fi
+          
+          NOTES="${NOTES}\n> **macOS 用户注意**: 首次打开如提示\"已损坏\"，请在终端执行:\n> \`\`\`bash\n> xattr -cr /Applications/BovaPlayer.app\n> \`\`\`"
+          
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: 创建 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: BovaPlayer ${{ github.ref_name }}
-          body: |
-            ## BovaPlayer ${{ github.ref_name }}
-
-            ### 📦 下载
-
-            | 平台 | 文件 | 说明 |
-            |------|------|------|
-            | 🪟 Windows | `BovaPlayer-Windows.zip` | 解压即用，包含 MPV 播放引擎 |
-            | 🍎 macOS | `BovaPlayer-macOS.dmg` | 打开 DMG，拖入 Applications |
-            | 🤖 Android | `BovaPlayer-Android.apk` | 直接安装 APK |
-
-            > **macOS 用户注意**: 首次打开如提示"已损坏"，请在终端执行:
-            > ```bash
-            > xattr -cr /Applications/BovaPlayer.app
-            > ```
-          files: |
-            release-files/BovaPlayer-Windows.zip
-            release-files/BovaPlayer-macOS.dmg
-            release-files/BovaPlayer-Android.apk
+          body: ${{ steps.release_notes.outputs.notes }}
+          files: release-files/*
           draft: false
           prerelease: false
+          fail_on_unmatched_files: false
