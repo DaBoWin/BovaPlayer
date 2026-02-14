@@ -1,49 +1,39 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:video_player/video_player.dart';
 import 'package:intl/intl.dart';
-import 'package:http/http.dart' as http;
-import 'emby_page.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 
-class EnhancedPlayerPage extends StatefulWidget {
-  final String itemId;
+class MediaKitPlayerPage extends StatefulWidget {
   final String streamUrl;
   final String title;
-  final EmbyServer server;
+  final Map<String, String>? httpHeaders;
   
-  const EnhancedPlayerPage({
+  const MediaKitPlayerPage({
     super.key,
-    required this.itemId,
     required this.streamUrl,
     required this.title,
-    required this.server,
+    this.httpHeaders,
   });
   
   @override
-  State<EnhancedPlayerPage> createState() => _EnhancedPlayerPageState();
+  State<MediaKitPlayerPage> createState() => _MediaKitPlayerPageState();
 }
 
-class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
-  VideoPlayerController? _controller;
+class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
+  late final Player _player;
+  late final VideoController _videoController;
+  
   bool _isInitializing = true;
   String? _errorMessage;
   bool _showControls = true;
   bool _isLocked = false;
   double _playbackSpeed = 1.0;
-  String _aspectRatio = 'fit'; // fit, fill, stretch
+  String _aspectRatio = 'fit';
   Timer? _hideTimer;
   Timer? _clockTimer;
-  Timer? _speedTimer;
   String _currentTime = '';
-  String _networkSpeed = '0 KB/s';
-  int _lastPosition = 0;
-  int _lastCheckTime = 0;
-  
-  // 字幕相关
-  List<Map<String, dynamic>> _subtitleTracks = [];
-  int _selectedSubtitleIndex = -1; // -1 表示关闭字幕
 
   @override
   void initState() {
@@ -53,26 +43,139 @@ class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
+    
+    _player = Player(
+      configuration: const PlayerConfiguration(
+        title: 'BovaPlayer',
+        protocolWhitelist: ['http', 'https', 'file', 'tcp', 'tls'],
+        logLevel: MPVLogLevel.warn,
+      ),
+    );
+    // 禁用 Texture 硬件加速 (解决 macOS 黑屏的关键)
+    _videoController = VideoController(
+      _player,
+      configuration: const VideoControllerConfiguration(
+        enableHardwareAcceleration: false,
+      ),
+    );
+    
+    // 配置 mpv TLS 选项（修复 HTTPS 播放）
+    _configureMpvTls();
+    
+    // 监听播放器状态
+    _player.stream.playing.listen((playing) {
+      print('[MediaKitPlayer] 播放状态变化: $playing');
+    });
+    
+    _player.stream.buffering.listen((buffering) {
+      print('[MediaKitPlayer] 缓冲状态: $buffering');
+    });
+    
+    _player.stream.error.listen((error) {
+      print('[MediaKitPlayer] 播放器错误: $error');
+    });
+    
+    _player.stream.width.listen((width) {
+      print('[MediaKitPlayer] 视频宽度: $width');
+    });
+    
+    _player.stream.height.listen((height) {
+      print('[MediaKitPlayer] 视频高度: $height');
+    });
+    
     _initializePlayer();
-    _loadSubtitles();
     _updateClock();
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) => _updateClock());
-    _speedTimer = Timer.periodic(const Duration(seconds: 1), (_) => _updateNetworkSpeed());
+  }
+
+  /// 配置 mpv 底层选项以支持 HTTPS 自签名证书
+  Future<void> _configureMpvTls() async {
+    try {
+      final nativePlayer = _player.platform;
+      if (nativePlayer != null) {
+        // 1. 禁用 TLS 证书验证
+        await (nativePlayer as dynamic).setProperty('tls-verify', 'no');
+        await (nativePlayer as dynamic).setProperty('tls-ca-file', '');
+        
+        // 2. 优化网络和缓冲配置 (解决 Cloudflare/HTTP2 缓冲问题)
+        // 使用标准 Chrome UA 避免 Cloudflare 甚至 Emby 本身的 UA 过滤
+        await (nativePlayer as dynamic).setProperty('user-agent', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        await (nativePlayer as dynamic).setProperty('cache', 'yes');
+        
+        // 缓冲策略调整：降低要求以确保起播
+        await (nativePlayer as dynamic).setProperty('demuxer-max-bytes', '50000000'); // 50MB buffer
+        await (nativePlayer as dynamic).setProperty('demuxer-max-back-bytes', '20000000'); // 20MB back buffer
+        
+        // 预读策略调整：恢复默认或较小值，避免一直缓冲
+        await (nativePlayer as dynamic).setProperty('demuxer-readahead-secs', '1');
+        
+        // 移除强制等待，让它尽可能快播放
+        await (nativePlayer as dynamic).setProperty('cache-pause-initial', 'no');
+        await (nativePlayer as dynamic).setProperty('cache-pause-wait', '0');
+        
+        await (nativePlayer as dynamic).setProperty('force-seekable', 'yes'); 
+        await (nativePlayer as dynamic).setProperty('msg-level', 'all=v');
+        await (nativePlayer as dynamic).setProperty('network-timeout', '60'); 
+        
+        // 3. 硬件解码配置
+        // 尝试 auto-copy: 将硬解帧拷贝回内存，解决 macOS 黑屏/纹理映射问题
+        await (nativePlayer as dynamic).setProperty('hwdec', 'auto-copy');
+        // 确保 render output 正确 (通常默认即可，但 explicit setting rarely hurts)
+        // await (nativePlayer as dynamic).setProperty('vo', 'libmpv');
+
+        print('[MediaKitPlayer] 已配置 mpv: TLS=no, Cache=yes, Buffer=50MB, Readahead=1s, hwdec=auto-copy');
+        
+        // 4. 设置 HTTP headers (已通过 Media 构造函数传递)
+        if (widget.httpHeaders != null && widget.httpHeaders!.isNotEmpty) {
+           print('[MediaKitPlayer] HTTP headers 将使用 Media 构造函数传递');
+        }
+      }
+    } catch (e) {
+      print('[MediaKitPlayer] 配置 mpv TLS 选项失败: $e');
+    }
   }
 
   Future<void> _initializePlayer() async {
     try {
-      _controller = VideoPlayerController.networkUrl(
-        Uri.parse(widget.streamUrl),
-        videoPlayerOptions: VideoPlayerOptions(
-          mixWithOthers: true,
-          allowBackgroundPlayback: true,
-        ),
-      );
+      print('[MediaKitPlayer] 开始初始化播放器');
+      print('[MediaKitPlayer] Stream URL: ${widget.streamUrl}');
+      print('[MediaKitPlayer] HTTP Headers: ${widget.httpHeaders}');
       
-      _controller!.addListener(_listener);
-      await _controller!.initialize();
-      await _controller!.play();
+      // 方法1: 尝试使用 httpHeaders
+      try {
+        print('[MediaKitPlayer] 尝试方法1: 使用 httpHeaders');
+        final media = Media(
+          widget.streamUrl,
+          httpHeaders: widget.httpHeaders ?? {},
+        );
+        
+        print('[MediaKitPlayer] 打开媒体...');
+        await _player.open(media);
+        
+        print('[MediaKitPlayer] 开始播放...');
+        await _player.play();
+        
+        print('[MediaKitPlayer] 播放器初始化成功');
+        
+        if (mounted) {
+          setState(() {
+            _isInitializing = false;
+          });
+          _startHideTimer();
+        }
+        return;
+      } catch (e) {
+        print('[MediaKitPlayer] 方法1失败: $e');
+      }
+      
+      // 方法2: 直接使用 URL（不带 headers）
+      print('[MediaKitPlayer] 尝试方法2: 不使用 headers');
+      final media = Media(widget.streamUrl);
+      
+      await _player.open(media);
+      await _player.play();
+      
+      print('[MediaKitPlayer] 方法2成功');
       
       if (mounted) {
         setState(() {
@@ -80,11 +183,14 @@ class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
         });
         _startHideTimer();
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('[MediaKitPlayer] 所有方法都失败: $e');
+      print('[MediaKitPlayer] 堆栈: $stackTrace');
+      
       if (mounted) {
         setState(() {
           _isInitializing = false;
-          _errorMessage = '播放失败: $e';
+          _errorMessage = '播放失败: $e\n\n请尝试在浏览器中打开此URL测试:\n${widget.streamUrl}';
         });
       }
     }
@@ -94,16 +200,10 @@ class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
   void dispose() {
     _hideTimer?.cancel();
     _clockTimer?.cancel();
-    _speedTimer?.cancel();
-    _controller?.removeListener(_listener);
-    _controller?.dispose();
+    _player.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     super.dispose();
-  }
-
-  void _listener() {
-    if (mounted) setState(() {});
   }
 
   void _updateClock() {
@@ -114,128 +214,9 @@ class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
     }
   }
 
-  void _updateNetworkSpeed() {
-    if (mounted && _controller != null && _controller!.value.isInitialized) {
-      final currentTime = DateTime.now().millisecondsSinceEpoch;
-      final currentPosition = _controller!.value.position.inMilliseconds;
-      
-      if (_lastCheckTime > 0) {
-        final timeDiff = (currentTime - _lastCheckTime) / 1000.0; // 秒
-        final posDiff = currentPosition - _lastPosition; // 毫秒
-        
-        if (timeDiff > 0 && posDiff > 0) {
-          // 假设视频码率，根据播放进度估算网速
-          // 这是一个简化的估算，实际网速需要从网络层获取
-          final bytesPerMs = 1500; // 假设平均码率 1.5 KB/ms
-          final bytesDownloaded = posDiff * bytesPerMs;
-          final speedBps = bytesDownloaded / timeDiff;
-          
-          setState(() {
-            if (speedBps > 1024 * 1024) {
-              _networkSpeed = '${(speedBps / (1024 * 1024)).toStringAsFixed(1)} MB/s';
-            } else if (speedBps > 1024) {
-              _networkSpeed = '${(speedBps / 1024).toStringAsFixed(0)} KB/s';
-            } else {
-              _networkSpeed = '${speedBps.toStringAsFixed(0)} B/s';
-            }
-          });
-        }
-      }
-      
-      _lastCheckTime = currentTime;
-      _lastPosition = currentPosition;
-    }
-  }
-
-  Future<void> _loadSubtitles() async {
-    try {
-      // 尝试多个可能的API端点
-      final endpoints = [
-        '${widget.server.url}/emby/Items/${widget.itemId}?Fields=MediaStreams',
-        '${widget.server.url}/Items/${widget.itemId}?Fields=MediaStreams',
-        '${widget.server.url}/emby/Users/${widget.server.userId}/Items/${widget.itemId}?Fields=MediaStreams',
-      ];
-      
-      for (final endpoint in endpoints) {
-        final url = '$endpoint&api_key=${widget.server.accessToken}';
-        print('尝试加载字幕 URL: $url');
-        
-        try {
-          final response = await http.get(Uri.parse(url));
-          print('字幕响应状态: ${response.statusCode}');
-          
-          if (response.statusCode == 200) {
-            final data = jsonDecode(response.body);
-            print('字幕数据: ${jsonEncode(data)}');
-            
-            // 尝试多种路径获取 MediaStreams
-            List? mediaStreams;
-            
-            // 路径1: MediaSources[0].MediaStreams
-            if (data['MediaSources'] != null && (data['MediaSources'] as List).isNotEmpty) {
-              mediaStreams = data['MediaSources'][0]['MediaStreams'] as List?;
-            }
-            
-            // 路径2: 直接从 MediaStreams
-            if (mediaStreams == null && data['MediaStreams'] != null) {
-              mediaStreams = data['MediaStreams'] as List?;
-            }
-            
-            print('找到 MediaStreams: ${mediaStreams?.length ?? 0} 个');
-            
-            if (mediaStreams != null && mediaStreams.isNotEmpty) {
-              final subtitles = mediaStreams.where((s) => s['Type'] == 'Subtitle').toList();
-              print('找到字幕轨道: ${subtitles.length} 个');
-              
-              if (mounted) {
-                setState(() {
-                  _subtitleTracks = [
-                    {'DisplayTitle': '关闭', 'Index': -1},
-                    ...subtitles.map((s) {
-                      print('字幕轨道: ${s['DisplayTitle']} - ${s['Language']} - Index: ${s['Index']}');
-                      return {
-                        'DisplayTitle': s['DisplayTitle'] ?? s['Language'] ?? '未知',
-                        'Index': s['Index'],
-                        'IsExternal': s['IsExternal'] ?? false,
-                        'DeliveryUrl': s['DeliveryUrl'],
-                      };
-                    }).toList(),
-                  ];
-                  print('字幕列表已更新: ${_subtitleTracks.length} 个');
-                });
-              }
-              return; // 成功获取，退出
-            }
-          }
-        } catch (e) {
-          print('端点 $endpoint 失败: $e');
-          continue;
-        }
-      }
-      
-      // 所有端点都失败，使用默认
-      print('所有字幕端点都失败，使用默认');
-      _setDefaultSubtitles();
-    } catch (e, stackTrace) {
-      print('加载字幕异常: $e');
-      print('堆栈: $stackTrace');
-      _setDefaultSubtitles();
-    }
-  }
-  
-  void _setDefaultSubtitles() {
-    if (mounted) {
-      setState(() {
-        _subtitleTracks = [
-          {'DisplayTitle': '关闭', 'Index': -1},
-        ];
-      });
-    }
-  }
-
   void _startHideTimer() {
     _hideTimer?.cancel();
-    if (!_isLocked && _controller != null && _controller!.value.isPlaying) {
+    if (!_isLocked && _player.state.playing) {
       _hideTimer = Timer(const Duration(seconds: 4), () {
         if (mounted) setState(() => _showControls = false);
       });
@@ -259,26 +240,19 @@ class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
   }
 
   void _seek(Duration offset) {
-    if (_controller == null) return;
-    final newPos = _controller!.value.position + offset;
-    _controller!.seekTo(newPos);
+    final newPos = _player.state.position + offset;
+    _player.seek(newPos);
     _startHideTimer();
   }
 
   void _togglePlayPause() {
-    if (_controller == null) return;
-    if (_controller!.value.isPlaying) {
-      _controller!.pause();
-    } else {
-      _controller!.play();
-    }
+    _player.playOrPause();
     _startHideTimer();
   }
 
   void _changeSpeed(double speed) {
-    if (_controller == null) return;
     setState(() => _playbackSpeed = speed);
-    _controller!.setPlaybackSpeed(speed);
+    _player.setRate(speed);
     Navigator.pop(context);
   }
 
@@ -288,18 +262,26 @@ class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
   }
 
   Widget _buildVideoPlayer() {
-    if (_controller == null || !_controller!.value.isInitialized) {
+    if (_isInitializing) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const CircularProgressIndicator(color: Colors.white),
+            const SizedBox(height: 16),
+            const Text(
+              '正在加载...',
+              style: TextStyle(color: Colors.white70, fontSize: 14),
+            ),
             if (_errorMessage != null) ...[
               const SizedBox(height: 20),
-              Text(
-                _errorMessage!,
-                style: const TextStyle(color: Colors.red, fontSize: 14),
-                textAlign: TextAlign.center,
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  _errorMessage!,
+                  style: const TextStyle(color: Colors.red, fontSize: 14),
+                  textAlign: TextAlign.center,
+                ),
               ),
             ],
           ],
@@ -307,29 +289,14 @@ class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
       );
     }
 
-    final videoValue = _controller!.value;
-    Widget videoWidget = VideoPlayer(_controller!);
-
-    switch (_aspectRatio) {
-      case 'fill':
-        return SizedBox.expand(
-          child: FittedBox(fit: BoxFit.cover, child: SizedBox(
-            width: videoValue.size.width,
-            height: videoValue.size.height,
-            child: videoWidget,
-          )),
-        );
-      case 'stretch':
-        return SizedBox.expand(child: videoWidget);
-      case 'fit':
-      default:
-        return Center(
-          child: AspectRatio(
-            aspectRatio: videoValue.aspectRatio,
-            child: videoWidget,
-          ),
-        );
-    }
+    // 使用 SizedBox.expand 确保视频填充整个屏幕
+    return SizedBox.expand(
+      child: Video(
+        controller: _videoController,
+        controls: NoVideoControls, // 使用自定义控制
+        fit: BoxFit.contain, // 保持宽高比
+      ),
+    );
   }
 
   @override
@@ -352,10 +319,10 @@ class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Colors.black.withOpacity(0.7),
+                        Colors.black.withValues(alpha: 0.7),
                         Colors.transparent,
                         Colors.transparent,
-                        Colors.black.withOpacity(0.7),
+                        Colors.black.withValues(alpha: 0.7),
                       ],
                       stops: const [0.0, 0.2, 0.8, 1.0],
                     ),
@@ -382,7 +349,7 @@ class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
                 ),
               ),
 
-            // 锁屏按钮（始终显示）
+            // 锁屏按钮
             if (_showControls)
               Positioned(
                 left: 16,
@@ -415,13 +382,10 @@ class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         child: Row(
           children: [
-            // 返回按钮
             IconButton(
               icon: const Icon(Icons.arrow_back, color: Colors.white),
               onPressed: () => Navigator.pop(context),
             ),
-            
-            // 标题
             Expanded(
               child: Text(
                 widget.title,
@@ -433,27 +397,10 @@ class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            
-            // 系统时间
             Text(
               _currentTime,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-              ),
+              style: const TextStyle(color: Colors.white, fontSize: 14),
             ),
-            
-            const SizedBox(width: 16),
-            
-            // 网速（实时更新）
-            Text(
-              _networkSpeed,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 12,
-              ),
-            ),
-            
             const SizedBox(width: 8),
           ],
         ),
@@ -462,29 +409,20 @@ class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
   }
 
   Widget _buildCenterControls() {
-    final isPlaying = _controller?.value.isPlaying ?? false;
-    
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // 快退 10s
         _buildCircleButton(
           icon: Icons.replay_10,
           onPressed: () => _seek(const Duration(seconds: -10)),
         ),
-        
         const SizedBox(width: 48),
-        
-        // 播放/暂停
         _buildCircleButton(
-          icon: isPlaying ? Icons.pause : Icons.play_arrow,
+          icon: _player.state.playing ? Icons.pause : Icons.play_arrow,
           size: 64,
           onPressed: _togglePlayPause,
         ),
-        
         const SizedBox(width: 48),
-        
-        // 快进 10s
         _buildCircleButton(
           icon: Icons.forward_10,
           onPressed: () => _seek(const Duration(seconds: 10)),
@@ -502,7 +440,7 @@ class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.3),
+        color: Colors.white.withValues(alpha: 0.3),
         shape: BoxShape.circle,
       ),
       child: IconButton(
@@ -514,71 +452,56 @@ class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
   }
 
   Widget _buildProgressBar() {
-    if (_controller == null || !_controller!.value.isInitialized) {
-      return const SizedBox();
-    }
-    
-    final v = _controller!.value;
-    final position = v.position;
-    final duration = v.duration;
-    
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          // 当前时间
-          Text(
-            _formatDuration(position),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-            ),
-          ),
-          
-          const SizedBox(width: 8),
-          
-          // 进度条
-          Expanded(
-            child: SliderTheme(
-              data: SliderThemeData(
-                trackHeight: 3,
-                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-                activeTrackColor: Colors.white,
-                inactiveTrackColor: Colors.white.withOpacity(0.3),
-                thumbColor: Colors.white,
-                overlayColor: Colors.white.withOpacity(0.3),
+    return StreamBuilder<Duration>(
+      stream: _player.stream.position,
+      builder: (context, snapshot) {
+        final position = snapshot.data ?? Duration.zero;
+        final duration = _player.state.duration;
+        
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              Text(
+                _formatDuration(position),
+                style: const TextStyle(color: Colors.white, fontSize: 12),
               ),
-              child: Slider(
-                value: position.inMilliseconds.toDouble().clamp(
-                  0,
-                  duration.inMilliseconds.toDouble(),
+              const SizedBox(width: 8),
+              Expanded(
+                child: SliderTheme(
+                  data: SliderThemeData(
+                    trackHeight: 3,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                    activeTrackColor: Colors.white,
+                    inactiveTrackColor: Colors.white.withValues(alpha: 0.3),
+                    thumbColor: Colors.white,
+                    overlayColor: Colors.white.withValues(alpha: 0.3),
+                  ),
+                  child: Slider(
+                    value: position.inMilliseconds.toDouble().clamp(
+                      0,
+                      duration.inMilliseconds.toDouble(),
+                    ),
+                    max: duration.inMilliseconds > 0
+                        ? duration.inMilliseconds.toDouble()
+                        : 1,
+                    onChanged: (value) {
+                      _player.seek(Duration(milliseconds: value.toInt()));
+                    },
+                    onChangeEnd: (_) => _startHideTimer(),
+                  ),
                 ),
-                max: duration.inMilliseconds > 0
-                    ? duration.inMilliseconds.toDouble()
-                    : 1,
-                onChanged: (value) {
-                  _controller!.seekTo(
-                    Duration(milliseconds: value.toInt()),
-                  );
-                },
-                onChangeEnd: (_) => _startHideTimer(),
               ),
-            ),
+              const SizedBox(width: 8),
+              Text(
+                _formatDuration(duration),
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+            ],
           ),
-          
-          const SizedBox(width: 8),
-          
-          // 总时长
-          Text(
-            _formatDuration(duration),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -588,23 +511,16 @@ class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          // 字幕
           _buildBottomButton(
             icon: Icons.subtitles,
-            label: _selectedSubtitleIndex >= 0 && _selectedSubtitleIndex < _subtitleTracks.length
-                ? _subtitleTracks[_selectedSubtitleIndex]['DisplayTitle'] ?? '字幕'
-                : '字幕',
+            label: '字幕',
             onPressed: _showSubtitleMenu,
           ),
-          
-          // 倍速
           _buildBottomButton(
             icon: Icons.speed,
             label: '${_playbackSpeed}x',
             onPressed: _showSpeedMenu,
           ),
-          
-          // 画面比例
           _buildBottomButton(
             icon: Icons.aspect_ratio,
             label: _getAspectRatioLabel(),
@@ -631,10 +547,7 @@ class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
             const SizedBox(height: 4),
             Text(
               label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-              ),
+              style: const TextStyle(color: Colors.white, fontSize: 11),
             ),
           ],
         ),
@@ -655,6 +568,8 @@ class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
   }
 
   void _showSubtitleMenu() {
+    final tracks = _player.state.tracks.subtitle;
+    
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF16213E),
@@ -684,45 +599,35 @@ class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
               ),
             ),
             const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Text(
-                '注意：video_player不支持外部字幕切换\n需要使用MPV播放器或让Emby烧录字幕',
-                style: TextStyle(
-                  color: Colors.orange.shade300,
-                  fontSize: 12,
-                ),
-                textAlign: TextAlign.center,
+            ListTile(
+              title: const Text(
+                '关闭',
+                style: TextStyle(color: Colors.white),
               ),
+              trailing: _player.state.track.subtitle == SubtitleTrack.no()
+                  ? const Icon(Icons.check, color: Colors.deepPurple)
+                  : null,
+              onTap: () {
+                _player.setSubtitleTrack(SubtitleTrack.no());
+                Navigator.pop(context);
+              },
             ),
-            for (int i = 0; i < _subtitleTracks.length; i++)
+            for (final track in tracks)
               ListTile(
                 title: Text(
-                  _subtitleTracks[i]['DisplayTitle'] ?? '未知',
+                  track.title ?? track.language ?? '字幕 ${track.id}',
                   style: TextStyle(
-                    color: _selectedSubtitleIndex == i
+                    color: _player.state.track.subtitle.id == track.id
                         ? Colors.deepPurple.shade200
                         : Colors.white,
                   ),
                 ),
-                trailing: _selectedSubtitleIndex == i
+                trailing: _player.state.track.subtitle.id == track.id
                     ? const Icon(Icons.check, color: Colors.deepPurple)
                     : null,
                 onTap: () {
-                  setState(() => _selectedSubtitleIndex = i);
-                  // video_player不支持动态切换字幕
-                  // 需要重新加载视频并在URL中指定字幕索引
+                  _player.setSubtitleTrack(track);
                   Navigator.pop(context);
-                  
-                  if (i > 0) {
-                    // 显示提示
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('已选择: ${_subtitleTracks[i]['DisplayTitle']}'),
-                        duration: const Duration(seconds: 2),
-                      ),
-                    );
-                  }
                 },
               ),
             const SizedBox(height: 8),

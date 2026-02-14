@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
 import 'native_bridge.dart';
 
 // 条件导入：Web 使用 player_screen.dart，其他平台使用 player_screen_desktop.dart
@@ -8,6 +9,11 @@ import 'emby_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // 初始化 media_kit（添加详细日志）
+  MediaKit.ensureInitialized();
+  
+  print('[Main] media_kit 已初始化');
 
   NativeBridge.initialize().then((result) {
     print('Native bridge initialized: $result');

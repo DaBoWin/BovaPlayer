@@ -12,6 +12,12 @@ path = "src/lib.rs"
 
 [dependencies]
 bova-core = { path = "../bova-core" }
+bova-playback = { path = "../bova-playback", optional = true }
 serde_json = { workspace = true }
 libc = "0.2"
 lazy_static = "1.4"
+crossbeam-channel = "0.5"
+
+[features]
+default = []
+mpv = ["bova-playback/mpv"]

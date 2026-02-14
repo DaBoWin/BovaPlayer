@@ -4,8 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:video_player/video_player.dart';
-import 'enhanced_player.dart';
+import 'simple_media_kit_player.dart';
 
 // ============== 数据模型 ==============
 
@@ -60,8 +59,6 @@ class _EmbyPageState extends State<EmbyPage> {
   Map<String, List<Map<String, dynamic>>> _seasonEpisodes = {};
   int _selectedSeasonIndex = 0;
 
-  VideoPlayerController? _playerController;
-
   @override
   void initState() {
     super.initState();
@@ -70,7 +67,6 @@ class _EmbyPageState extends State<EmbyPage> {
 
   @override
   void dispose() {
-    _playerController?.dispose();
     super.dispose();
   }
 
@@ -105,7 +101,17 @@ class _EmbyPageState extends State<EmbyPage> {
   }
 
   String _streamUrl(String itemId) {
-    return '${_activeServer!.url}/Videos/$itemId/stream?static=true&api_key=${_activeServer!.accessToken}';
+    // 使用直接播放 URL（Direct Play）
+    // 移除显式的端口 443，让 HTTPS 使用默认端口
+    final server = _activeServer!;
+    var baseUrl = server.url;
+    
+    // 如果 URL 包含 :443，移除它（HTTPS 默认端口）
+    if (baseUrl.contains(':443')) {
+      baseUrl = baseUrl.replaceAll(':443', '');
+    }
+    
+    return '$baseUrl/Videos/$itemId/stream?static=true&api_key=${server.accessToken}';
   }
 
   Future<void> _connectServer(EmbyServer server) async {
@@ -302,28 +308,38 @@ class _EmbyPageState extends State<EmbyPage> {
   // ============== 播放 ==============
 
   Future<void> _playItem(String itemId, String name) async {
-    final url = _streamUrl(itemId);
-    try {
-      _playerController?.dispose();
-      _playerController = VideoPlayerController.networkUrl(
-        Uri.parse(url),
-        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true, allowBackgroundPlayback: true),
+    print('[EmbyPage] 准备播放: $name');
+    print('[EmbyPage] Item ID: $itemId');
+    
+    final server = _activeServer!;
+    var baseUrl = server.url;
+    if (baseUrl.contains(':443')) {
+      baseUrl = baseUrl.replaceAll(':443', '');
+    }
+    
+    // 使用直接流播放（不转码）
+    // 注意: media_kit_libs_macos_video 1.1.4 不支持 TrueHD 音频编解码器
+    // 如果遇到 TrueHD 音频，播放会失败并显示错误: "Failed to initialize a decoder for codec 'truehd'"
+    final url = '$baseUrl/Videos/$itemId/stream?static=true&api_key=${server.accessToken}';
+    
+    print('[EmbyPage] Stream URL (Direct Play): $url');
+    print('[EmbyPage] 注意: 当前 media_kit 版本不支持 TrueHD 音频');
+    
+    // 构建 HTTP headers
+    final headers = _headers();
+    
+    // 使用简化版播放器
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => SimpleMediaKitPlayer(
+            url: url,
+            title: name,
+            httpHeaders: headers,
+          ),
+        ),
       );
-      await _playerController!.initialize();
-      await _playerController!.play();
-      if (mounted) {
-        Navigator.push(context, MaterialPageRoute(
-          builder: (_) => EnhancedPlayerPage(controller: _playerController!, title: name),
-        )).then((_) => _playerController?.pause());
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('播放失败: $e\n\nURL: $url'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 5),
-        ));
-      }
     }
   }
 
@@ -1052,102 +1068,6 @@ class _EmbyPageState extends State<EmbyPage> {
             ),
           );
         },
-      ),
-    );
-  }
-}
-
-// ============== Emby 播放器页面 ==============
-
-class _EmbyPlayerPage extends StatefulWidget {
-  final VideoPlayerController controller;
-  final String title;
-  const _EmbyPlayerPage({required this.controller, required this.title});
-  @override
-  State<_EmbyPlayerPage> createState() => _EmbyPlayerPageState();
-}
-
-class _EmbyPlayerPageState extends State<_EmbyPlayerPage> {
-  bool _showControls = true;
-  Timer? _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
-    widget.controller.addListener(_listener);
-    _startTimer();
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    widget.controller.removeListener(_listener);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-    super.dispose();
-  }
-
-  void _listener() { if (mounted) setState(() {}); }
-  void _startTimer() {
-    _timer?.cancel();
-    _timer = Timer(const Duration(seconds: 4), () {
-      if (mounted && widget.controller.value.isPlaying) setState(() => _showControls = false);
-    });
-  }
-
-  String _fmt(Duration d) {
-    final h = d.inHours; final m = d.inMinutes.remainder(60); final s = d.inSeconds.remainder(60);
-    if (h > 0) return '${h.toString().padLeft(2,'0')}:${m.toString().padLeft(2,'0')}:${s.toString().padLeft(2,'0')}';
-    return '${m.toString().padLeft(2,'0')}:${s.toString().padLeft(2,'0')}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final v = widget.controller.value;
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: GestureDetector(
-        onTap: () { setState(() => _showControls = !_showControls); if (_showControls) _startTimer(); },
-        child: Stack(children: [
-          Center(child: v.isInitialized
-              ? AspectRatio(aspectRatio: v.aspectRatio, child: VideoPlayer(widget.controller))
-              : const CircularProgressIndicator(color: Colors.white)),
-          if (_showControls) Positioned.fill(child: Container(
-            color: Colors.black38,
-            child: Column(children: [
-              SafeArea(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Row(children: [
-                IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context)),
-                Expanded(child: Text(widget.title, style: const TextStyle(color: Colors.white, fontSize: 15), overflow: TextOverflow.ellipsis)),
-              ]))),
-              const Spacer(),
-              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                IconButton(icon: const Icon(Icons.replay_10, color: Colors.white, size: 32),
-                  onPressed: () => widget.controller.seekTo(v.position - const Duration(seconds: 10))),
-                const SizedBox(width: 32),
-                IconButton(iconSize: 56, icon: Icon(v.isPlaying ? Icons.pause_circle : Icons.play_circle, color: Colors.white),
-                  onPressed: () { v.isPlaying ? widget.controller.pause() : widget.controller.play(); _startTimer(); }),
-                const SizedBox(width: 32),
-                IconButton(icon: const Icon(Icons.forward_10, color: Colors.white, size: 32),
-                  onPressed: () => widget.controller.seekTo(v.position + const Duration(seconds: 10))),
-              ]),
-              const Spacer(),
-              Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: Row(children: [
-                Text(_fmt(v.position), style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                Expanded(child: SliderTheme(
-                  data: SliderThemeData(trackHeight: 3, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                    activeTrackColor: Colors.white, inactiveTrackColor: Colors.white24, thumbColor: Colors.white),
-                  child: Slider(
-                    value: v.position.inMilliseconds.toDouble().clamp(0, v.duration.inMilliseconds.toDouble()),
-                    max: v.duration.inMilliseconds > 0 ? v.duration.inMilliseconds.toDouble() : 1,
-                    onChanged: (val) => widget.controller.seekTo(Duration(milliseconds: val.toInt()))),
-                )),
-                Text(_fmt(v.duration), style: const TextStyle(color: Colors.white70, fontSize: 12)),
-              ])),
-            ]),
-          )),
-        ]),
       ),
     );
   }
