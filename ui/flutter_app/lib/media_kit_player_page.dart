@@ -6,15 +6,17 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 class MediaKitPlayerPage extends StatefulWidget {
-  final String streamUrl;
+  final String url;
   final String title;
   final Map<String, String>? httpHeaders;
+  final List<Map<String, String>>? subtitles;
   
   const MediaKitPlayerPage({
     super.key,
-    required this.streamUrl,
+    required this.url,
     required this.title,
     this.httpHeaders,
+    this.subtitles,
   });
   
   @override
@@ -33,7 +35,11 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
   String _aspectRatio = 'fit';
   Timer? _hideTimer;
   Timer? _clockTimer;
+  Timer? _speedTimer;
   String _currentTime = '';
+  String _networkSpeed = '-- KB/s';
+  int _lastPosition = 0;
+  DateTime _lastSpeedCheck = DateTime.now();
 
   @override
   void initState() {
@@ -86,6 +92,7 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
     _initializePlayer();
     _updateClock();
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) => _updateClock());
+    _speedTimer = Timer.periodic(const Duration(seconds: 2), (_) => _updateNetworkSpeed());
   }
 
   /// 配置 mpv 底层选项以支持 HTTPS 自签名证书
@@ -138,14 +145,14 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
   Future<void> _initializePlayer() async {
     try {
       print('[MediaKitPlayer] 开始初始化播放器');
-      print('[MediaKitPlayer] Stream URL: ${widget.streamUrl}');
+      print('[MediaKitPlayer] Stream URL: ${widget.url}');
       print('[MediaKitPlayer] HTTP Headers: ${widget.httpHeaders}');
       
       // 方法1: 尝试使用 httpHeaders
       try {
         print('[MediaKitPlayer] 尝试方法1: 使用 httpHeaders');
         final media = Media(
-          widget.streamUrl,
+          widget.url,
           httpHeaders: widget.httpHeaders ?? {},
         );
         
@@ -170,7 +177,7 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       
       // 方法2: 直接使用 URL（不带 headers）
       print('[MediaKitPlayer] 尝试方法2: 不使用 headers');
-      final media = Media(widget.streamUrl);
+      final media = Media(widget.url);
       
       await _player.open(media);
       await _player.play();
@@ -190,7 +197,7 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       if (mounted) {
         setState(() {
           _isInitializing = false;
-          _errorMessage = '播放失败: $e\n\n请尝试在浏览器中打开此URL测试:\n${widget.streamUrl}';
+          _errorMessage = '播放失败: $e\n\n请尝试在浏览器中打开此URL测试:\n${widget.url}';
         });
       }
     }
@@ -200,6 +207,7 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
   void dispose() {
     _hideTimer?.cancel();
     _clockTimer?.cancel();
+    _speedTimer?.cancel();
     _player.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
@@ -211,6 +219,179 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       setState(() {
         _currentTime = DateFormat('HH:mm').format(DateTime.now());
       });
+    }
+  }
+
+  /// 计算实时网速
+  /// 通过监听播放位置变化来估算下载速度
+  void _updateNetworkSpeed() async {
+    if (!mounted) return;
+    
+    try {
+      final nativePlayer = _player.platform;
+      if (nativePlayer == null) {
+        return;
+      }
+      
+      try {
+        // 方法1: 尝试从 MPV 获取 cache-speed
+        // cache-speed 单位可能是 bytes/s，直接使用
+        final cacheSpeed = await (nativePlayer as dynamic).getProperty('cache-speed');
+        
+        if (cacheSpeed != null) {
+          double? speedValue;
+          if (cacheSpeed is num) {
+            speedValue = cacheSpeed.toDouble();
+          } else if (cacheSpeed is String) {
+            speedValue = double.tryParse(cacheSpeed);
+          }
+          
+          if (speedValue != null && speedValue > 0) {
+            // cache-speed 单位是 bytes/s，直接格式化
+            final speed = _formatSpeed(speedValue);
+            if (mounted) {
+              setState(() {
+                _networkSpeed = speed;
+              });
+            }
+            return;
+          }
+        }
+      } catch (e) {
+        // cache-speed 不可用
+      }
+      
+      try {
+        // 方法2: 尝试获取 demuxer-cache-state，使用 raw-input-rate
+        final cacheState = await (nativePlayer as dynamic).getProperty('demuxer-cache-state');
+        
+        if (cacheState != null && cacheState is Map) {
+          // raw-input-rate 是实时输入速率（字节/秒）
+          final rawInputRate = cacheState['raw-input-rate'];
+          
+          if (rawInputRate != null) {
+            double? speedValue;
+            if (rawInputRate is num) {
+              speedValue = rawInputRate.toDouble();
+            } else if (rawInputRate is String) {
+              speedValue = double.tryParse(rawInputRate);
+            }
+            
+            if (speedValue != null && speedValue > 0) {
+              final speed = _formatSpeed(speedValue);
+              if (mounted) {
+                setState(() {
+                  _networkSpeed = speed;
+                });
+              }
+              return;
+            }
+          }
+          
+          // 备用：计算缓存增长速度
+          final totalBytes = cacheState['total-bytes'];
+          if (totalBytes != null) {
+            int? bytesValue;
+            if (totalBytes is num) {
+              bytesValue = totalBytes.toInt();
+            } else if (totalBytes is String) {
+              bytesValue = int.tryParse(totalBytes);
+            }
+            
+            if (bytesValue != null) {
+              final now = DateTime.now();
+              final timeDiff = now.difference(_lastSpeedCheck).inSeconds.toDouble();
+              
+              if (timeDiff > 0 && _lastPosition > 0 && bytesValue > _lastPosition) {
+                final bytesDiff = bytesValue - _lastPosition;
+                final bytesPerSecond = bytesDiff / timeDiff;
+                
+                if (bytesPerSecond > 0) {
+                  final speed = _formatSpeed(bytesPerSecond);
+                  if (mounted) {
+                    setState(() {
+                      _networkSpeed = speed;
+                    });
+                  }
+                }
+              }
+              
+              _lastPosition = bytesValue;
+              _lastSpeedCheck = now;
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        print('[NetworkSpeed] 方法2失败: $e');
+      }
+      
+      try {
+        // 方法3: 使用 video-bitrate 和 audio-bitrate 估算
+        final videoBitrate = await (nativePlayer as dynamic).getProperty('video-bitrate');
+        final audioBitrate = await (nativePlayer as dynamic).getProperty('audio-bitrate');
+        
+        double totalBitrate = 0;
+        
+        if (videoBitrate != null) {
+          if (videoBitrate is num) {
+            totalBitrate += videoBitrate.toDouble();
+          } else if (videoBitrate is String) {
+            totalBitrate += double.tryParse(videoBitrate) ?? 0;
+          }
+        }
+        
+        if (audioBitrate != null) {
+          if (audioBitrate is num) {
+            totalBitrate += audioBitrate.toDouble();
+          } else if (audioBitrate is String) {
+            totalBitrate += double.tryParse(audioBitrate) ?? 0;
+          }
+        }
+        
+        if (totalBitrate > 0) {
+          // bitrate 单位是 bits/s，转换为 bytes/s
+          final bytesPerSecond = totalBitrate / 8.0;
+          final speed = _formatSpeed(bytesPerSecond);
+          if (mounted) {
+            setState(() {
+              _networkSpeed = speed;
+            });
+          }
+          return;
+        }
+      } catch (e) {
+        print('[NetworkSpeed] 方法3失败: $e');
+      }
+      
+      // 所有方法都失败，显示状态
+      if (_player.state.buffering) {
+        if (mounted) {
+          setState(() {
+            _networkSpeed = '缓冲中...';
+          });
+        }
+      } else if (_player.state.playing) {
+        if (mounted) {
+          setState(() {
+            _networkSpeed = '-- KB/s';
+          });
+        }
+      }
+    } catch (e) {
+      print('[NetworkSpeed] 更新失败: $e');
+    }
+  }
+
+  String _formatSpeed(double bytesPerSecond) {
+    if (bytesPerSecond < 0) return '0 B/s';
+    
+    if (bytesPerSecond < 1024) {
+      return '${bytesPerSecond.toStringAsFixed(0)} B/s';
+    } else if (bytesPerSecond < 1024 * 1024) {
+      return '${(bytesPerSecond / 1024).toStringAsFixed(1)} KB/s';
+    } else {
+      return '${(bytesPerSecond / (1024 * 1024)).toStringAsFixed(2)} MB/s';
     }
   }
 
@@ -397,9 +578,49 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            Text(
-              _currentTime,
-              style: const TextStyle(color: Colors.white, fontSize: 14),
+            // 网速显示
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.speed,
+                    color: Colors.greenAccent,
+                    size: 14,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    _networkSpeed,
+                    style: const TextStyle(
+                      color: Colors.greenAccent,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            // 时间显示
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                _currentTime,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ),
             const SizedBox(width: 8),
           ],
@@ -577,61 +798,63 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 8),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white24,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              '字幕',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            ListTile(
-              title: const Text(
-                '关闭',
-                style: TextStyle(color: Colors.white),
-              ),
-              trailing: _player.state.track.subtitle == SubtitleTrack.no()
-                  ? const Icon(Icons.check, color: Colors.deepPurple)
-                  : null,
-              onTap: () {
-                _player.setSubtitleTrack(SubtitleTrack.no());
-                Navigator.pop(context);
-              },
-            ),
-            for (final track in tracks)
-              ListTile(
-                title: Text(
-                  track.title ?? track.language ?? '字幕 ${track.id}',
-                  style: TextStyle(
-                    color: _player.state.track.subtitle.id == track.id
-                        ? Colors.deepPurple.shade200
-                        : Colors.white,
-                  ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                trailing: _player.state.track.subtitle.id == track.id
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '字幕',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              ListTile(
+                title: const Text(
+                  '关闭',
+                  style: TextStyle(color: Colors.white),
+                ),
+                trailing: _player.state.track.subtitle == SubtitleTrack.no()
                     ? const Icon(Icons.check, color: Colors.deepPurple)
                     : null,
                 onTap: () {
-                  _player.setSubtitleTrack(track);
+                  _player.setSubtitleTrack(SubtitleTrack.no());
                   Navigator.pop(context);
                 },
               ),
-            const SizedBox(height: 8),
-          ],
+              for (final track in tracks)
+                ListTile(
+                  title: Text(
+                    track.title ?? track.language ?? '字幕 ${track.id}',
+                    style: TextStyle(
+                      color: _player.state.track.subtitle.id == track.id
+                          ? Colors.deepPurple.shade200
+                          : Colors.white,
+                    ),
+                  ),
+                  trailing: _player.state.track.subtitle.id == track.id
+                      ? const Icon(Icons.check, color: Colors.deepPurple)
+                      : null,
+                  onTap: () {
+                    _player.setSubtitleTrack(track);
+                    Navigator.pop(context);
+                  },
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );
@@ -645,45 +868,47 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 8),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white24,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              '播放速度',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            for (final speed in [0.5, 0.75, 1.0, 1.25, 1.5, 2.0])
-              ListTile(
-                title: Text(
-                  '${speed}x',
-                  style: TextStyle(
-                    color: _playbackSpeed == speed
-                        ? Colors.deepPurple.shade200
-                        : Colors.white,
-                  ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                trailing: _playbackSpeed == speed
-                    ? const Icon(Icons.check, color: Colors.deepPurple)
-                    : null,
-                onTap: () => _changeSpeed(speed),
               ),
-            const SizedBox(height: 8),
-          ],
+              const SizedBox(height: 16),
+              const Text(
+                '播放速度',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              for (final speed in [0.5, 0.75, 1.0, 1.25, 1.5, 2.0])
+                ListTile(
+                  title: Text(
+                    '${speed}x',
+                    style: TextStyle(
+                      color: _playbackSpeed == speed
+                          ? Colors.deepPurple.shade200
+                          : Colors.white,
+                    ),
+                  ),
+                  trailing: _playbackSpeed == speed
+                      ? const Icon(Icons.check, color: Colors.deepPurple)
+                      : null,
+                  onTap: () => _changeSpeed(speed),
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );
@@ -697,49 +922,51 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 8),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white24,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              '画面比例',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            for (final ratio in [
-              {'value': 'fit', 'label': '适应屏幕'},
-              {'value': 'fill', 'label': '填充屏幕'},
-              {'value': 'stretch', 'label': '拉伸填充'},
-            ])
-              ListTile(
-                title: Text(
-                  ratio['label']!,
-                  style: TextStyle(
-                    color: _aspectRatio == ratio['value']
-                        ? Colors.deepPurple.shade200
-                        : Colors.white,
-                  ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                trailing: _aspectRatio == ratio['value']
-                    ? const Icon(Icons.check, color: Colors.deepPurple)
-                    : null,
-                onTap: () => _changeAspectRatio(ratio['value']!),
               ),
-            const SizedBox(height: 8),
-          ],
+              const SizedBox(height: 16),
+              const Text(
+                '画面比例',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              for (final ratio in [
+                {'value': 'fit', 'label': '适应屏幕'},
+                {'value': 'fill', 'label': '填充屏幕'},
+                {'value': 'stretch', 'label': '拉伸填充'},
+              ])
+                ListTile(
+                  title: Text(
+                    ratio['label']!,
+                    style: TextStyle(
+                      color: _aspectRatio == ratio['value']
+                          ? Colors.deepPurple.shade200
+                          : Colors.white,
+                    ),
+                  ),
+                  trailing: _aspectRatio == ratio['value']
+                      ? const Icon(Icons.check, color: Colors.deepPurple)
+                      : null,
+                  onTap: () => _changeAspectRatio(ratio['value']!),
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );

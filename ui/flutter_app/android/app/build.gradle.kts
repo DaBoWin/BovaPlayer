@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.example.bova_player_flutter"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 35  // 明确指定 compileSdk
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -24,10 +24,10 @@ android {
         applicationId = "com.example.bova_player_flutter"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        minSdk = 21  // 明确指定 minSdk
+        targetSdk = 35  // 明确指定 targetSdk
+        versionCode = 1
+        versionName = "1.0.0"
     }
 
     buildTypes {

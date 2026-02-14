@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'simple_media_kit_player.dart';
+import 'media_kit_player_page.dart';
 
 // ============== 数据模型 ==============
 
@@ -328,19 +328,85 @@ class _EmbyPageState extends State<EmbyPage> {
     // 构建 HTTP headers
     final headers = _headers();
     
-    // 使用简化版播放器
+    // 获取字幕列表
+    final subtitles = await _fetchSubtitles(itemId);
+    
+    // 使用完整播放器 UI
     if (mounted) {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => SimpleMediaKitPlayer(
+          builder: (_) => MediaKitPlayerPage(
             url: url,
             title: name,
             httpHeaders: headers,
+            subtitles: subtitles,
           ),
         ),
       );
     }
+  }
+
+  /// 获取字幕列表
+  Future<List<Map<String, String>>> _fetchSubtitles(String itemId) async {
+    try {
+      final server = _activeServer!;
+      var baseUrl = server.url;
+      if (baseUrl.contains(':443')) {
+        baseUrl = baseUrl.replaceAll(':443', '');
+      }
+      
+      final url = '$baseUrl/emby/Items/$itemId?Fields=MediaStreams&api_key=${server.accessToken}';
+      final response = await http.get(Uri.parse(url), headers: _headers());
+      
+      if (response.statusCode == 200) {
+        final data = json.decode(utf8.decode(response.bodyBytes));
+        final mediaStreams = data['MediaStreams'] as List<dynamic>?;
+        
+        if (mediaStreams != null) {
+          final subtitles = <Map<String, String>>[];
+          
+          for (var stream in mediaStreams) {
+            if (stream['Type'] == 'Subtitle') {
+              final index = stream['Index'] as int;
+              final language = stream['Language'] as String? ?? stream['DisplayLanguage'] as String? ?? 'Unknown';
+              final title = stream['DisplayTitle'] as String? ?? language;
+              final isExternal = stream['IsExternal'] as bool? ?? false;
+              
+              if (isExternal && stream['DeliveryUrl'] != null) {
+                // 外部字幕
+                var subtitleUrl = stream['DeliveryUrl'] as String;
+                if (!subtitleUrl.startsWith('http')) {
+                  subtitleUrl = '$baseUrl$subtitleUrl';
+                }
+                
+                subtitles.add({
+                  'title': title,
+                  'url': subtitleUrl,
+                  'language': language,
+                });
+              } else {
+                // 内嵌字幕 - 通过 Emby API 提取
+                final subtitleUrl = '$baseUrl/Videos/$itemId/$itemId/Subtitles/$index/Stream.srt?api_key=${server.accessToken}';
+                
+                subtitles.add({
+                  'title': title,
+                  'url': subtitleUrl,
+                  'language': language,
+                });
+              }
+            }
+          }
+          
+          print('[EmbyPage] 找到 ${subtitles.length} 个字幕');
+          return subtitles;
+        }
+      }
+    } catch (e) {
+      print('[EmbyPage] 获取字幕失败: $e');
+    }
+    
+    return [];
   }
 
   void _goToServerList() {
@@ -665,7 +731,10 @@ class _EmbyPageState extends State<EmbyPage> {
     final year = item['ProductionYear']?.toString() ?? '';
     final itemId = item['Id'] ?? '';
     final type = item['Type'] ?? '';
-    final childCount = item['ChildCount'];
+    // 对于 Series，优先使用 RecursiveItemCount（所有剧集数），否则使用 ChildCount（季数）
+    final childCount = type == 'Series' 
+        ? (item['RecursiveItemCount'] ?? item['ChildCount']) 
+        : item['ChildCount'];
 
     return GestureDetector(
       onTap: () => _handleItemClick(item),
