@@ -191,22 +191,6 @@ jobs:
           flutter-version: '3.27.1'
           channel: 'stable'
 
-      - name: Setup Rust (用于 FFI 交叉编译)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
-
-      - name: 安装 cargo-ndk
-        run: cargo install cargo-ndk
-
-      - name: 构建 Rust FFI 库 (Android)
-        run: |
-          cd core
-          export ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME
-          cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../ui/flutter_app/android/app/src/main/jniLibs build --release -p bova-ffi || {
-            echo "⚠️ Rust FFI 交叉编译失败，将构建纯 Flutter 版本"
-          }
-
       - name: Flutter 依赖安装
         run: |
           cd ui/flutter_app
@@ -221,59 +205,6 @@ jobs:
           # 显示实际安装的版本
           echo "=== 已安装的 media_kit 相关包版本 ==="
           flutter pub deps | grep media_kit || true
-          
-      - name: 修补 media_kit_video 的 Android 代码（如果需要添加 onSurfaceDestroyed 方法）
-        run: |
-          cd ui/flutter_app
-          # 查找 VideoOutput.java 文件
-          VIDEO_OUTPUT_FILE=$(find ~/.pub-cache -name "VideoOutput.java" -path "*/media_kit_video/android/*" | head -1)
-          
-          if [ -n "$VIDEO_OUTPUT_FILE" ]; then
-            echo "找到 VideoOutput.java: $VIDEO_OUTPUT_FILE"
-            
-            # 检查是否已经有 onSurfaceDestroyed 方法
-            if ! grep -q "onSurfaceDestroyed" "$VIDEO_OUTPUT_FILE"; then
-              echo "检查是否需要 onSurfaceDestroyed 方法..."
-              
-              # 检查是否实现了 SurfaceProducer.Callback 接口
-              if grep -q "SurfaceProducer.Callback" "$VIDEO_OUTPUT_FILE"; then
-                echo "需要添加 onSurfaceDestroyed 方法..."
-                
-                # 创建临时文件
-                TEMP_FILE=$(mktemp)
-                
-                # 使用 awk 在文件末尾的最后一个 } 之前插入新方法
-                awk '
-                BEGIN { found = 0; }
-                /public void onSurfaceChanged/ { found = 1; }
-                found && /^  \}$/ && !done {
-                  print $0;
-                  print "";
-                  print "  @Override";
-                  print "  public void onSurfaceDestroyed() {";
-                  print "    // Surface destroyed, cleanup if needed";
-                  print "  }";
-                  done = 1;
-                  next;
-                }
-                { print $0; }
-                ' "$VIDEO_OUTPUT_FILE" > "$TEMP_FILE"
-                
-                # 替换原文件
-                mv "$TEMP_FILE" "$VIDEO_OUTPUT_FILE"
-                
-                echo "✓ 已添加 onSurfaceDestroyed 方法"
-                echo "=== 验证修改 ==="
-                grep -A 3 "onSurfaceDestroyed" "$VIDEO_OUTPUT_FILE" || echo "⚠️ 验证失败"
-              else
-                echo "✓ 不需要 onSurfaceDestroyed 方法（未使用 SurfaceProducer.Callback）"
-              fi
-            else
-              echo "✓ onSurfaceDestroyed 方法已存在"
-            fi
-          else
-            echo "⚠️ 未找到 VideoOutput.java 文件"
-          fi
 
       - name: 构建 APK
         run: |
