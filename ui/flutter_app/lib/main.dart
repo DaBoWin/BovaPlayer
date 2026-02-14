@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'native_bridge.dart';
 
-// 条件导入：Web 使用 player_screen.dart，其他平台使用 player_screen_desktop.dart
-import 'player_screen.dart' if (dart.library.io) 'player_screen_desktop.dart';
+// 条件导入：Web 使用 player_screen.dart，移动端/桌面端使用 player_screen_mobile.dart
+import 'player_screen.dart' if (dart.library.io) 'player_screen_mobile.dart';
 import 'emby_page.dart';
 
 void main() async {
