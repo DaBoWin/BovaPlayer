@@ -16,9 +16,9 @@ dependencies:
   http: ^1.1.0
   shared_preferences: ^2.2.2
   intl: ^0.19.0
-  # 使用最新版本的 media_kit
-  media_kit: ^2.0.1
-  media_kit_video: ^2.0.1
+  # 使用最新稳定版本的 media_kit
+  media_kit: ^1.1.10
+  media_kit_video: ^1.2.3
   # media_kit_libs_video 会作为传递依赖自动引入
   # 字幕支持
   subtitle_wrapper_package: ^2.2.1

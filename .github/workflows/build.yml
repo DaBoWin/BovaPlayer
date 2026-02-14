@@ -222,7 +222,7 @@ jobs:
           echo "=== 已安装的 media_kit 相关包版本 ==="
           flutter pub deps | grep media_kit || true
           
-      - name: 修补 media_kit_video 的 Android 代码（添加 onSurfaceDestroyed 方法）
+      - name: 修补 media_kit_video 的 Android 代码（如果需要添加 onSurfaceDestroyed 方法）
         run: |
           cd ui/flutter_app
           # 查找 VideoOutput.java 文件
@@ -233,40 +233,46 @@ jobs:
             
             # 检查是否已经有 onSurfaceDestroyed 方法
             if ! grep -q "onSurfaceDestroyed" "$VIDEO_OUTPUT_FILE"; then
-              echo "添加 onSurfaceDestroyed 方法..."
+              echo "检查是否需要 onSurfaceDestroyed 方法..."
               
-              # 创建临时文件
-              TEMP_FILE=$(mktemp)
-              
-              # 使用 awk 在文件末尾的最后一个 } 之前插入新方法
-              awk '
-              BEGIN { found = 0; }
-              /public void onSurfaceChanged/ { found = 1; }
-              found && /^  \}$/ && !done {
-                print $0;
-                print "";
-                print "  @Override";
-                print "  public void onSurfaceDestroyed() {";
-                print "    // Surface destroyed, cleanup if needed";
-                print "  }";
-                done = 1;
-                next;
-              }
-              { print $0; }
-              ' "$VIDEO_OUTPUT_FILE" > "$TEMP_FILE"
-              
-              # 替换原文件
-              mv "$TEMP_FILE" "$VIDEO_OUTPUT_FILE"
-              
-              echo "✓ 已添加 onSurfaceDestroyed 方法"
-              echo "=== 验证修改 ==="
-              grep -A 3 "onSurfaceDestroyed" "$VIDEO_OUTPUT_FILE" || echo "⚠️ 验证失败"
+              # 检查是否实现了 SurfaceProducer.Callback 接口
+              if grep -q "SurfaceProducer.Callback" "$VIDEO_OUTPUT_FILE"; then
+                echo "需要添加 onSurfaceDestroyed 方法..."
+                
+                # 创建临时文件
+                TEMP_FILE=$(mktemp)
+                
+                # 使用 awk 在文件末尾的最后一个 } 之前插入新方法
+                awk '
+                BEGIN { found = 0; }
+                /public void onSurfaceChanged/ { found = 1; }
+                found && /^  \}$/ && !done {
+                  print $0;
+                  print "";
+                  print "  @Override";
+                  print "  public void onSurfaceDestroyed() {";
+                  print "    // Surface destroyed, cleanup if needed";
+                  print "  }";
+                  done = 1;
+                  next;
+                }
+                { print $0; }
+                ' "$VIDEO_OUTPUT_FILE" > "$TEMP_FILE"
+                
+                # 替换原文件
+                mv "$TEMP_FILE" "$VIDEO_OUTPUT_FILE"
+                
+                echo "✓ 已添加 onSurfaceDestroyed 方法"
+                echo "=== 验证修改 ==="
+                grep -A 3 "onSurfaceDestroyed" "$VIDEO_OUTPUT_FILE" || echo "⚠️ 验证失败"
+              else
+                echo "✓ 不需要 onSurfaceDestroyed 方法（未使用 SurfaceProducer.Callback）"
+              fi
             else
               echo "✓ onSurfaceDestroyed 方法已存在"
             fi
           else
-            echo "⚠️ 未找到 VideoOutput.java 文件，尝试其他路径..."
-            find ~/.pub-cache -name "VideoOutput.java" || echo "完全找不到文件"
+            echo "⚠️ 未找到 VideoOutput.java 文件"
           fi
           flutter pub get
           # 显示实际安装的版本
