@@ -78,22 +78,36 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
     // 监听播放器状态
     _player.stream.playing.listen((playing) {
       print('[MediaKitPlayer] 播放状态变化: $playing');
+      if (mounted) setState(() {});
     });
     
     _player.stream.buffering.listen((buffering) {
       print('[MediaKitPlayer] 缓冲状态: $buffering');
+      if (mounted) setState(() {});
     });
     
     _player.stream.error.listen((error) {
       print('[MediaKitPlayer] 播放器错误: $error');
+      if (mounted) {
+        setState(() {
+          _errorMessage = '播放错误: $error';
+        });
+      }
     });
     
     _player.stream.width.listen((width) {
       print('[MediaKitPlayer] 视频宽度: $width');
+      if (mounted) setState(() {});
     });
     
     _player.stream.height.listen((height) {
       print('[MediaKitPlayer] 视频高度: $height');
+      if (mounted) setState(() {});
+    });
+    
+    _player.stream.duration.listen((duration) {
+      print('[MediaKitPlayer] 视频时长: $duration');
+      if (mounted) setState(() {});
     });
     
     _initializePlayer();
@@ -471,12 +485,40 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       );
     }
 
-    // 使用 SizedBox.expand 确保视频填充整个屏幕
-    return SizedBox.expand(
+    if (_errorMessage != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red, size: 48),
+              const SizedBox(height: 16),
+              Text(
+                _errorMessage!,
+                style: const TextStyle(color: Colors.red, fontSize: 14),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('返回'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // 使用 Container 包裹确保有背景色
+    return Container(
+      color: Colors.black,
       child: Video(
         controller: _videoController,
-        controls: NoVideoControls, // 使用自定义控制
-        fit: BoxFit.contain, // 保持宽高比
+        controls: NoVideoControls,
+        fit: BoxFit.contain,
+        // 添加 wakelock 保持屏幕常亮
+        wakelock: true,
       ),
     );
   }
@@ -492,8 +534,63 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
             // 视频播放器
             Positioned.fill(child: _buildVideoPlayer()),
 
+            // 调试信息（开发时显示）
+            if (_isInitializing || _errorMessage != null)
+              Positioned(
+                top: 100,
+                left: 16,
+                right: 16,
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.black87,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '播放器状态:',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '初始化中: $_isInitializing',
+                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                      Text(
+                        '播放中: ${_player.state.playing}',
+                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                      Text(
+                        '缓冲中: ${_player.state.buffering}',
+                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                      Text(
+                        '视频尺寸: ${_player.state.width}x${_player.state.height}',
+                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                      Text(
+                        '时长: ${_player.state.duration}',
+                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                      if (_errorMessage != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          '错误: $_errorMessage',
+                          style: const TextStyle(color: Colors.red, fontSize: 12),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+
             // 控制层
-            if (_showControls && !_isLocked)
+            if (_showControls && !_isLocked && !_isInitializing)
               Positioned.fill(
                 child: Container(
                   decoration: BoxDecoration(
