@@ -500,10 +500,10 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Colors.black.withValues(alpha: 0.7),
+                        Colors.black.withOpacity(0.7),
                         Colors.transparent,
                         Colors.transparent,
-                        Colors.black.withValues(alpha: 0.7),
+                        Colors.black.withOpacity(0.7),
                       ],
                       stops: const [0.0, 0.2, 0.8, 1.0],
                     ),
@@ -582,7 +582,7 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.5),
+                color: Colors.black.withOpacity(0.5),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Row(
@@ -610,7 +610,7 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.5),
+                color: Colors.black.withOpacity(0.5),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
@@ -661,7 +661,7 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.3),
+        color: Colors.white.withOpacity(0.3),
         shape: BoxShape.circle,
       ),
       child: IconButton(
@@ -695,9 +695,9 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
                     thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
                     overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
                     activeTrackColor: Colors.white,
-                    inactiveTrackColor: Colors.white.withValues(alpha: 0.3),
+                    inactiveTrackColor: Colors.white.withOpacity(0.3),
                     thumbColor: Colors.white,
-                    overlayColor: Colors.white.withValues(alpha: 0.3),
+                    overlayColor: Colors.white.withOpacity(0.3),
                   ),
                   child: Slider(
                     value: position.inMilliseconds.toDouble().clamp(

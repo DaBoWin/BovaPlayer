@@ -494,7 +494,7 @@ class _EmbyPageState extends State<EmbyPage> {
     return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
       Container(
         width: 80, height: 80,
-        decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.deepPurple.withValues(alpha: 0.15)),
+        decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.deepPurple.withOpacity(0.15)),
         child: Icon(Icons.dns_outlined, size: 40, color: Colors.deepPurple.shade200),
       ),
       const SizedBox(height: 20),
@@ -514,14 +514,14 @@ class _EmbyPageState extends State<EmbyPage> {
           margin: const EdgeInsets.only(bottom: 10),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            gradient: LinearGradient(colors: [Colors.deepPurple.withValues(alpha: 0.15), const Color(0xFF16213E)]),
+            gradient: LinearGradient(colors: [Colors.deepPurple.withOpacity(0.15), const Color(0xFF16213E)]),
             border: Border.all(color: Colors.white10),
           ),
           child: ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             leading: Container(
               width: 44, height: 44,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.deepPurple.withValues(alpha: 0.2)),
+              decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.deepPurple.withOpacity(0.2)),
               child: Icon(Icons.dns, color: Colors.deepPurple.shade200, size: 22),
             ),
             title: Text(s.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
@@ -755,7 +755,7 @@ class _EmbyPageState extends State<EmbyPage> {
                 Positioned.fill(child: Container(
                   decoration: BoxDecoration(gradient: LinearGradient(
                     begin: Alignment.bottomCenter, end: Alignment.center,
-                    colors: [Colors.black.withValues(alpha: 0.5), Colors.transparent],
+                    colors: [Colors.black.withOpacity(0.5), Colors.transparent],
                   )),
                 )),
                 // Series 集数徽章
@@ -1117,7 +1117,7 @@ class _EmbyPageState extends State<EmbyPage> {
                   // 底部标签
                   Positioned(left: 0, right: 0, bottom: 0, child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    color: Colors.black.withValues(alpha: 0.7),
+                    color: Colors.black.withOpacity(0.7),
                     child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 12),
                       maxLines: 1, overflow: TextOverflow.ellipsis),
                   )),
@@ -1126,7 +1126,7 @@ class _EmbyPageState extends State<EmbyPage> {
                     child: Container(
                       width: 40, height: 40,
                       decoration: BoxDecoration(
-                        color: Colors.deepPurple.withValues(alpha: 0.7),
+                        color: Colors.deepPurple.withOpacity(0.7),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(Icons.play_arrow, color: Colors.white, size: 24),

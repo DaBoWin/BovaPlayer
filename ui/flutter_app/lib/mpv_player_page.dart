@@ -267,10 +267,10 @@ class _MpvPlayerPageState extends State<MpvPlayerPage> {
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Colors.black.withValues(alpha: 0.7),
+                        Colors.black.withOpacity(0.7),
                         Colors.transparent,
                         Colors.transparent,
-                        Colors.black.withValues(alpha: 0.7),
+                        Colors.black.withOpacity(0.7),
                       ],
                       stops: const [0.0, 0.2, 0.8, 1.0],
                     ),
@@ -404,7 +404,7 @@ class _MpvPlayerPageState extends State<MpvPlayerPage> {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.3),
+        color: Colors.white.withOpacity(0.3),
         shape: BoxShape.circle,
       ),
       child: IconButton(
@@ -439,9 +439,9 @@ class _MpvPlayerPageState extends State<MpvPlayerPage> {
                 thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
                 overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
                 activeTrackColor: Colors.white,
-                inactiveTrackColor: Colors.white.withValues(alpha: 0.3),
+                inactiveTrackColor: Colors.white.withOpacity(0.3),
                 thumbColor: Colors.white,
-                overlayColor: Colors.white.withValues(alpha: 0.3),
+                overlayColor: Colors.white.withOpacity(0.3),
               ),
               child: Slider(
                 value: _duration > 0 ? _currentPosition.clamp(0.0, _duration) : 0.0,
