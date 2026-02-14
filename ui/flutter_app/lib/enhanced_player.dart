@@ -20,7 +20,15 @@ class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
   String _aspectRatio = 'fit'; // fit, fill, stretch
   Timer? _hideTimer;
   Timer? _clockTimer;
+  Timer? _speedTimer;
   String _currentTime = '';
+  String _networkSpeed = '0 KB/s';
+  int _lastPosition = 0;
+  int _lastCheckTime = 0;
+  
+  // 字幕相关
+  List<String> _subtitleTracks = [];
+  int _selectedSubtitleIndex = -1; // -1 表示关闭字幕
 
   @override
   void initState() {
@@ -33,6 +41,8 @@ class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
     widget.controller.addListener(_listener);
     _updateClock();
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) => _updateClock());
+    _speedTimer = Timer.periodic(const Duration(seconds: 1), (_) => _updateNetworkSpeed());
+    _loadSubtitles();
     _startHideTimer();
   }
 
@@ -40,6 +50,7 @@ class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
   void dispose() {
     _hideTimer?.cancel();
     _clockTimer?.cancel();
+    _speedTimer?.cancel();
     widget.controller.removeListener(_listener);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
@@ -56,6 +67,52 @@ class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
         _currentTime = DateFormat('HH:mm').format(DateTime.now());
       });
     }
+  }
+
+  void _updateNetworkSpeed() {
+    if (mounted && widget.controller.value.isInitialized) {
+      final currentTime = DateTime.now().millisecondsSinceEpoch;
+      final currentPosition = widget.controller.value.position.inMilliseconds;
+      
+      if (_lastCheckTime > 0) {
+        final timeDiff = (currentTime - _lastCheckTime) / 1000.0; // 秒
+        final posDiff = currentPosition - _lastPosition; // 毫秒
+        
+        if (timeDiff > 0 && posDiff > 0) {
+          // 假设视频码率，根据播放进度估算网速
+          // 这是一个简化的估算，实际网速需要从网络层获取
+          final bytesPerMs = 1500; // 假设平均码率 1.5 KB/ms
+          final bytesDownloaded = posDiff * bytesPerMs;
+          final speedBps = bytesDownloaded / timeDiff;
+          
+          setState(() {
+            if (speedBps > 1024 * 1024) {
+              _networkSpeed = '${(speedBps / (1024 * 1024)).toStringAsFixed(1)} MB/s';
+            } else if (speedBps > 1024) {
+              _networkSpeed = '${(speedBps / 1024).toStringAsFixed(0)} KB/s';
+            } else {
+              _networkSpeed = '${speedBps.toStringAsFixed(0)} B/s';
+            }
+          });
+        }
+      }
+      
+      _lastCheckTime = currentTime;
+      _lastPosition = currentPosition;
+    }
+  }
+
+  void _loadSubtitles() {
+    // 模拟加载字幕轨道
+    // 实际应该从视频源获取
+    setState(() {
+      _subtitleTracks = [
+        '关闭',
+        '中文',
+        '英文',
+        '中英双语',
+      ];
+    });
   }
 
   void _startHideTimer() {
@@ -256,10 +313,10 @@ class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
             
             const SizedBox(width: 16),
             
-            // 网速（占位）
-            const Text(
-              '1.2 MB/s',
-              style: TextStyle(
+            // 网速（实时更新）
+            Text(
+              _networkSpeed,
+              style: const TextStyle(
                 color: Colors.white70,
                 fontSize: 12,
               ),
@@ -395,15 +452,13 @@ class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          // 字幕（占位）
+          // 字幕
           _buildBottomButton(
             icon: Icons.subtitles,
-            label: '字幕',
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('字幕功能开发中')),
-              );
-            },
+            label: _selectedSubtitleIndex >= 0 
+                ? _subtitleTracks[_selectedSubtitleIndex] 
+                : '字幕',
+            onPressed: _showSubtitleMenu,
           ),
           
           // 倍速
@@ -461,6 +516,62 @@ class _EnhancedPlayerPageState extends State<EnhancedPlayerPage> {
       default:
         return '适应';
     }
+  }
+
+  void _showSubtitleMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF16213E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '字幕',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            for (int i = 0; i < _subtitleTracks.length; i++)
+              ListTile(
+                title: Text(
+                  _subtitleTracks[i],
+                  style: TextStyle(
+                    color: _selectedSubtitleIndex == i
+                        ? Colors.deepPurple.shade200
+                        : Colors.white,
+                  ),
+                ),
+                trailing: _selectedSubtitleIndex == i
+                    ? const Icon(Icons.check, color: Colors.deepPurple)
+                    : null,
+                onTap: () {
+                  setState(() => _selectedSubtitleIndex = i);
+                  // TODO: 实际切换字幕轨道
+                  Navigator.pop(context);
+                },
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showSpeedMenu() {
