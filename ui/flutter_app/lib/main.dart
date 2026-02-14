@@ -7,20 +7,25 @@ import 'native_bridge.dart';
 import 'player_screen.dart' if (dart.library.io) 'player_screen_desktop.dart';
 import 'emby_page.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // 初始化 media_kit
-  MediaKit.ensureInitialized();
-  print('[Main] media_kit 已初始化');
+  try {
+    // 初始化 media_kit
+    MediaKit.ensureInitialized();
+    print('[Main] media_kit 已初始化');
+  } catch (e) {
+    print('[Main] media_kit 初始化失败: $e');
+  }
 
-  NativeBridge.initialize().then((result) {
-    print('Native bridge initialized: $result');
-    runApp(const BovaPlayerApp());
-  }).catchError((error) {
-    print('Failed to initialize native library: $error');
-    runApp(const BovaPlayerApp());
-  });
+  try {
+    final result = await NativeBridge.initialize();
+    print('[Main] Native bridge initialized: $result');
+  } catch (error) {
+    print('[Main] Failed to initialize native library: $error');
+  }
+  
+  runApp(const BovaPlayerApp());
 }
 
 class BovaPlayerApp extends StatelessWidget {
