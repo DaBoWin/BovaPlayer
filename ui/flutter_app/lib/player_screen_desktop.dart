@@ -1,8 +1,7 @@
-import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
+import 'package:video_player/video_player.dart';
 
 class PlayerScreen extends StatefulWidget {
   const PlayerScreen({super.key});
@@ -12,121 +11,76 @@ class PlayerScreen extends StatefulWidget {
 }
 
 class _PlayerScreenState extends State<PlayerScreen> {
-  Player? _player;
-  VideoController? _videoController;
+  VideoPlayerController? _controller;
   bool _isLoading = false;
   String? _errorMessage;
   bool _hasVideo = false;
   String _currentFile = '';
 
   @override
-  void initState() {
-    super.initState();
-    
-    // 创建播放器时配置
-    _player = Player(
-      configuration: const PlayerConfiguration(
-        title: '本地播放器',
-      ),
-    );
-    _videoController = VideoController(_player!);
-    
-    // 监听播放器状态
-    _player!.stream.playing.listen((playing) {
-      print('[PlayerScreen] 播放状态变化: $playing');
-    });
-    
-    _player!.stream.buffering.listen((buffering) {
-      print('[PlayerScreen] 缓冲状态: $buffering');
-    });
-    
-    _player!.stream.error.listen((error) {
-      print('[PlayerScreen] 播放器错误: $error');
-      if (mounted) {
-        setState(() {
-          _errorMessage = '播放错误: $error';
-          _isLoading = false;
-        });
-      }
-    });
-    
-    _player!.stream.width.listen((width) {
-      print('[PlayerScreen] 视频宽度: $width');
-    });
-    
-    _player!.stream.height.listen((height) {
-      print('[PlayerScreen] 视频高度: $height');
-    });
-    
-    _player!.stream.duration.listen((duration) {
-      print('[PlayerScreen] 视频时长: $duration');
-    });
-  }
-
-  @override
   void dispose() {
-    _player?.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 
   Future<void> _pickAndPlayFile() async {
     try {
-      print('[PlayerScreen] 开始选择文件...');
-      
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+
       final result = await FilePicker.platform.pickFiles(
-        type: FileType.any, // 改为 any 以便测试
+        type: FileType.video,
         allowMultiple: false,
-        dialogTitle: '选择视频文件',
       );
-      
-      print('[PlayerScreen] 文件选择结果: ${result != null ? "有结果" : "无结果"}');
-      
-      if (result != null && result.files.single.path != null) {
-        final file = result.files.single;
-        final filePath = file.path!;
-        
-        print('[PlayerScreen] 选择的文件: $filePath');
-        print('[PlayerScreen] 文件名: ${file.name}');
-        print('[PlayerScreen] 文件大小: ${file.size} bytes');
 
-        setState(() {
-          _isLoading = true;
-          _hasVideo = false;
-          _errorMessage = null;
-        });
-
-        try {
-          print('[PlayerScreen] 打开媒体文件...');
-          await _player!.open(Media(filePath));
-          
-          print('[PlayerScreen] 开始播放...');
-          await _player!.play();
-
-          print('[PlayerScreen] 播放成功！');
-          setState(() {
-            _isLoading = false;
-            _hasVideo = true;
-            _currentFile = file.name;
-          });
-        } catch (e, stackTrace) {
-          print('[PlayerScreen] 视频加载失败: $e');
-          print('[PlayerScreen] 堆栈: $stackTrace');
-          
-          setState(() {
-            _isLoading = false;
-            _errorMessage = '视频加载失败: $e';
-          });
+      if (result != null && result.files.isNotEmpty) {
+        final filePath = result.files.first.path;
+        if (filePath != null) {
+          await _playFile(filePath);
         }
       } else {
-        print('[PlayerScreen] 用户取消选择或没有选择文件');
+        setState(() {
+          _isLoading = false;
+        });
       }
-    } catch (e, stackTrace) {
-      print('[PlayerScreen] 文件选择异常: $e');
-      print('[PlayerScreen] 堆栈: $stackTrace');
-      
+    } catch (e) {
+      print('[PlayerScreen] 文件选择错误: $e');
       setState(() {
-        _isLoading = false;
         _errorMessage = '文件选择失败: $e';
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _playFile(String filePath) async {
+    try {
+      print('[PlayerScreen] 准备播放文件: $filePath');
+
+      // 释放旧的控制器
+      await _controller?.dispose();
+
+      // 创建新的控制器
+      _controller = VideoPlayerController.file(File(filePath));
+
+      await _controller!.initialize();
+      await _controller!.play();
+
+      setState(() {
+        _hasVideo = true;
+        _currentFile = filePath.split('/').last;
+        _isLoading = false;
+        _errorMessage = null;
+      });
+
+      print('[PlayerScreen] 播放成功');
+    } catch (e) {
+      print('[PlayerScreen] 播放失败: $e');
+      setState(() {
+        _errorMessage = '播放失败: $e';
+        _isLoading = false;
+        _hasVideo = false;
       });
     }
   }
@@ -136,15 +90,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF1A1A2E),
       appBar: AppBar(
-        title: const Text('本地播放'),
+        title: const Text('本地播放', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: const Color(0xFF16213E),
+        foregroundColor: Colors.white,
+        elevation: 0,
         actions: [
-          if (_hasVideo)
-            IconButton(
-              icon: const Icon(Icons.folder_open),
-              onPressed: _pickAndPlayFile,
-              tooltip: '选择其他文件',
-            ),
+          IconButton(
+            icon: const Icon(Icons.folder_open),
+            onPressed: _isLoading ? null : _pickAndPlayFile,
+            tooltip: '选择视频文件',
+          ),
         ],
       ),
       body: _buildBody(),
@@ -155,13 +110,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (_isLoading) {
       return const Center(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             CircularProgressIndicator(color: Colors.deepPurple),
             SizedBox(height: 16),
             Text(
-              '正在加载视频...',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
+              '加载中...',
+              style: TextStyle(color: Colors.white54, fontSize: 14),
             ),
           ],
         ),
@@ -171,68 +126,75 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (_errorMessage != null) {
       return Center(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline, color: Colors.red, size: 64),
+            const Icon(Icons.error_outline, color: Colors.redAccent, size: 64),
             const SizedBox(height: 16),
-            Text(
-              _errorMessage!,
-              style: const TextStyle(color: Colors.red, fontSize: 14),
-              textAlign: TextAlign.center,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Text(
+                _errorMessage!,
+                style: const TextStyle(color: Colors.redAccent, fontSize: 14),
+                textAlign: TextAlign.center,
+              ),
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
-              onPressed: _pickAndPlayFile,
               icon: const Icon(Icons.refresh),
               label: const Text('重试'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.deepPurple,
                 foregroundColor: Colors.white,
               ),
+              onPressed: _pickAndPlayFile,
             ),
           ],
         ),
       );
     }
 
-    if (!_hasVideo) {
+    if (!_hasVideo || _controller == null) {
       return Center(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.video_library_outlined,
-              size: 120,
-              color: Colors.deepPurple.shade200,
+            Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.deepPurple.withOpacity(0.15),
+              ),
+              child: Icon(
+                Icons.video_library_outlined,
+                size: 60,
+                color: Colors.deepPurple.shade200,
+              ),
             ),
             const SizedBox(height: 24),
             const Text(
-              '选择视频文件开始播放',
+              '还没有选择视频',
               style: TextStyle(
-                color: Colors.white70,
+                color: Colors.white,
                 fontSize: 18,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w600,
               ),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 8),
+            const Text(
+              '点击右上角文件夹图标选择视频',
+              style: TextStyle(color: Colors.white38, fontSize: 14),
+            ),
+            const SizedBox(height: 24),
             ElevatedButton.icon(
-              onPressed: _pickAndPlayFile,
-              icon: const Icon(Icons.folder_open, size: 24),
-              label: const Text(
-                '选择文件',
-                style: TextStyle(fontSize: 16),
-              ),
+              icon: const Icon(Icons.folder_open),
+              label: const Text('选择视频文件'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.deepPurple,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 32,
-                  vertical: 16,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               ),
+              onPressed: _pickAndPlayFile,
             ),
           ],
         ),
@@ -242,40 +204,57 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // 显示视频播放器
     return Column(
       children: [
-        // 文件信息栏
+        // 文件名
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(12),
           color: const Color(0xFF16213E),
-          child: Row(
-            children: [
-              const Icon(Icons.play_circle_outline, color: Colors.white70, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  _currentFile,
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
+          child: Text(
+            _currentFile,
+            style: const TextStyle(color: Colors.white, fontSize: 14),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
         // 视频播放器
         Expanded(
-          child: Container(
-            color: Colors.black,
-            child: _videoController != null
-                ? AspectRatio(
-                    aspectRatio: 16 / 9, // 默认宽高比
-                    child: Video(
-                      controller: _videoController!,
-                      controls: MaterialDesktopVideoControls,
+          child: Center(
+            child: AspectRatio(
+              aspectRatio: _controller!.value.aspectRatio,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  VideoPlayer(_controller!),
+                  // 简单的播放/暂停控制
+                  Positioned(
+                    bottom: 16,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: Icon(
+                            _controller!.value.isPlaying
+                                ? Icons.pause_circle_filled
+                                : Icons.play_circle_filled,
+                            color: Colors.white,
+                            size: 48,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              if (_controller!.value.isPlaying) {
+                                _controller!.pause();
+                              } else {
+                                _controller!.play();
+                              }
+                            });
+                          },
+                        ),
+                      ],
                     ),
-                  )
-                : const Center(
-                    child: CircularProgressIndicator(color: Colors.white),
                   ),
+                ],
+              ),
+            ),
           ),
         ),
       ],

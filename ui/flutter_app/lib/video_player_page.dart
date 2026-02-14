@@ -31,7 +31,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   double _playbackSpeed = 1.0;
   
   // 字幕相关
-  final SubtitleController _subtitleController = SubtitleController();
+  late SubtitleController _subtitleController;
   int _selectedSubtitleIndex = -1; // -1 表示无字幕
   
   // 网速监控
@@ -43,17 +43,33 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   @override
   void initState() {
     super.initState();
+    _subtitleController = SubtitleController(
+      subtitleType: SubtitleType.srt,
+      showSubtitles: true,
+    );
     _initializePlayer();
   }
 
   Future<void> _initializePlayer() async {
     try {
+      print('[VideoPlayer] 开始初始化播放器');
+      print('[VideoPlayer] URL: ${widget.url}');
+      print('[VideoPlayer] Headers: ${widget.httpHeaders}');
+      
       _controller = VideoPlayerController.networkUrl(
         Uri.parse(widget.url),
         httpHeaders: widget.httpHeaders ?? {},
       );
 
-      await _controller.initialize();
+      print('[VideoPlayer] 开始加载视频...');
+      await _controller.initialize().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw TimeoutException('视频加载超时（30秒）');
+        },
+      );
+      
+      print('[VideoPlayer] 视频加载成功，开始播放');
       await _controller.play();
 
       setState(() {
@@ -73,11 +89,34 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       if (widget.subtitles != null && widget.subtitles!.isNotEmpty) {
         _loadSubtitle(0);
       }
+    } on TimeoutException catch (e) {
+      print('[VideoPlayer] 超时错误: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('视频加载超时，请检查网络连接'),
+            action: SnackBarAction(
+              label: '重试',
+              onPressed: () {
+                _initializePlayer();
+              },
+            ),
+          ),
+        );
+      }
     } catch (e) {
       print('[VideoPlayer] 初始化失败: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('播放器初始化失败: $e')),
+          SnackBar(
+            content: Text('播放器初始化失败: $e'),
+            action: SnackBarAction(
+              label: '重试',
+              onPressed: () {
+                _initializePlayer();
+              },
+            ),
+          ),
         );
       }
     }
@@ -141,10 +180,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         
         // 使用 SubtitleController 加载字幕
         _subtitleController.updateSubtitleContent(
-          SubtitleDataRepository(
-            subtitleType: SubtitleType.srt,
-            subtitleContent: subtitleContent,
-          ),
+          content: subtitleContent,
         );
         
         setState(() {
@@ -164,7 +200,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   }
 
   void _disableSubtitle() {
-    _subtitleController.updateSubtitleContent(null);
+    _subtitleController.updateSubtitleContent(content: '');
     setState(() {
       _selectedSubtitleIndex = -1;
     });
@@ -250,8 +286,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                         fontSize: 20,
                         textColor: Colors.white,
                         hasBorder: true,
-                        borderStyle: BorderStyle.solid,
-                        borderColor: Colors.black,
                       ),
                       videoChild: AspectRatio(
                         aspectRatio: _controller.value.aspectRatio,

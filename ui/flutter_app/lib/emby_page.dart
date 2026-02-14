@@ -318,12 +318,9 @@ class _EmbyPageState extends State<EmbyPage> {
     }
     
     // 使用直接流播放（不转码）
-    // 注意: media_kit_libs_macos_video 1.1.4 不支持 TrueHD 音频编解码器
-    // 如果遇到 TrueHD 音频，播放会失败并显示错误: "Failed to initialize a decoder for codec 'truehd'"
     final url = '$baseUrl/Videos/$itemId/stream?static=true&api_key=${server.accessToken}';
     
     print('[EmbyPage] Stream URL (Direct Play): $url');
-    print('[EmbyPage] 注意: 当前 media_kit 版本不支持 TrueHD 音频');
     
     // 构建 HTTP headers
     final headers = _headers();
