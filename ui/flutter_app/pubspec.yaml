@@ -19,8 +19,7 @@ dependencies:
   # media_kit 降级到不使用 onPopInvokedWithResult 的版本
   media_kit: ^1.1.10
   media_kit_video: ^1.2.4
-  media_kit_libs_video: ^1.0.7
-  media_kit_libs_android_video: ^1.0.4  # Android 视频播放支持
+  media_kit_libs_video: ^1.0.4  # 使用更低版本避免 Embedding 问题
   # 字幕支持（使用支持 null safety 的版本）
   subtitle_wrapper_package: ^2.2.1
   # 强制使用兼容的 package_info_plus 版本
