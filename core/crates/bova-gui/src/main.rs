@@ -1953,17 +1953,17 @@ impl BovaGuiApp {
                             let tx = self.emby_event_tx.clone();
                             let srv_clone = srv.clone();
                             
-                            // 在后台线程递归加载影片
+                            // 在后台线程递归加载内容
                             std::thread::spawn(move || {
                                 if let (Some(token), Some(user_id)) = (&srv_clone.access_token, &srv_clone.user_id) {
                                     let client = reqwest::blocking::Client::new();
                                     
-                                    // 使用 Recursive=true 参数递归获取，但区分电影和剧集
-                                    // Movie: 直接显示电影
-                                    // Series: 显示剧集（不显示单集 Episode）
-                                    let fields = "Fields=PrimaryImageAspectRatio,Overview,ProductionYear,CommunityRating,OfficialRating";
+                                    // 使用 Recursive=true 参数递归获取
+                                    // IncludeItemTypes: Movie,Series,Audio,Photo,MusicAlbum
+                                    // 显示 Movie 和 Series（不显示单个 Episode），同时支持音乐和照片
+                                    let fields = "Fields=PrimaryImageAspectRatio,Overview,ProductionYear,CommunityRating,OfficialRating,ChildCount,RecursiveItemCount";
                                     let url = format!(
-                                        "{}/Users/{}/Items?ParentId={}&Recursive=true&IncludeItemTypes=Movie,Series&Limit=12&SortBy=DateCreated,SortName&SortOrder=Descending&{}", 
+                                        "{}/Users/{}/Items?ParentId={}&Recursive=true&IncludeItemTypes=Movie,Series,Audio,Photo,MusicAlbum&Limit=12&SortBy=DateCreated,SortName&SortOrder=Descending&{}", 
                                         srv_clone.url.trim_end_matches('/'), 
                                         user_id, 
                                         view_id, 

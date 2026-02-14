@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
+import 'enhanced_player.dart';
 
 // ============== 数据模型 ==============
 
@@ -151,11 +152,21 @@ class _EmbyPageState extends State<EmbyPage> {
     } catch (_) {}
   }
 
+  /// 递归加载 View 的所有内容
   Future<void> _loadViewItems(String viewId, {int limit = 12}) async {
     try {
       final s = _activeServer!;
+      // Recursive=true + IncludeItemTypes=Movie,Series,Audio,Photo,MusicAlbum
+      // 显示 Movie 和 Series（不显示单个 Episode），同时支持音乐和照片
       final r = await http.get(
-        Uri.parse('${s.url}/emby/Users/${s.userId}/Items?ParentId=$viewId&Limit=$limit&Fields=Overview,MediaSources&SortBy=SortName'),
+        Uri.parse('${s.url}/emby/Users/${s.userId}/Items'
+            '?ParentId=$viewId'
+            '&Recursive=true'
+            '&IncludeItemTypes=Movie,Series,Audio,Photo,MusicAlbum'
+            '&Limit=$limit'
+            '&Fields=Overview,PrimaryImageAspectRatio,ProductionYear,CommunityRating,OfficialRating,ChildCount,RecursiveItemCount'
+            '&SortBy=DateCreated,SortName'
+            '&SortOrder=Descending'),
         headers: _headers(),
       );
       if (r.statusCode == 200) {
@@ -165,15 +176,30 @@ class _EmbyPageState extends State<EmbyPage> {
     } catch (_) {}
   }
 
-  /// 加载某个目录下的(非递归)子项 → Browser
+  /// 加载浏览页项目 (和 egui get_items 一致)
   Future<void> _loadBrowserItems(String parentId, String name, {bool recursive = false}) async {
     setState(() { _isLoadingBrowse = true; });
     try {
       final s = _activeServer!;
-      final r = await http.get(
-        Uri.parse('${s.url}/emby/Users/${s.userId}/Items?ParentId=$parentId&Limit=200&Fields=Overview,MediaSources&SortBy=SortName${recursive ? '&Recursive=true' : ''}'),
-        headers: _headers(),
-      );
+      final fields = 'Fields=Overview,PrimaryImageAspectRatio,ProductionYear,CommunityRating,OfficialRating,ChildCount,RecursiveItemCount';
+      String url;
+      if (recursive) {
+        // 递归模式：穿透子目录，只显示 Movie 和 Series
+        url = '${s.url}/emby/Users/${s.userId}/Items'
+            '?ParentId=$parentId'
+            '&Recursive=true'
+            '&IncludeItemTypes=Movie,Series'
+            '&SortBy=DateCreated,SortName'
+            '&SortOrder=Descending'
+            '&$fields';
+      } else {
+        // 非递归模式：Series → Season 或 Season → Episode
+        url = '${s.url}/emby/Users/${s.userId}/Items'
+            '?ParentId=$parentId'
+            '&SortBy=SortName'
+            '&$fields';
+      }
+      final r = await http.get(Uri.parse(url), headers: _headers());
       if (r.statusCode == 200) {
         setState(() {
           _browseItems = List<Map<String, dynamic>>.from(jsonDecode(r.body)['Items'] ?? []);
@@ -287,7 +313,7 @@ class _EmbyPageState extends State<EmbyPage> {
       await _playerController!.play();
       if (mounted) {
         Navigator.push(context, MaterialPageRoute(
-          builder: (_) => _EmbyPlayerPage(controller: _playerController!, title: name),
+          builder: (_) => EnhancedPlayerPage(controller: _playerController!, title: name),
         )).then((_) => _playerController?.pause());
       }
     } catch (e) {
