@@ -57,13 +57,20 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
         logLevel: MPVLogLevel.warn,
       ),
     );
-    // 禁用 Texture 硬件加速 (解决 macOS 黑屏的关键)
+    
+    // Android 需要启用硬件加速，macOS 需要禁用
+    final bool enableHwAccel = Theme.of(context).platform == TargetPlatform.android;
+    
     _videoController = VideoController(
       _player,
-      configuration: const VideoControllerConfiguration(
-        enableHardwareAcceleration: false,
+      configuration: VideoControllerConfiguration(
+        enableHardwareAcceleration: enableHwAccel,
+        // Android 特定配置
+        androidAttachSurfaceAfterVideoParameters: enableHwAccel,
       ),
     );
+    
+    print('[MediaKitPlayer] 平台: ${Theme.of(context).platform}, 硬件加速: $enableHwAccel');
     
     // 配置 mpv TLS 选项（修复 HTTPS 播放）
     _configureMpvTls();
@@ -99,46 +106,40 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
   Future<void> _configureMpvTls() async {
     try {
       final nativePlayer = _player.platform;
-      if (nativePlayer != null) {
-        // 1. 禁用 TLS 证书验证
-        await (nativePlayer as dynamic).setProperty('tls-verify', 'no');
-        await (nativePlayer as dynamic).setProperty('tls-ca-file', '');
-        
-        // 2. 优化网络和缓冲配置 (解决 Cloudflare/HTTP2 缓冲问题)
-        // 使用标准 Chrome UA 避免 Cloudflare 甚至 Emby 本身的 UA 过滤
-        await (nativePlayer as dynamic).setProperty('user-agent', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-        await (nativePlayer as dynamic).setProperty('cache', 'yes');
-        
-        // 缓冲策略调整：降低要求以确保起播
-        await (nativePlayer as dynamic).setProperty('demuxer-max-bytes', '50000000'); // 50MB buffer
-        await (nativePlayer as dynamic).setProperty('demuxer-max-back-bytes', '20000000'); // 20MB back buffer
-        
-        // 预读策略调整：恢复默认或较小值，避免一直缓冲
-        await (nativePlayer as dynamic).setProperty('demuxer-readahead-secs', '1');
-        
-        // 移除强制等待，让它尽可能快播放
-        await (nativePlayer as dynamic).setProperty('cache-pause-initial', 'no');
-        await (nativePlayer as dynamic).setProperty('cache-pause-wait', '0');
-        
-        await (nativePlayer as dynamic).setProperty('force-seekable', 'yes'); 
-        await (nativePlayer as dynamic).setProperty('msg-level', 'all=v');
-        await (nativePlayer as dynamic).setProperty('network-timeout', '60'); 
-        
-        // 3. 硬件解码配置
-        // 尝试 auto-copy: 将硬解帧拷贝回内存，解决 macOS 黑屏/纹理映射问题
+      if (nativePlayer == null) return;
+      
+      final isAndroid = Theme.of(context).platform == TargetPlatform.android;
+      
+      // 1. 禁用 TLS 证书验证
+      await (nativePlayer as dynamic).setProperty('tls-verify', 'no');
+      await (nativePlayer as dynamic).setProperty('tls-ca-file', '');
+      
+      // 2. 优化网络和缓冲配置
+      await (nativePlayer as dynamic).setProperty('user-agent', 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36');
+      await (nativePlayer as dynamic).setProperty('cache', 'yes');
+      await (nativePlayer as dynamic).setProperty('demuxer-max-bytes', '50000000');
+      await (nativePlayer as dynamic).setProperty('demuxer-max-back-bytes', '20000000');
+      await (nativePlayer as dynamic).setProperty('demuxer-readahead-secs', '1');
+      await (nativePlayer as dynamic).setProperty('cache-pause-initial', 'no');
+      await (nativePlayer as dynamic).setProperty('cache-pause-wait', '0');
+      await (nativePlayer as dynamic).setProperty('force-seekable', 'yes');
+      await (nativePlayer as dynamic).setProperty('network-timeout', '60');
+      
+      // 3. 硬件解码配置 - Android 和 macOS 不同
+      if (isAndroid) {
+        // Android 使用 mediacodec 硬件解码
+        await (nativePlayer as dynamic).setProperty('hwdec', 'mediacodec-copy');
+        await (nativePlayer as dynamic).setProperty('vo', 'gpu');
+        print('[MediaKitPlayer] Android 配置: hwdec=mediacodec-copy, vo=gpu');
+      } else {
+        // macOS 使用 auto-copy
         await (nativePlayer as dynamic).setProperty('hwdec', 'auto-copy');
-        // 确保 render output 正确 (通常默认即可，但 explicit setting rarely hurts)
-        // await (nativePlayer as dynamic).setProperty('vo', 'libmpv');
-
-        print('[MediaKitPlayer] 已配置 mpv: TLS=no, Cache=yes, Buffer=50MB, Readahead=1s, hwdec=auto-copy');
-        
-        // 4. 设置 HTTP headers (已通过 Media 构造函数传递)
-        if (widget.httpHeaders != null && widget.httpHeaders!.isNotEmpty) {
-           print('[MediaKitPlayer] HTTP headers 将使用 Media 构造函数传递');
-        }
+        print('[MediaKitPlayer] macOS 配置: hwdec=auto-copy');
       }
+      
+      print('[MediaKitPlayer] mpv 配置完成');
     } catch (e) {
-      print('[MediaKitPlayer] 配置 mpv TLS 选项失败: $e');
+      print('[MediaKitPlayer] 配置 mpv 失败: $e');
     }
   }
 
