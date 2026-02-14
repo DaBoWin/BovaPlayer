@@ -3,6 +3,7 @@ name: Build All Platforms
 on:
   push:
     branches: [ main, master ]
+    tags: [ 'v*' ]        # 推送 v0.0.1 等 tag 时触发
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
@@ -53,12 +54,14 @@ jobs:
               cp "$dep" release/ 2>/dev/null || true
             fi
           done
+          # 打包 ZIP
+          cd release && 7z a -tzip ../BovaPlayer-Windows.zip . && cd ..
 
       - name: Upload Windows Artifact
         uses: actions/upload-artifact@v4
         with:
           name: BovaPlayer-Windows
-          path: release/
+          path: BovaPlayer-Windows.zip
 
   # ============================================================
   #  macOS 构建 (Homebrew MPV)
@@ -95,7 +98,6 @@ jobs:
           MPV_LIB=$(brew --prefix mpv)/lib/libmpv.dylib
           if [ -f "$MPV_LIB" ]; then
             cp "$MPV_LIB" "${APP_DIR}/Contents/Frameworks/"
-            # 修改 rpath 让可执行文件能找到动态库
             install_name_tool -add_rpath "@executable_path/../Frameworks" "${APP_DIR}/Contents/MacOS/${APP_NAME}" 2>/dev/null || true
           fi
 
@@ -136,13 +138,13 @@ jobs:
           hdiutil create -volname "BovaPlayer" \
             -srcfolder core/target/release/BovaPlayer.app \
             -ov -format UDZO \
-            core/target/release/BovaPlayer.dmg
+            BovaPlayer-macOS.dmg
 
       - name: Upload macOS Artifact
         uses: actions/upload-artifact@v4
         with:
           name: BovaPlayer-macOS
-          path: core/target/release/BovaPlayer.dmg
+          path: BovaPlayer-macOS.dmg
 
   # ============================================================
   #  Android 构建 (Flutter + Rust FFI)
@@ -175,7 +177,6 @@ jobs:
       - name: 构建 Rust FFI 库 (Android)
         run: |
           cd core
-          # 使用 cargo-ndk 交叉编译 bova-ffi
           export ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME
           cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../ui/flutter_app/android/app/src/main/jniLibs build --release -p bova-ffi || {
             echo "⚠️ Rust FFI 交叉编译失败，将构建纯 Flutter 版本"
@@ -191,9 +192,61 @@ jobs:
         run: |
           cd ui/flutter_app
           flutter build apk --release
+          cp build/app/outputs/flutter-apk/app-release.apk ../../BovaPlayer-Android.apk
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
           name: BovaPlayer-Android
-          path: ui/flutter_app/build/app/outputs/flutter-apk/app-release.apk
+          path: BovaPlayer-Android.apk
+
+  # ============================================================
+  #  创建 Release（仅在推送 tag 时触发）
+  # ============================================================
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-windows, build-macos, build-android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 下载所有构建产物
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: 整理发布文件
+        run: |
+          mkdir -p release-files
+          cp artifacts/BovaPlayer-Windows/BovaPlayer-Windows.zip  release-files/
+          cp artifacts/BovaPlayer-macOS/BovaPlayer-macOS.dmg      release-files/
+          cp artifacts/BovaPlayer-Android/BovaPlayer-Android.apk  release-files/
+          ls -la release-files/
+
+      - name: 创建 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: BovaPlayer ${{ github.ref_name }}
+          body: |
+            ## BovaPlayer ${{ github.ref_name }}
+
+            ### 📦 下载
+
+            | 平台 | 文件 | 说明 |
+            |------|------|------|
+            | 🪟 Windows | `BovaPlayer-Windows.zip` | 解压即用，包含 MPV 播放引擎 |
+            | 🍎 macOS | `BovaPlayer-macOS.dmg` | 打开 DMG，拖入 Applications |
+            | 🤖 Android | `BovaPlayer-Android.apk` | 直接安装 APK |
+
+            > **macOS 用户注意**: 首次打开如提示"已损坏"，请在终端执行:
+            > ```bash
+            > xattr -cr /Applications/BovaPlayer.app
+            > ```
+          files: |
+            release-files/BovaPlayer-Windows.zip
+            release-files/BovaPlayer-macOS.dmg
+            release-files/BovaPlayer-Android.apk
+          draft: false
+          prerelease: false
