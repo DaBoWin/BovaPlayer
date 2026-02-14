@@ -266,16 +266,15 @@ jobs:
       - name: 构建 APK
         run: |
           cd ui/flutter_app
-          # 使用 split-per-abi 生成更小的 APK，构建更快
-          flutter build apk --release --split-per-abi --target-platform android-arm64
-          # 只复制 arm64 版本（大多数现代手机）
-          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk ../../BovaPlayer-Android-arm64.apk
+          # 构建包含所有架构的通用 APK
+          flutter build apk --release
+          cp build/app/outputs/flutter-apk/app-release.apk ../../BovaPlayer-Android.apk
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
           name: BovaPlayer-Android
-          path: BovaPlayer-Android-arm64.apk
+          path: BovaPlayer-Android.apk
 
   # ============================================================
   #  创建 Release（仅在推送 tag 时触发）
@@ -302,7 +301,7 @@ jobs:
           # 只复制存在的文件
           [ -f artifacts/BovaPlayer-Windows/BovaPlayer-Windows.zip ] && cp artifacts/BovaPlayer-Windows/BovaPlayer-Windows.zip release-files/ || echo "⚠️ Windows 构建不存在"
           [ -f artifacts/BovaPlayer-macOS/BovaPlayer-macOS.dmg ] && cp artifacts/BovaPlayer-macOS/BovaPlayer-macOS.dmg release-files/ || echo "⚠️ macOS 构建不存在"
-          [ -f artifacts/BovaPlayer-Android/BovaPlayer-Android-arm64.apk ] && cp artifacts/BovaPlayer-Android/BovaPlayer-Android-arm64.apk release-files/ || echo "⚠️ Android 构建不存在"
+          [ -f artifacts/BovaPlayer-Android/BovaPlayer-Android.apk ] && cp artifacts/BovaPlayer-Android/BovaPlayer-Android.apk release-files/ || echo "⚠️ Android 构建不存在"
           ls -la release-files/
           
       - name: 生成 Release 说明
@@ -319,8 +318,8 @@ jobs:
             NOTES="${NOTES}| 🍎 macOS | \`BovaPlayer-macOS.dmg\` | 打开 DMG，拖入 Applications |\n"
           fi
           
-          if [ -f release-files/BovaPlayer-Android-arm64.apk ]; then
-            NOTES="${NOTES}| 🤖 Android | \`BovaPlayer-Android-arm64.apk\` | ARM64 设备（大多数现代手机） |\n"
+          if [ -f release-files/BovaPlayer-Android.apk ]; then
+            NOTES="${NOTES}| 🤖 Android | \`BovaPlayer-Android.apk\` | 支持所有架构（arm64/arm/x86） |\n"
           fi
           
           NOTES="${NOTES}\n> **macOS 用户注意**: 首次打开如提示\"已损坏\"，请在终端执行:\n> \`\`\`bash\n> xattr -cr /Applications/BovaPlayer.app\n> \`\`\`"
