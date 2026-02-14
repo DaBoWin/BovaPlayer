@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'package:subtitle_wrapper_package/subtitle_wrapper_package.dart';
+import 'package:http/http.dart' as http;
 
 /// 使用 Flutter 官方 video_player 的播放器页面
 class VideoPlayerPage extends StatefulWidget {
@@ -27,6 +29,16 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   bool _showControls = true;
   Timer? _hideControlsTimer;
   double _playbackSpeed = 1.0;
+  
+  // 字幕相关
+  final SubtitleController _subtitleController = SubtitleController();
+  int _selectedSubtitleIndex = -1; // -1 表示无字幕
+  
+  // 网速监控
+  Timer? _networkSpeedTimer;
+  double _currentSpeed = 0; // KB/s
+  int _lastBytesLoaded = 0;
+  DateTime _lastSpeedCheck = DateTime.now();
 
   @override
   void initState() {
@@ -55,6 +67,12 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       });
 
       _startHideControlsTimer();
+      _startNetworkSpeedMonitor();
+      
+      // 加载第一个字幕（如果有）
+      if (widget.subtitles != null && widget.subtitles!.isNotEmpty) {
+        _loadSubtitle(0);
+      }
     } catch (e) {
       print('[VideoPlayer] 初始化失败: $e');
       if (mounted) {
@@ -102,6 +120,99 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     });
   }
 
+  Future<void> _loadSubtitle(int index) async {
+    if (widget.subtitles == null || index < 0 || index >= widget.subtitles!.length) {
+      return;
+    }
+
+    try {
+      final subtitle = widget.subtitles![index];
+      final url = subtitle['url']!;
+      
+      print('[VideoPlayer] 加载字幕: ${subtitle['title']} from $url');
+      
+      final response = await http.get(
+        Uri.parse(url),
+        headers: widget.httpHeaders ?? {},
+      );
+      
+      if (response.statusCode == 200) {
+        final subtitleContent = response.body;
+        
+        // 使用 SubtitleController 加载字幕
+        _subtitleController.updateSubtitleContent(
+          SubtitleDataRepository(
+            subtitleType: SubtitleType.srt,
+            subtitleContent: subtitleContent,
+          ),
+        );
+        
+        setState(() {
+          _selectedSubtitleIndex = index;
+        });
+        
+        print('[VideoPlayer] 字幕加载成功');
+      }
+    } catch (e) {
+      print('[VideoPlayer] 字幕加载失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('字幕加载失败: $e')),
+        );
+      }
+    }
+  }
+
+  void _disableSubtitle() {
+    _subtitleController.updateSubtitleContent(null);
+    setState(() {
+      _selectedSubtitleIndex = -1;
+    });
+  }
+
+  void _startNetworkSpeedMonitor() {
+    _networkSpeedTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted || !_controller.value.isInitialized) return;
+      
+      // 估算网速：基于视频缓冲进度
+      final now = DateTime.now();
+      final duration = _controller.value.duration;
+      final buffered = _controller.value.buffered;
+      
+      if (buffered.isNotEmpty && duration.inMilliseconds > 0) {
+        final bufferedEnd = buffered.last.end;
+        final bufferedBytes = (bufferedEnd.inMilliseconds / duration.inMilliseconds) * 
+                              (_controller.value.size.width * _controller.value.size.height * 0.5); // 估算
+        
+        final timeDiff = now.difference(_lastSpeedCheck).inMilliseconds / 1000.0;
+        if (timeDiff > 0) {
+          final bytesDiff = bufferedBytes - _lastBytesLoaded;
+          _currentSpeed = (bytesDiff / timeDiff) / 1024; // KB/s
+          
+          _lastBytesLoaded = bufferedBytes.toInt();
+          _lastSpeedCheck = now;
+          
+          if (mounted) {
+            setState(() {});
+          }
+        }
+      }
+    });
+  }
+
+  String _formatSpeed(double speedKBps) {
+    if (speedKBps < 1024) {
+      return '${speedKBps.toStringAsFixed(0)} KB/s';
+    } else {
+      return '${(speedKBps / 1024).toStringAsFixed(1)} MB/s';
+    }
+  }
+
+  String _getCurrentTime() {
+    final now = DateTime.now();
+    return '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+  }
+
   String _formatDuration(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
     final hours = duration.inHours;
@@ -117,6 +228,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   @override
   void dispose() {
     _hideControlsTimer?.cancel();
+    _networkSpeedTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -128,12 +240,23 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       body: SafeArea(
         child: Stack(
           children: [
-            // 视频播放器
+            // 视频播放器 + 字幕
             Center(
               child: _isInitialized
-                  ? AspectRatio(
-                      aspectRatio: _controller.value.aspectRatio,
-                      child: VideoPlayer(_controller),
+                  ? SubtitleWrapper(
+                      subtitleController: _subtitleController,
+                      videoPlayerController: _controller,
+                      subtitleStyle: const SubtitleStyle(
+                        fontSize: 20,
+                        textColor: Colors.white,
+                        hasBorder: true,
+                        borderStyle: BorderStyle.solid,
+                        borderColor: Colors.black,
+                      ),
+                      videoChild: AspectRatio(
+                        aspectRatio: _controller.value.aspectRatio,
+                        child: VideoPlayer(_controller),
+                      ),
                     )
                   : const CircularProgressIndicator(color: Colors.white),
             ),
@@ -184,6 +307,40 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      // 字幕选择
+                      if (widget.subtitles != null && widget.subtitles!.isNotEmpty)
+                        PopupMenuButton<int>(
+                          icon: const Icon(Icons.subtitles, color: Colors.white),
+                          onSelected: (index) {
+                            if (index == -1) {
+                              _disableSubtitle();
+                            } else {
+                              _loadSubtitle(index);
+                            }
+                          },
+                          itemBuilder: (context) => [
+                            const PopupMenuItem(
+                              value: -1,
+                              child: Text('关闭字幕'),
+                            ),
+                            const PopupMenuDivider(),
+                            ...List.generate(
+                              widget.subtitles!.length,
+                              (index) => PopupMenuItem(
+                                value: index,
+                                child: Row(
+                                  children: [
+                                    if (_selectedSubtitleIndex == index)
+                                      const Icon(Icons.check, size: 16),
+                                    if (_selectedSubtitleIndex == index)
+                                      const SizedBox(width: 8),
+                                    Text(widget.subtitles![index]['title'] ?? '字幕 ${index + 1}'),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       // 倍速选择
                       PopupMenuButton<double>(
                         icon: const Icon(Icons.speed, color: Colors.white),
@@ -197,6 +354,58 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                           const PopupMenuItem(value: 2.0, child: Text('2.0x')),
                         ],
                       ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // 网速和时间显示（右上角）
+              Positioned(
+                top: 60,
+                right: 16,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.6),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      // 实时时间
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.access_time, color: Colors.white, size: 14),
+                          const SizedBox(width: 4),
+                          Text(
+                            _getCurrentTime(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      // 网速
+                      if (_currentSpeed > 0)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.speed, color: Colors.green, size: 14),
+                            const SizedBox(width: 4),
+                            Text(
+                              _formatSpeed(_currentSpeed),
+                              style: const TextStyle(
+                                color: Colors.green,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
                     ],
                   ),
                 ),

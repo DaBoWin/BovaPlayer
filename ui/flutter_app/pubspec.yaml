@@ -18,6 +18,8 @@ dependencies:
   intl: ^0.19.0
   # 使用 Flutter 官方的 video_player（跨平台原生播放器）
   video_player: ^2.8.2
+  # 字幕支持
+  subtitle_wrapper_package: ^2.0.2
   # 强制使用兼容的 package_info_plus 版本
   package_info_plus: 8.0.2
 
