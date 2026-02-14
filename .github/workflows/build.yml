@@ -191,6 +191,12 @@ jobs:
           rm -rf build
           rm -rf ~/.pub-cache/hosted/pub.dev/media_kit_video-2.0.1 || true
           flutter pub get
+          
+      - name: 验证 Android Embedding V2
+        run: |
+          cd ui/flutter_app
+          # 确认 AndroidManifest.xml 包含 flutterEmbedding=2
+          grep -q 'flutterEmbedding.*2' android/app/src/main/AndroidManifest.xml && echo "✓ Android Embedding V2 已配置" || exit 1
 
       - name: 设置 Android SDK 环境变量
         run: |
@@ -201,7 +207,8 @@ jobs:
       - name: 构建 APK
         run: |
           cd ui/flutter_app
-          flutter build apk --release
+          # 使用 --no-sound-null-safety 避免旧版本插件的兼容性问题
+          flutter build apk --release --no-sound-null-safety
           cp build/app/outputs/flutter-apk/app-release.apk ../../BovaPlayer-Android.apk
 
       - name: Upload Android APK
