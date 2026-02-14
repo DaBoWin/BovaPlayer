@@ -8,7 +8,7 @@ plugins {
 android {
     namespace = "com.example.bova_player_flutter"
     compileSdk = 35  // 明确指定 compileSdk
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "27.0.12077973"  // 使用插件要求的 NDK 版本
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

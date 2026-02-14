@@ -187,6 +187,9 @@ jobs:
         run: |
           cd ui/flutter_app
           flutter clean
+          rm -rf .dart_tool
+          rm -rf build
+          rm -rf ~/.pub-cache/hosted/pub.dev/media_kit_video-2.0.1 || true
           flutter pub get
 
       - name: 设置 Android SDK 环境变量
