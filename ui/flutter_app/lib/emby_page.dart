@@ -23,6 +23,9 @@ class EmbyServer {
   );
 }
 
+/// 视图模式 (和 egui 完全一致)
+enum EmbyViewMode { serverList, dashboard, browser, itemDetail }
+
 // ============== Emby 主页面 ==============
 
 class EmbyPage extends StatefulWidget {
@@ -32,21 +35,29 @@ class EmbyPage extends StatefulWidget {
 }
 
 class _EmbyPageState extends State<EmbyPage> {
+  // 服务器
   List<EmbyServer> _servers = [];
   EmbyServer? _activeServer;
   bool _isLoading = false;
   String? _errorMsg;
 
+  // 视图模式
+  EmbyViewMode _viewMode = EmbyViewMode.serverList;
+
   // 仪表板
-  bool _isConnected = false;
   List<Map<String, dynamic>> _libraries = [];
-  Map<String, List<Map<String, dynamic>>> _viewItems = {}; // viewId -> items
-  
-  // 浏览
+  Map<String, List<Map<String, dynamic>>> _viewItems = {};
+
+  // 浏览器
+  List<List<String>> _navigationStack = []; // [[id, name], ...]
   List<Map<String, dynamic>> _browseItems = [];
-  String _browseLibraryName = '';
-  String _browseLibraryId = '';
   bool _isLoadingBrowse = false;
+
+  // 详情页
+  Map<String, dynamic>? _selectedItem;
+  List<Map<String, dynamic>> _seriesSeasons = [];
+  Map<String, List<Map<String, dynamic>>> _seasonEpisodes = {};
+  int _selectedSeasonIndex = 0;
 
   VideoPlayerController? _playerController;
 
@@ -78,20 +89,13 @@ class _EmbyPageState extends State<EmbyPage> {
     await prefs.setString('emby_servers', jsonEncode(_servers.map((s) => s.toJson()).toList()));
   }
 
-  void _addServer(EmbyServer server) {
-    setState(() => _servers.add(server));
-    _saveServers();
-  }
-
-  void _removeServer(int index) {
-    setState(() => _servers.removeAt(index));
-    _saveServers();
-  }
+  void _addServer(EmbyServer server) { setState(() => _servers.add(server)); _saveServers(); }
+  void _removeServer(int index) { setState(() => _servers.removeAt(index)); _saveServers(); }
 
   // ============== Emby API ==============
 
-  Map<String, String> _headers(EmbyServer s) => {
-    'X-Emby-Authorization': 'MediaBrowser Client="BovaPlayer", Device="Flutter", DeviceId="bova-flutter", Version="1.0.0", Token="${s.accessToken ?? ""}"',
+  Map<String, String> _headers() => {
+    'X-Emby-Authorization': 'MediaBrowser Client="BovaPlayer", Device="Flutter", DeviceId="bova-flutter", Version="1.0.0", Token="${_activeServer?.accessToken ?? ""}"',
     'Content-Type': 'application/json',
   };
 
@@ -99,20 +103,27 @@ class _EmbyPageState extends State<EmbyPage> {
     return '${_activeServer!.url}/emby/Items/$itemId/Images/$type?maxWidth=$maxWidth&api_key=${_activeServer!.accessToken}';
   }
 
+  String _streamUrl(String itemId) {
+    return '${_activeServer!.url}/Videos/$itemId/stream?static=true&api_key=${_activeServer!.accessToken}';
+  }
+
   Future<void> _connectServer(EmbyServer server) async {
     setState(() { _isLoading = true; _errorMsg = null; _activeServer = server; });
     try {
-      final response = await http.post(
+      final r = await http.post(
         Uri.parse('${server.url}/emby/Users/AuthenticateByName'),
-        headers: _headers(server),
+        headers: {
+          'X-Emby-Authorization': 'MediaBrowser Client="BovaPlayer", Device="Flutter", DeviceId="bova-flutter", Version="1.0.0"',
+          'Content-Type': 'application/json',
+        },
         body: jsonEncode({'Username': server.username, 'Pw': server.password}),
       ).timeout(const Duration(seconds: 10));
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+      if (r.statusCode == 200) {
+        final data = jsonDecode(r.body);
         server.accessToken = data['AccessToken'];
         server.userId = data['User']['Id'];
-        setState(() { _isConnected = true; _isLoading = false; });
+        setState(() { _isLoading = false; _viewMode = EmbyViewMode.dashboard; });
         await _loadDashboard();
       } else {
         setState(() { _isLoading = false; _errorMsg = '登录失败: 用户名或密码错误'; });
@@ -125,7 +136,6 @@ class _EmbyPageState extends State<EmbyPage> {
   Future<void> _loadDashboard() async {
     if (_activeServer == null) return;
     await _loadLibraries();
-    // 为每个媒体库加载前 12 个项目
     for (final lib in _libraries) {
       _loadViewItems(lib['Id'], limit: 12);
     }
@@ -134,7 +144,7 @@ class _EmbyPageState extends State<EmbyPage> {
   Future<void> _loadLibraries() async {
     try {
       final s = _activeServer!;
-      final r = await http.get(Uri.parse('${s.url}/emby/Users/${s.userId}/Views'), headers: _headers(s));
+      final r = await http.get(Uri.parse('${s.url}/emby/Users/${s.userId}/Views'), headers: _headers());
       if (r.statusCode == 200) {
         setState(() => _libraries = List<Map<String, dynamic>>.from(jsonDecode(r.body)['Items'] ?? []));
       }
@@ -146,7 +156,7 @@ class _EmbyPageState extends State<EmbyPage> {
       final s = _activeServer!;
       final r = await http.get(
         Uri.parse('${s.url}/emby/Users/${s.userId}/Items?ParentId=$viewId&Limit=$limit&Fields=Overview,MediaSources&SortBy=SortName'),
-        headers: _headers(s),
+        headers: _headers(),
       );
       if (r.statusCode == 200) {
         final items = List<Map<String, dynamic>>.from(jsonDecode(r.body)['Items'] ?? []);
@@ -155,13 +165,14 @@ class _EmbyPageState extends State<EmbyPage> {
     } catch (_) {}
   }
 
-  Future<void> _loadLibraryItems(String libraryId, String name) async {
-    setState(() { _isLoadingBrowse = true; _browseLibraryName = name; _browseLibraryId = libraryId; });
+  /// 加载某个目录下的(非递归)子项 → Browser
+  Future<void> _loadBrowserItems(String parentId, String name, {bool recursive = false}) async {
+    setState(() { _isLoadingBrowse = true; });
     try {
       final s = _activeServer!;
       final r = await http.get(
-        Uri.parse('${s.url}/emby/Users/${s.userId}/Items?ParentId=$libraryId&Limit=100&Fields=Overview,MediaSources&SortBy=SortName'),
-        headers: _headers(s),
+        Uri.parse('${s.url}/emby/Users/${s.userId}/Items?ParentId=$parentId&Limit=200&Fields=Overview,MediaSources&SortBy=SortName${recursive ? '&Recursive=true' : ''}'),
+        headers: _headers(),
       );
       if (r.statusCode == 200) {
         setState(() {
@@ -174,15 +185,102 @@ class _EmbyPageState extends State<EmbyPage> {
     }
   }
 
-  Future<void> _playItem(Map<String, dynamic> item) async {
-    final itemId = item['Id'];
-    final name = item['Name'] ?? '未知';
-    final s = _activeServer!;
-    final playUrl = '${s.url}/emby/Videos/$itemId/stream?Static=true&api_key=${s.accessToken}';
+  /// 加载 Series 的 Seasons
+  Future<void> _loadSeriesSeasons(String seriesId) async {
+    try {
+      final s = _activeServer!;
+      final r = await http.get(
+        Uri.parse('${s.url}/emby/Users/${s.userId}/Items?ParentId=$seriesId&Fields=Overview'),
+        headers: _headers(),
+      );
+      if (r.statusCode == 200) {
+        final seasons = List<Map<String, dynamic>>.from(jsonDecode(r.body)['Items'] ?? []);
+        setState(() {
+          _seriesSeasons = seasons;
+          _selectedSeasonIndex = 0;
+          _seasonEpisodes = {};
+        });
+        // 加载第一季的剧集
+        if (seasons.isNotEmpty) {
+          _loadSeasonEpisodes(seasons[0]['Id']);
+        }
+      }
+    } catch (_) {}
+  }
+
+  /// 加载某季的剧集
+  Future<void> _loadSeasonEpisodes(String seasonId) async {
+    if (_seasonEpisodes.containsKey(seasonId)) return; // 已缓存
+    try {
+      final s = _activeServer!;
+      final r = await http.get(
+        Uri.parse('${s.url}/emby/Users/${s.userId}/Items?ParentId=$seasonId&Fields=Overview,MediaSources&SortBy=SortName'),
+        headers: _headers(),
+      );
+      if (r.statusCode == 200) {
+        final eps = List<Map<String, dynamic>>.from(jsonDecode(r.body)['Items'] ?? []);
+        setState(() => _seasonEpisodes[seasonId] = eps);
+      }
+    } catch (_) {}
+  }
+
+  // ============== 点击项目路由 (和 egui handle_emby_item_click 一致) ==============
+
+  void _handleItemClick(Map<String, dynamic> item) {
+    final type = item['Type'] as String?;
+
+    switch (type) {
+      case 'Series':
+        // Series → 详情页，加载 Seasons
+        setState(() {
+          _selectedItem = item;
+          _viewMode = EmbyViewMode.itemDetail;
+          _seriesSeasons = [];
+          _seasonEpisodes = {};
+          _selectedSeasonIndex = 0;
+        });
+        _loadSeriesSeasons(item['Id']);
+        break;
+
+      case 'Folder':
+      case 'CollectionFolder':
+      case 'UserView':
+      case 'BoxSet':
+        // 文件夹 → Browser 模式
+        setState(() {
+          _navigationStack.add([item['Id'], item['Name'] ?? '']);
+          _viewMode = EmbyViewMode.browser;
+        });
+        _loadBrowserItems(item['Id'], item['Name'] ?? '', recursive: true);
+        break;
+
+      case 'Season':
+        // Season → Browser 模式 (显示 Episodes)
+        setState(() {
+          _navigationStack.add([item['Id'], item['Name'] ?? '']);
+          _viewMode = EmbyViewMode.browser;
+        });
+        _loadBrowserItems(item['Id'], item['Name'] ?? '', recursive: false);
+        break;
+
+      default:
+        // Movie / Episode → 详情页
+        setState(() {
+          _selectedItem = item;
+          _viewMode = EmbyViewMode.itemDetail;
+        });
+        break;
+    }
+  }
+
+  // ============== 播放 ==============
+
+  Future<void> _playItem(String itemId, String name) async {
+    final url = _streamUrl(itemId);
     try {
       _playerController?.dispose();
       _playerController = VideoPlayerController.networkUrl(
-        Uri.parse(playUrl),
+        Uri.parse(url),
         videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true, allowBackgroundPlayback: true),
       );
       await _playerController!.initialize();
@@ -193,32 +291,75 @@ class _EmbyPageState extends State<EmbyPage> {
         )).then((_) => _playerController?.pause());
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('播放失败: $e'), backgroundColor: Colors.red));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('播放失败: $e\n\nURL: $url'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ));
+      }
     }
   }
 
-  void _disconnect() {
+  void _goToServerList() {
     setState(() {
-      _isConnected = false;
+      _viewMode = EmbyViewMode.serverList;
       _activeServer?.accessToken = null;
       _activeServer?.userId = null;
       _activeServer = null;
       _libraries = [];
       _viewItems = {};
       _browseItems = [];
-      _browseLibraryName = '';
+      _navigationStack = [];
+      _selectedItem = null;
     });
+  }
+
+  void _goToDashboard() {
+    setState(() {
+      _viewMode = EmbyViewMode.dashboard;
+      _browseItems = [];
+      _navigationStack = [];
+      _selectedItem = null;
+    });
+    _loadDashboard();
+  }
+
+  void _goBack() {
+    if (_viewMode == EmbyViewMode.itemDetail) {
+      setState(() {
+        _selectedItem = null;
+        _viewMode = _navigationStack.isEmpty ? EmbyViewMode.dashboard : EmbyViewMode.browser;
+      });
+    } else if (_viewMode == EmbyViewMode.browser) {
+      if (_navigationStack.isNotEmpty) {
+        _navigationStack.removeLast();
+        if (_navigationStack.isEmpty) {
+          _goToDashboard();
+        } else {
+          final prev = _navigationStack.last;
+          _loadBrowserItems(prev[0], prev[1], recursive: true);
+        }
+      } else {
+        _goToDashboard();
+      }
+    }
   }
 
   // ============== 页面路由 ==============
 
   @override
   Widget build(BuildContext context) {
-    if (_isConnected && _activeServer != null) {
-      if (_browseLibraryName.isNotEmpty) return _buildBrowsePage();
-      return _buildDashboard();
+    switch (_viewMode) {
+      case EmbyViewMode.serverList:
+        return _buildServerListPage();
+      case EmbyViewMode.dashboard:
+        return _buildDashboard();
+      case EmbyViewMode.browser:
+        return _buildBrowserPage();
+      case EmbyViewMode.itemDetail:
+        return _buildItemDetailPage();
     }
-    return _buildServerListPage();
   }
 
   // ===================================
@@ -230,14 +371,11 @@ class _EmbyPageState extends State<EmbyPage> {
       backgroundColor: const Color(0xFF1A1A2E),
       appBar: AppBar(
         title: const Text('Emby 服务器', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: const Color(0xFF16213E),
-        foregroundColor: Colors.white,
-        elevation: 0,
+        backgroundColor: const Color(0xFF16213E), foregroundColor: Colors.white, elevation: 0,
       ),
       body: _servers.isEmpty ? _buildEmptyServerList() : _buildServerList(),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.deepPurple, foregroundColor: Colors.white,
         onPressed: () => _showAddServerDialog(),
         child: const Icon(Icons.add),
       ),
@@ -245,19 +383,17 @@ class _EmbyPageState extends State<EmbyPage> {
   }
 
   Widget _buildEmptyServerList() {
-    return Center(
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Container(
-          width: 80, height: 80,
-          decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.deepPurple.withValues(alpha: 0.15)),
-          child: Icon(Icons.dns_outlined, size: 40, color: Colors.deepPurple.shade200),
-        ),
-        const SizedBox(height: 20),
-        const Text('还没有添加服务器', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        const Text('点击右下角 + 添加 Emby 服务器', style: TextStyle(color: Colors.white38, fontSize: 13)),
-      ]),
-    );
+    return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Container(
+        width: 80, height: 80,
+        decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.deepPurple.withValues(alpha: 0.15)),
+        child: Icon(Icons.dns_outlined, size: 40, color: Colors.deepPurple.shade200),
+      ),
+      const SizedBox(height: 20),
+      const Text('还没有添加服务器', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 8),
+      const Text('点击右下角 + 添加 Emby 服务器', style: TextStyle(color: Colors.white38, fontSize: 13)),
+    ]));
   }
 
   Widget _buildServerList() {
@@ -270,7 +406,7 @@ class _EmbyPageState extends State<EmbyPage> {
           margin: const EdgeInsets.only(bottom: 10),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            gradient: LinearGradient(colors: [Colors.deepPurple.withValues(alpha: 0.15), const Color(0xFF16213E)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+            gradient: LinearGradient(colors: [Colors.deepPurple.withValues(alpha: 0.15), const Color(0xFF16213E)]),
             border: Border.all(color: Colors.white10),
           ),
           child: ListTile(
@@ -384,7 +520,7 @@ class _EmbyPageState extends State<EmbyPage> {
   }
 
   // ===================================
-  //  2) 仪表板 - 每个媒体库一行 (和 egui 一致)
+  //  2) 仪表板 - 每个库一行横向海报
   // ===================================
 
   Widget _buildDashboard() {
@@ -393,12 +529,9 @@ class _EmbyPageState extends State<EmbyPage> {
       backgroundColor: const Color(0xFF1A1A2E),
       body: CustomScrollView(
         slivers: [
-          // 顶部栏
           SliverAppBar(
-            floating: true,
-            backgroundColor: const Color(0xFF16213E),
-            foregroundColor: Colors.white,
-            leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: _disconnect),
+            floating: true, backgroundColor: const Color(0xFF16213E), foregroundColor: Colors.white,
+            leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: _goToServerList),
             title: Row(children: [
               const Icon(Icons.play_arrow_rounded, color: Colors.deepPurple, size: 24),
               const SizedBox(width: 8),
@@ -407,46 +540,33 @@ class _EmbyPageState extends State<EmbyPage> {
                 Text('${s.username}@${Uri.parse(s.url).host}', style: const TextStyle(fontSize: 11, color: Colors.white38)),
               ])),
             ]),
-            actions: [
-              IconButton(icon: const Icon(Icons.refresh, size: 20), onPressed: _loadDashboard, tooltip: '刷新'),
-            ],
+            actions: [IconButton(icon: const Icon(Icons.refresh, size: 20), onPressed: _loadDashboard)],
           ),
-
-          // 每个媒体库作为一个 section
           for (final lib in _libraries) ...[
-            // 标题行: 名称 + "更多 →"
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 24, 16, 10),
-                child: Row(children: [
-                  Icon(_libraryIcon(lib['CollectionType'] ?? ''), color: Colors.deepPurple.shade200, size: 22),
-                  const SizedBox(width: 10),
-                  Expanded(child: Text(
-                    lib['Name'] ?? '',
-                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                  )),
-                  TextButton(
-                    onPressed: () => _loadLibraryItems(lib['Id'], lib['Name'] ?? ''),
-                    child: const Text('更多 →', style: TextStyle(color: Colors.deepPurple, fontSize: 13)),
-                  ),
-                ]),
-              ),
-            ),
-
-            // 横向滚动项目行
-            SliverToBoxAdapter(
-              child: _buildViewItemsRow(lib['Id'] ?? ''),
-            ),
-
-            // 分隔线
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Divider(color: Colors.white10, height: 1),
-              ),
-            ),
+            SliverToBoxAdapter(child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 24, 16, 10),
+              child: Row(children: [
+                Icon(_libraryIcon(lib['CollectionType'] ?? ''), color: Colors.deepPurple.shade200, size: 22),
+                const SizedBox(width: 10),
+                Expanded(child: Text(lib['Name'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold))),
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _navigationStack = [[lib['Id'], lib['Name'] ?? '']];
+                      _viewMode = EmbyViewMode.browser;
+                    });
+                    _loadBrowserItems(lib['Id'], lib['Name'] ?? '', recursive: true);
+                  },
+                  child: const Text('更多 →', style: TextStyle(color: Colors.deepPurple, fontSize: 13)),
+                ),
+              ]),
+            )),
+            SliverToBoxAdapter(child: _buildViewItemsRow(lib['Id'] ?? '')),
+            SliverToBoxAdapter(child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Divider(color: Colors.white10, height: 1),
+            )),
           ],
-
           const SliverToBoxAdapter(child: SizedBox(height: 32)),
         ],
       ),
@@ -465,12 +585,10 @@ class _EmbyPageState extends State<EmbyPage> {
   Widget _buildViewItemsRow(String viewId) {
     final items = _viewItems[viewId];
     if (items == null) {
-      // 加载中占位
       return SizedBox(
         height: 210,
         child: ListView.builder(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 16),
           itemCount: 6,
           itemBuilder: (_, __) => Container(
             width: 130, margin: const EdgeInsets.only(right: 12),
@@ -486,19 +604,14 @@ class _EmbyPageState extends State<EmbyPage> {
         ),
       );
     }
-
     if (items.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-        child: Text('暂无内容', style: TextStyle(color: Colors.white24, fontSize: 13)),
-      );
+      return const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        child: Text('暂无内容', style: TextStyle(color: Colors.white24, fontSize: 13)));
     }
-
     return SizedBox(
       height: 210,
       child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 16),
         itemCount: items.length,
         itemBuilder: (_, i) => _posterCard(items[i]),
       ),
@@ -510,35 +623,39 @@ class _EmbyPageState extends State<EmbyPage> {
     final year = item['ProductionYear']?.toString() ?? '';
     final itemId = item['Id'] ?? '';
     final type = item['Type'] ?? '';
+    final childCount = item['ChildCount'];
 
     return GestureDetector(
-      onTap: () => _playItem(item),
+      onTap: () => _handleItemClick(item),
       child: Container(
         width: 130, margin: const EdgeInsets.only(right: 12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // 封面 - 直角 (和 egui 一致)
           Expanded(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: Stack(fit: StackFit.expand, children: [
                 Container(
                   color: const Color(0xFF16213E),
-                  child: Image.network(
-                    _imageUrl(itemId),
-                    fit: BoxFit.cover,
+                  child: Image.network(_imageUrl(itemId), fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) => Center(child: Icon(
-                      type == 'Movie' ? Icons.movie : type == 'Series' ? Icons.tv : Icons.folder,
-                      color: Colors.white24, size: 36,
-                    )),
-                  ),
+                      _itemIcon(type), color: Colors.white24, size: 36,
+                    ))),
                 ),
-                // 底部渐变
                 Positioned.fill(child: Container(
                   decoration: BoxDecoration(gradient: LinearGradient(
                     begin: Alignment.bottomCenter, end: Alignment.center,
                     colors: [Colors.black.withValues(alpha: 0.5), Colors.transparent],
                   )),
                 )),
+                // Series 集数徽章
+                if (type == 'Series' && childCount != null)
+                  Positioned(top: 8, right: 8, child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF50C878), borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text('$childCount', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                  )),
               ]),
             ),
           ),
@@ -552,32 +669,364 @@ class _EmbyPageState extends State<EmbyPage> {
     );
   }
 
+  IconData _itemIcon(String type) {
+    switch (type) {
+      case 'Movie': case 'Video': return Icons.movie;
+      case 'Episode': return Icons.tv;
+      case 'Series': case 'BoxSet': return Icons.tv;
+      case 'Season': return Icons.folder;
+      case 'Folder': case 'CollectionFolder': case 'UserView': return Icons.folder;
+      default: return Icons.description;
+    }
+  }
+
   // ===================================
-  //  3) 媒体库浏览页 (点击"更多"后)
+  //  3) Browser 浏览页 (面包屑导航 + 网格)
   // ===================================
 
-  Widget _buildBrowsePage() {
+  Widget _buildBrowserPage() {
     return Scaffold(
       backgroundColor: const Color(0xFF1A1A2E),
-      appBar: AppBar(
-        title: Text(_browseLibraryName, style: const TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: const Color(0xFF16213E), foregroundColor: Colors.white,
-        leading: IconButton(icon: const Icon(Icons.arrow_back),
-          onPressed: () => setState(() { _browseItems = []; _browseLibraryName = ''; })),
-      ),
-      body: _isLoadingBrowse
-          ? const Center(child: CircularProgressIndicator(color: Colors.deepPurple))
-          : _browseItems.isEmpty
-              ? const Center(child: Text('暂无内容', style: TextStyle(color: Colors.white38)))
-              : GridView.builder(
-                  padding: const EdgeInsets.all(12),
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 140, childAspectRatio: 0.55,
-                    crossAxisSpacing: 10, mainAxisSpacing: 10,
-                  ),
-                  itemCount: _browseItems.length,
-                  itemBuilder: (ctx, i) => _posterCard(_browseItems[i]),
+      body: Column(children: [
+        // 面包屑导航栏
+        Container(
+          color: const Color(0xFF16213E),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              child: Row(children: [
+                // ⬅ 服务器
+                TextButton.icon(
+                  icon: const Icon(Icons.arrow_back, size: 16),
+                  label: const Text('服务器'),
+                  style: TextButton.styleFrom(foregroundColor: Colors.white70),
+                  onPressed: _goToServerList,
                 ),
+                Container(width: 1, height: 20, color: Colors.white12, margin: const EdgeInsets.symmetric(horizontal: 4)),
+                // 🏠 首页
+                TextButton.icon(
+                  icon: const Icon(Icons.home, size: 16),
+                  label: const Text('首页'),
+                  style: TextButton.styleFrom(foregroundColor: Colors.white70),
+                  onPressed: _goToDashboard,
+                ),
+                // 面包屑路径
+                Expanded(child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(children: [
+                    for (int i = 0; i < _navigationStack.length; i++) ...[
+                      const Text(' / ', style: TextStyle(color: Colors.white24)),
+                      TextButton(
+                        onPressed: i < _navigationStack.length - 1 ? () {
+                          setState(() => _navigationStack = _navigationStack.sublist(0, i + 1));
+                          _loadBrowserItems(_navigationStack.last[0], _navigationStack.last[1], recursive: true);
+                        } : null,
+                        child: Text(
+                          _navigationStack[i][1],
+                          style: TextStyle(
+                            color: i == _navigationStack.length - 1 ? Colors.white : Colors.white54,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ]),
+                )),
+              ]),
+            ),
+          ),
+        ),
+
+        // 项目计数
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: Row(children: [
+            Text('共 ${_browseItems.length} 项', style: const TextStyle(color: Colors.white38, fontSize: 13)),
+          ]),
+        ),
+
+        // 网格
+        Expanded(
+          child: _isLoadingBrowse
+              ? const Center(child: CircularProgressIndicator(color: Colors.deepPurple))
+              : _browseItems.isEmpty
+                  ? const Center(child: Text('暂无内容', style: TextStyle(color: Colors.white38)))
+                  : GridView.builder(
+                      padding: const EdgeInsets.all(12),
+                      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: 160, childAspectRatio: 0.5,
+                        crossAxisSpacing: 12, mainAxisSpacing: 12,
+                      ),
+                      itemCount: _browseItems.length,
+                      itemBuilder: (_, i) => _posterCard(_browseItems[i]),
+                    ),
+        ),
+      ]),
+    );
+  }
+
+  // ===================================
+  //  4) 详情页 (Hero + 海报 + 元数据 + 播放 + 剧集)
+  // ===================================
+
+  Widget _buildItemDetailPage() {
+    if (_selectedItem == null) return const SizedBox();
+    final item = _selectedItem!;
+    final name = item['Name'] ?? '';
+    final itemId = item['Id'] ?? '';
+    final type = item['Type'] ?? '';
+    final overview = item['Overview'] as String?;
+    final year = item['ProductionYear']?.toString();
+    final rating = item['CommunityRating'];
+    final runtime = item['RunTimeTicks'] as int?;
+    final officialRating = item['OfficialRating'] as String?;
+
+    String? runtimeStr;
+    if (runtime != null) {
+      final mins = runtime ~/ 10000000 ~/ 60;
+      final hours = mins ~/ 60;
+      final m = mins % 60;
+      runtimeStr = hours > 0 ? '${hours}小时${m}分钟' : '${m}分钟';
+    }
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF1A1A2E),
+      body: CustomScrollView(
+        slivers: [
+          // 顶部导航
+          SliverAppBar(
+            floating: true, backgroundColor: const Color(0xFF16213E), foregroundColor: Colors.white,
+            leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: _goBack),
+            title: Text(name, style: const TextStyle(fontSize: 15)),
+            actions: [
+              TextButton(onPressed: _goToDashboard, child: const Text('首页', style: TextStyle(color: Colors.white54))),
+            ],
+          ),
+
+          // Hero Section: 背景图 + 覆盖信息
+          SliverToBoxAdapter(child: _buildHeroSection(item)),
+
+          // 播放按钮 (Movie 和 Episode 可播放)
+          if (type == 'Movie' || type == 'Episode' || type == 'Video')
+            SliverToBoxAdapter(child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.play_arrow, size: 28),
+                label: const Text('立即播放', style: TextStyle(fontSize: 18)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepPurple, foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () => _playItem(itemId, name),
+              ),
+            )),
+
+          // 简介
+          SliverToBoxAdapter(child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('简介', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              Text(overview ?? '暂无简介', style: TextStyle(color: overview != null ? Colors.white70 : Colors.white24, fontSize: 14, height: 1.6)),
+            ]),
+          )),
+
+          // Series: 季 + 剧集选择器
+          if (type == 'Series') ...[
+            SliverToBoxAdapter(child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+              child: _buildSeasonSelector(),
+            )),
+            SliverToBoxAdapter(child: Padding(
+              padding: const EdgeInsets.fromLTRB(0, 12, 0, 0),
+              child: _buildEpisodeList(),
+            )),
+          ],
+
+          // 详细信息
+          SliverToBoxAdapter(child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('详细信息', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              _detailRow('类型', type),
+              if (year != null) _detailRow('年份', year),
+              if (officialRating != null) _detailRow('分级', officialRating),
+              if (runtimeStr != null) _detailRow('时长', runtimeStr),
+              if (rating != null) _detailRow('评分', '★ ${(rating as num).toStringAsFixed(1)}/10'),
+              if (item['OriginalTitle'] != null) _detailRow('原始标题', item['OriginalTitle']),
+            ]),
+          )),
+
+          const SliverToBoxAdapter(child: SizedBox(height: 40)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeroSection(Map<String, dynamic> item) {
+    final itemId = item['Id'] ?? '';
+    return SizedBox(
+      height: 280,
+      child: Stack(fit: StackFit.expand, children: [
+        // 背景图 (Backdrop)
+        Image.network(
+          _imageUrl(itemId, type: 'Backdrop', maxWidth: 1200),
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(color: const Color(0xFF16213E)),
+        ),
+        // 渐变遮罩
+        Container(decoration: BoxDecoration(gradient: LinearGradient(
+          begin: Alignment.bottomCenter, end: Alignment.topCenter,
+          colors: [const Color(0xFF1A1A2E), Colors.transparent],
+        ))),
+        // 内容: 海报 + 标题
+        Positioned(left: 20, bottom: 20, right: 20, child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          // 海报
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: SizedBox(
+              width: 120, height: 180,
+              child: Image.network(_imageUrl(itemId), fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(color: const Color(0xFF16213E),
+                  child: Icon(_itemIcon(item['Type'] ?? ''), color: Colors.white24, size: 48))),
+            ),
+          ),
+          const SizedBox(width: 16),
+          // 标题 + 元信息
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(item['Name'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 6),
+            Wrap(spacing: 8, children: [
+              if (item['ProductionYear'] != null)
+                Text('${item['ProductionYear']}', style: const TextStyle(color: Colors.white54, fontSize: 14)),
+              if (item['OfficialRating'] != null)
+                Text('${item['OfficialRating']}', style: const TextStyle(color: Colors.white54, fontSize: 14)),
+              if (item['CommunityRating'] != null)
+                Text('★ ${(item['CommunityRating'] as num).toStringAsFixed(1)}', style: const TextStyle(color: Colors.amber, fontSize: 14)),
+            ]),
+          ])),
+        ])),
+      ]),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(children: [
+        SizedBox(width: 80, child: Text('$label:', style: const TextStyle(color: Colors.white38, fontSize: 13))),
+        Text(value, style: const TextStyle(color: Colors.white, fontSize: 13)),
+      ]),
+    );
+  }
+
+  // ============== Series: Seasons + Episodes ==============
+
+  Widget _buildSeasonSelector() {
+    if (_seriesSeasons.isEmpty) {
+      return const Center(child: Padding(
+        padding: EdgeInsets.all(16),
+        child: CircularProgressIndicator(color: Colors.deepPurple, strokeWidth: 2),
+      ));
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        const Text('季', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+        const SizedBox(width: 12),
+        // 季选择下拉
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF16213E),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<int>(
+              value: _selectedSeasonIndex < _seriesSeasons.length ? _selectedSeasonIndex : 0,
+              dropdownColor: const Color(0xFF16213E),
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+              items: List.generate(_seriesSeasons.length, (i) => DropdownMenuItem(
+                value: i,
+                child: Text(_seriesSeasons[i]['Name'] ?? '季 ${i + 1}'),
+              )),
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() => _selectedSeasonIndex = val);
+                  final seasonId = _seriesSeasons[val]['Id'];
+                  _loadSeasonEpisodes(seasonId);
+                }
+              },
+            ),
+          ),
+        ),
+      ]),
+    ]);
+  }
+
+  Widget _buildEpisodeList() {
+    if (_seriesSeasons.isEmpty || _selectedSeasonIndex >= _seriesSeasons.length) return const SizedBox();
+    final seasonId = _seriesSeasons[_selectedSeasonIndex]['Id'];
+    final episodes = _seasonEpisodes[seasonId];
+
+    if (episodes == null) {
+      return const Center(child: Padding(
+        padding: EdgeInsets.all(16),
+        child: CircularProgressIndicator(color: Colors.deepPurple, strokeWidth: 2),
+      ));
+    }
+
+    return SizedBox(
+      height: 160,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: episodes.length,
+        itemBuilder: (_, i) {
+          final ep = episodes[i];
+          final epName = ep['Name'] ?? '';
+          final epNum = ep['IndexNumber'];
+          final epId = ep['Id'] ?? '';
+          final label = epNum != null ? '${i + 1}. Episode $epNum' : '${i + 1}. $epName';
+
+          return GestureDetector(
+            onTap: () => _playItem(epId, epName),
+            child: Container(
+              width: 230, margin: const EdgeInsets.only(right: 12),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: Stack(fit: StackFit.expand, children: [
+                  Image.network(_imageUrl(epId), fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(color: const Color(0xFF16213E),
+                      child: const Center(child: Icon(Icons.tv, color: Colors.white24, size: 36)))),
+                  // 底部标签
+                  Positioned(left: 0, right: 0, bottom: 0, child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    color: Colors.black.withValues(alpha: 0.7),
+                    child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 12),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                  )),
+                  // 播放图标
+                  Positioned.fill(child: Center(
+                    child: Container(
+                      width: 40, height: 40,
+                      decoration: BoxDecoration(
+                        color: Colors.deepPurple.withValues(alpha: 0.7),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.play_arrow, color: Colors.white, size: 24),
+                    ),
+                  )),
+                ]),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }
@@ -642,13 +1091,11 @@ class _EmbyPlayerPageState extends State<_EmbyPlayerPage> {
           if (_showControls) Positioned.fill(child: Container(
             color: Colors.black38,
             child: Column(children: [
-              // 顶部
               SafeArea(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Row(children: [
                 IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context)),
                 Expanded(child: Text(widget.title, style: const TextStyle(color: Colors.white, fontSize: 15), overflow: TextOverflow.ellipsis)),
               ]))),
               const Spacer(),
-              // 中间控制
               Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 IconButton(icon: const Icon(Icons.replay_10, color: Colors.white, size: 32),
                   onPressed: () => widget.controller.seekTo(v.position - const Duration(seconds: 10))),
@@ -660,7 +1107,6 @@ class _EmbyPlayerPageState extends State<_EmbyPlayerPage> {
                   onPressed: () => widget.controller.seekTo(v.position + const Duration(seconds: 10))),
               ]),
               const Spacer(),
-              // 底部进度
               Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: Row(children: [
                 Text(_fmt(v.position), style: const TextStyle(color: Colors.white70, fontSize: 12)),
                 Expanded(child: SliderTheme(
