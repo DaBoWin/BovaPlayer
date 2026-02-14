@@ -22,5 +22,5 @@ rfd = "0.15"
 bova-playback = { path = "../bova-playback" }
 rodio = { version = "0.17" }
 crossbeam-channel = "0.5"
-image = "0.25.9"
-egui_extras = { version = "0.32.3", features = ["image"] }
+image = "0.25"
+egui_extras = { version = "0.27", features = ["image"] }

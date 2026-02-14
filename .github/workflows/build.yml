@@ -8,135 +8,190 @@ on:
   workflow_dispatch:
 
 jobs:
+  # ============================================================
+  #  Windows 构建 (MSYS2 + MPV)
+  # ============================================================
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v3
-      
-      - name: Setup Rust
-        uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v4
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
         with:
-          toolchain: stable
-          profile: minimal
-          override: true
-      
-      - name: Build Windows
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-mpv
+            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-rust
+            mingw-w64-x86_64-gcc
+
+      - name: Build Windows (MSYS2 环境)
+        shell: msys2 {0}
         run: |
+          export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig:$PKG_CONFIG_PATH"
           cd core
           cargo build --release --bin bova-gui
-      
-      - name: Create Release Directory
+
+      - name: 打包 Windows 发布文件
+        shell: msys2 {0}
         run: |
-          mkdir release
-          copy core\target\release\bova-gui.exe release\BovaPlayer.exe
-      
+          mkdir -p release
+          cp core/target/release/bova-gui.exe release/BovaPlayer.exe
+          # 只复制需要的 DLL
+          for dll in libmpv-2.dll libavcodec-61.dll libavformat-61.dll libavutil-59.dll \
+                     libswscale-8.dll libswresample-5.dll libavfilter-10.dll libavdevice-61.dll \
+                     zlib1.dll libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
+            if [ -f "/mingw64/bin/$dll" ]; then
+              cp "/mingw64/bin/$dll" release/
+            fi
+          done
+          # 也复制 mpv 需要的其他依赖
+          ldd release/BovaPlayer.exe | grep mingw64 | awk '{print $3}' | while read dep; do
+            if [ -f "$dep" ]; then
+              cp "$dep" release/ 2>/dev/null || true
+            fi
+          done
+
       - name: Upload Windows Artifact
         uses: actions/upload-artifact@v4
         with:
           name: BovaPlayer-Windows
-          path: release/BovaPlayer.exe
+          path: release/
 
+  # ============================================================
+  #  macOS 构建 (Homebrew MPV)
+  # ============================================================
   build-macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v3
-      
+      - uses: actions/checkout@v4
+
       - name: Setup Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
-      
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 安装系统依赖
+        run: |
+          brew install pkg-config mpv
+
       - name: Build macOS
         run: |
           cd core
           cargo build --release --bin bova-gui
-      
-      - name: Create App Bundle
+
+      - name: 创建 App Bundle
         run: |
           APP_NAME="BovaPlayer"
           APP_DIR="core/target/release/${APP_NAME}.app"
           mkdir -p "${APP_DIR}/Contents/MacOS"
           mkdir -p "${APP_DIR}/Contents/Resources"
+          mkdir -p "${APP_DIR}/Contents/Frameworks"
+
+          # 复制可执行文件
           cp core/target/release/bova-gui "${APP_DIR}/Contents/MacOS/${APP_NAME}"
-          
-          cat > "${APP_DIR}/Contents/Info.plist" << EOF
+
+          # 复制 MPV 动态库到 Frameworks
+          MPV_LIB=$(brew --prefix mpv)/lib/libmpv.dylib
+          if [ -f "$MPV_LIB" ]; then
+            cp "$MPV_LIB" "${APP_DIR}/Contents/Frameworks/"
+            # 修改 rpath 让可执行文件能找到动态库
+            install_name_tool -add_rpath "@executable_path/../Frameworks" "${APP_DIR}/Contents/MacOS/${APP_NAME}" 2>/dev/null || true
+          fi
+
+          # 创建 Info.plist
+          cat > "${APP_DIR}/Contents/Info.plist" << 'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
+              <key>CFBundleDevelopmentRegion</key>
+              <string>en</string>
               <key>CFBundleExecutable</key>
-              <string>${APP_NAME}</string>
+              <string>BovaPlayer</string>
               <key>CFBundleIdentifier</key>
               <string>com.bova.player</string>
+              <key>CFBundleInfoDictionaryVersion</key>
+              <string>6.0</string>
               <key>CFBundleName</key>
-              <string>${APP_NAME}</string>
-              <key>CFBundleVersion</key>
+              <string>BovaPlayer</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
               <string>0.0.1</string>
+              <key>CFBundleVersion</key>
+              <string>1</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>10.15</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+              <key>NSSupportsAutomaticGraphicsSwitching</key>
+              <true/>
           </dict>
           </plist>
-          EOF
-      
-      - name: Create DMG
+          PLIST
+
+      - name: 创建 DMG
         run: |
-          hdiutil create -volname "BovaPlayer" -srcfolder core/target/release/BovaPlayer.app -ov -format UDZO core/target/release/BovaPlayer.dmg
-      
+          hdiutil create -volname "BovaPlayer" \
+            -srcfolder core/target/release/BovaPlayer.app \
+            -ov -format UDZO \
+            core/target/release/BovaPlayer.dmg
+
       - name: Upload macOS Artifact
         uses: actions/upload-artifact@v4
         with:
           name: BovaPlayer-macOS
           path: core/target/release/BovaPlayer.dmg
 
+  # ============================================================
+  #  Android 构建 (Flutter + Rust FFI)
+  # ============================================================
   build-android:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      
+      - uses: actions/checkout@v4
+
       - name: Setup Java
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
-      
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.38.7'
+          flutter-version: '3.24.0'
           channel: 'stable'
-      
-      - name: Setup Rust
-        uses: actions-rs/toolchain@v1
+
+      - name: Setup Rust (用于 FFI 交叉编译)
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          profile: minimal
-          override: true
-      
-      - name: Add Android Targets
-        run: |
-          rustup target add aarch64-linux-android
-          rustup target add armv7-linux-androideabi
-          rustup target add x86_64-linux-android
-      
-      - name: Install NDK
-        run: |
-          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;25.1.8937393"
-      
-      - name: Build Rust for Android
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+
+      - name: 安装 cargo-ndk
+        run: cargo install cargo-ndk
+
+      - name: 构建 Rust FFI 库 (Android)
         run: |
           cd core
-          cargo build --release --lib --target aarch64-linux-android -p bova-ffi || echo "FFI build skipped"
-      
-      - name: Flutter Pub Get
+          # 使用 cargo-ndk 交叉编译 bova-ffi
+          export ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME
+          cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../ui/flutter_app/android/app/src/main/jniLibs build --release -p bova-ffi || {
+            echo "⚠️ Rust FFI 交叉编译失败，将构建纯 Flutter 版本"
+          }
+
+      - name: Flutter 依赖安装
         run: |
           cd ui/flutter_app
+          flutter clean
           flutter pub get
-      
-      - name: Build APK
+
+      - name: 构建 APK
         run: |
           cd ui/flutter_app
           flutter build apk --release
-      
+
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
