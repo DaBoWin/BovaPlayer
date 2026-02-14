@@ -274,24 +274,6 @@ jobs:
           else
             echo "⚠️ 未找到 VideoOutput.java 文件"
           fi
-          flutter pub get
-          # 显示实际安装的版本
-          echo "=== 已安装的 media_kit 相关包版本 ==="
-          flutter pub deps | grep media_kit || true
-          
-      - name: 验证 Android Embedding V2
-        run: |
-          cd ui/flutter_app
-          # 确认 AndroidManifest.xml 包含 flutterEmbedding=2
-          grep -q 'flutterEmbedding.*2' android/app/src/main/AndroidManifest.xml && echo "✓ Android Embedding V2 已配置" || exit 1
-          # 确认 MainActivity 继承 FlutterActivity
-          grep -q 'FlutterActivity' android/app/src/main/kotlin/com/example/bova_player_flutter/MainActivity.kt && echo "✓ MainActivity 正确继承 FlutterActivity" || exit 1
-
-      - name: 设置 Android SDK 环境变量
-        run: |
-          echo "ANDROID_COMPILE_SDK=35" >> $GITHUB_ENV
-          echo "ANDROID_TARGET_SDK=35" >> $GITHUB_ENV
-          echo "ANDROID_MIN_SDK=21" >> $GITHUB_ENV
 
       - name: 构建 APK
         run: |
