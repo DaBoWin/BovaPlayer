@@ -1,0 +1,13 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- 背景 -->
+  <rect width="512" height="512" rx="80" fill="#1A1A2E"/>
+  
+  <!-- 左侧三角形 -->
+  <path d="M 150 150 L 250 256 L 150 362 Z" fill="#9D4EDD" stroke="#C77DFF" stroke-width="4"/>
+  
+  <!-- 右侧三角形 -->
+  <path d="M 250 256 L 362 150 L 362 362 Z" fill="#7B2CBF" stroke="#9D4EDD" stroke-width="4"/>
+  
+  <!-- 连接线 -->
+  <line x1="250" y1="256" x2="250" y2="256" stroke="#E0AAFF" stroke-width="8" stroke-linecap="round"/>
+</svg>
