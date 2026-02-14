@@ -31,7 +31,7 @@ jobs:
           copy core\target\release\bova-gui.exe release\BovaPlayer.exe
       
       - name: Upload Windows Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: BovaPlayer-Windows
           path: release/BovaPlayer.exe
@@ -83,7 +83,7 @@ jobs:
           hdiutil create -volname "BovaPlayer" -srcfolder core/target/release/BovaPlayer.app -ov -format UDZO core/target/release/BovaPlayer.dmg
       
       - name: Upload macOS Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: BovaPlayer-macOS
           path: core/target/release/BovaPlayer.dmg
@@ -138,7 +138,7 @@ jobs:
           flutter build apk --release
       
       - name: Upload Android APK
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: BovaPlayer-Android
           path: ui/flutter_app/build/app/outputs/flutter-apk/app-release.apk
