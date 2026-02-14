@@ -770,22 +770,27 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       ),
       body: Column(
         children: [
-          // 视频区域
-          AspectRatio(
-            aspectRatio: _hasVideo && _videoController != null && _videoController!.value.isInitialized
-                ? _videoController!.value.aspectRatio
-                : 16 / 9,
-            child: _buildNormalVideoArea(),
+          // 视频区域 - 用 Expanded 避免溢出
+          Expanded(
+            child: Container(
+              color: Colors.black,
+              child: Center(
+                child: AspectRatio(
+                  aspectRatio: _hasVideo && _videoController != null && _videoController!.value.isInitialized
+                      ? _videoController!.value.aspectRatio
+                      : 16 / 9,
+                  child: _buildNormalVideoArea(),
+                ),
+              ),
+            ),
           ),
 
           // 进度条
           if (_hasVideo) _buildNormalSeekBar(),
 
-          const Spacer(),
-
           // 底部按钮
           Padding(
-            padding: const EdgeInsets.only(bottom: 32, left: 16, right: 16),
+            padding: const EdgeInsets.only(bottom: 16, left: 16, right: 16, top: 8),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
