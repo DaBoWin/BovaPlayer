@@ -54,8 +54,12 @@ jobs:
               cp "$dep" release/ 2>/dev/null || true
             fi
           done
-          # 打包 ZIP
-          cd release && 7z a -tzip ../BovaPlayer-Windows.zip . && cd ..
+          # 打包 ZIP（使用 PowerShell，MSYS2 没有 7z）
+
+      - name: 打包 ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive -Path release\* -DestinationPath BovaPlayer-Windows.zip
 
       - name: Upload Windows Artifact
         uses: actions/upload-artifact@v4
