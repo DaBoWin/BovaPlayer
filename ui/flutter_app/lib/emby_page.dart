@@ -62,7 +62,12 @@ class _EmbyPageState extends State<EmbyPage> {
   @override
   void initState() {
     super.initState();
-    _loadServers();
+    print('[EmbyPage] initState 开始');
+    _loadServers().then((_) {
+      print('[EmbyPage] 服务器加载完成，共 ${_servers.length} 个服务器');
+    }).catchError((e) {
+      print('[EmbyPage] 加载服务器失败: $e');
+    });
   }
 
   @override
@@ -455,15 +460,62 @@ class _EmbyPageState extends State<EmbyPage> {
 
   @override
   Widget build(BuildContext context) {
-    switch (_viewMode) {
-      case EmbyViewMode.serverList:
-        return _buildServerListPage();
-      case EmbyViewMode.dashboard:
-        return _buildDashboard();
-      case EmbyViewMode.browser:
-        return _buildBrowserPage();
-      case EmbyViewMode.itemDetail:
-        return _buildItemDetailPage();
+    print('[EmbyPage] build 被调用，当前模式: $_viewMode');
+    
+    try {
+      switch (_viewMode) {
+        case EmbyViewMode.serverList:
+          return _buildServerListPage();
+        case EmbyViewMode.dashboard:
+          return _buildDashboard();
+        case EmbyViewMode.browser:
+          return _buildBrowserPage();
+        case EmbyViewMode.itemDetail:
+          return _buildItemDetailPage();
+      }
+    } catch (e, stackTrace) {
+      print('[EmbyPage] 构建页面时出错: $e');
+      print('[EmbyPage] 堆栈跟踪: $stackTrace');
+      
+      // 返回错误页面
+      return Scaffold(
+        backgroundColor: const Color(0xFF1A1A2E),
+        appBar: AppBar(
+          title: const Text('Emby'),
+          backgroundColor: const Color(0xFF16213E),
+        ),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red, size: 64),
+              const SizedBox(height: 16),
+              const Text(
+                '页面加载失败',
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Text(
+                  e.toString(),
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () {
+                  setState(() {
+                    _viewMode = EmbyViewMode.serverList;
+                  });
+                },
+                child: const Text('重试'),
+              ),
+            ],
+          ),
+        ),
+      );
     }
   }
 

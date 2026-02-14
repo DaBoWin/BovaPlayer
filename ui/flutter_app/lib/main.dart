@@ -69,6 +69,8 @@ class _MainNavigationState extends State<MainNavigation> {
 
   @override
   Widget build(BuildContext context) {
+    print('[MainNavigation] build 被调用，当前索引: $_currentIndex');
+    
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
@@ -87,7 +89,10 @@ class _MainNavigationState extends State<MainNavigation> {
         ),
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
-          onTap: (index) => setState(() => _currentIndex = index),
+          onTap: (index) {
+            print('[MainNavigation] 切换到索引: $index');
+            setState(() => _currentIndex = index);
+          },
           backgroundColor: const Color(0xFF16213E),
           selectedItemColor: Colors.deepPurple.shade200,
           unselectedItemColor: Colors.white38,
