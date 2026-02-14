@@ -1,0 +1,21 @@
+快速构建指南
+=============
+
+✅ macOS - 已完成
+文件: core/target/release/BovaPlayer-macOS-v0.0.1.dmg
+
+❌ Windows - 需要在 Windows 机器上运行:
+1. 安装 Rust: https://rustup.rs/
+2. 克隆项目
+3. 运行: cd core && cargo build --release --bin bova-gui
+4. 输出: core/target/release/bova-gui.exe
+
+或者使用 GitHub Actions 自动构建（已配置 .github/workflows/build.yml）
+
+❌ Android - 需要 Android SDK
+当前系统没有 Android SDK，需要:
+1. 安装 Android Studio
+2. 配置 Android SDK
+3. 运行: ./build_android.sh
+
+推荐: 使用 GitHub Actions 自动构建所有平台

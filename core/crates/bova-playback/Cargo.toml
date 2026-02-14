@@ -1,0 +1,20 @@
+[package]
+name = "bova-playback"
+version = "0.0.1"
+edition = "2021"
+description = "FFmpeg-based software playback (demux + video decode + swscale) for BovaPlayer"
+license = "MIT OR Apache-2.0"
+
+[features]
+default = ["mpv"]
+ffmpeg = ["dep:ffmpeg-next"]
+mpv = ["dep:libmpv2", "dep:libmpv2-sys"]
+hwaccel = []
+
+[dependencies]
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+ffmpeg-next = { version = "7", optional = true }
+libmpv2 = { version = "5.0", optional = true }
+libmpv2-sys = { version = "4.0", optional = true }
+crossbeam-channel = "0.5"

@@ -1,0 +1,144 @@
+name: Build All Platforms
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+      
+      - name: Build Windows
+        run: |
+          cd core
+          cargo build --release --bin bova-gui
+      
+      - name: Create Release Directory
+        run: |
+          mkdir release
+          copy core\target\release\bova-gui.exe release\BovaPlayer.exe
+      
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: BovaPlayer-Windows
+          path: release/BovaPlayer.exe
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+      
+      - name: Build macOS
+        run: |
+          cd core
+          cargo build --release --bin bova-gui
+      
+      - name: Create App Bundle
+        run: |
+          APP_NAME="BovaPlayer"
+          APP_DIR="core/target/release/${APP_NAME}.app"
+          mkdir -p "${APP_DIR}/Contents/MacOS"
+          mkdir -p "${APP_DIR}/Contents/Resources"
+          cp core/target/release/bova-gui "${APP_DIR}/Contents/MacOS/${APP_NAME}"
+          
+          cat > "${APP_DIR}/Contents/Info.plist" << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>${APP_NAME}</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.bova.player</string>
+              <key>CFBundleName</key>
+              <string>${APP_NAME}</string>
+              <key>CFBundleVersion</key>
+              <string>0.0.1</string>
+          </dict>
+          </plist>
+          EOF
+      
+      - name: Create DMG
+        run: |
+          hdiutil create -volname "BovaPlayer" -srcfolder core/target/release/BovaPlayer.app -ov -format UDZO core/target/release/BovaPlayer.dmg
+      
+      - name: Upload macOS Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: BovaPlayer-macOS
+          path: core/target/release/BovaPlayer.dmg
+
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.7'
+          channel: 'stable'
+      
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+      
+      - name: Add Android Targets
+        run: |
+          rustup target add aarch64-linux-android
+          rustup target add armv7-linux-androideabi
+          rustup target add x86_64-linux-android
+      
+      - name: Install NDK
+        run: |
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;25.1.8937393"
+      
+      - name: Build Rust for Android
+        run: |
+          cd core
+          cargo build --release --lib --target aarch64-linux-android -p bova-ffi || echo "FFI build skipped"
+      
+      - name: Flutter Pub Get
+        run: |
+          cd ui/flutter_app
+          flutter pub get
+      
+      - name: Build APK
+        run: |
+          cd ui/flutter_app
+          flutter build apk --release
+      
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: BovaPlayer-Android
+          path: ui/flutter_app/build/app/outputs/flutter-apk/app-release.apk

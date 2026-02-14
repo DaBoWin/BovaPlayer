@@ -1,0 +1,21 @@
+[package]
+name = "bova-cli"
+version = "0.0.1"
+edition = "2021"
+description = "CLI example using bova-core"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "bova-cli"
+path = "src/main.rs"
+
+[features]
+# Enable FFmpeg-backed media probing via bova-probe
+ffmpeg = ["bova-probe/ffmpeg", "bova-playback/ffmpeg"]
+
+[dependencies]
+bova-core = { path = "../bova-core" }
+clap = { version = "4", features = ["derive"] }
+serde_json = { workspace = true }
+bova-probe = { path = "../bova-probe" }
+bova-playback = { path = "../bova-playback" }

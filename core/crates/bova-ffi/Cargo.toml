@@ -1,0 +1,17 @@
+[package]
+name = "bova-ffi"
+version = "0.0.1"
+edition = "2021"
+description = "C ABI for BovaPlayer core"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "bova_ffi"
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+bova-core = { path = "../bova-core" }
+serde_json = { workspace = true }
+libc = "0.2"
+lazy_static = "1.4"

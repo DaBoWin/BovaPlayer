@@ -1,0 +1,16 @@
+[
+  {
+    "name": "https://emby.dnscf.dpdns.org:443",
+    "url": "https://emby.dnscf.dpdns.org:443",
+    "username": "dabo",
+    "user_id": "20feb7cf153c4f6e8089c0a1c708d17c",
+    "access_token": "ce21c8dbc1e64022b82dfd24fa34c728"
+  },
+  {
+    "name": "https://emby.dabo.xx.kg:443",
+    "url": "https://emby.dabo.xx.kg:443",
+    "username": "dabo",
+    "user_id": "9fe897fbfa234160b94e52782c7327d3",
+    "access_token": "442e778432b843639275ded19dec2643"
+  }
+]

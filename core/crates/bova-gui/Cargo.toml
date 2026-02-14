@@ -1,0 +1,26 @@
+[package]
+name = "bova-gui"
+version = "0.0.1"
+edition = "2021"
+description = "Minimal GUI for BovaPlayer using eframe/egui"
+license = "MIT OR Apache-2.0"
+
+[features]
+default = ["mpv"]
+# 透传 FFmpeg 特性到 bova-probe，以启用真实媒体探测
+ffmpeg = ["bova-probe/ffmpeg", "bova-playback/ffmpeg"]
+mpv = ["bova-playback/mpv"]
+
+[dependencies]
+bova-core = { path = "../bova-core" }
+eframe = { version = "0.27", default-features = false, features = ["default_fonts", "glow"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { version = "0.11", features = ["blocking", "json"] }
+bova-probe = { path = "../bova-probe" }
+rfd = "0.15"
+bova-playback = { path = "../bova-playback" }
+rodio = { version = "0.17" }
+crossbeam-channel = "0.5"
+image = "0.25.9"
+egui_extras = { version = "0.32.3", features = ["image"] }

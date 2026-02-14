@@ -1,0 +1,23 @@
+[package]
+name = "bova-core"
+version = "0.0.1"
+edition = "2021"
+description = "BovaPlayer core API stubs"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "bova_core"
+path = "src/lib.rs"
+
+[features]
+# Enable FFmpeg-backed probe via bova-probe
+ffmpeg = ["bova-probe/ffmpeg"]
+
+[dependencies]
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+parking_lot = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
+bova-probe = { path = "../bova-probe" }

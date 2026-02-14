@@ -1,0 +1,28 @@
+name: bova_native
+description: BovaPlayer native bindings for Flutter
+version: 0.0.1
+homepage: https://github.com/bovaplayer/bova_native
+
+environment:
+  sdk: '>=2.19.0 <4.0.0'
+  flutter: '>=3.7.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  ffi: ^2.0.1
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.example.bova_native
+        pluginClass: BovaNativePlugin
+      ios:
+        pluginClass: BovaNativePlugin
+      macos:
+        pluginClass: BovaNativePlugin
+      linux:
+        pluginClass: BovaNativePlugin
+      windows:
+        pluginClass: BovaNativePlugin

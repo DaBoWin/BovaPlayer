@@ -1,0 +1,21 @@
+[package]
+name = "bova-probe"
+version = "0.0.1"
+edition = "2021"
+description = "Media probe utilities for BovaPlayer (FFmpeg-gated)"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "bova_probe"
+path = "src/lib.rs"
+
+[features]
+# Enable FFmpeg-backed probing (not wired yet). Without this, returns placeholder info.
+ffmpeg = ["dep:ffmpeg-next"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+ffmpeg-next = { version = "7", optional = true }
