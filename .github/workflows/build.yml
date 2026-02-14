@@ -189,14 +189,22 @@ jobs:
           flutter clean
           rm -rf .dart_tool
           rm -rf build
+          # 清理可能冲突的缓存
           rm -rf ~/.pub-cache/hosted/pub.dev/media_kit_video-2.0.1 || true
+          rm -rf ~/.pub-cache/hosted/pub.dev/media_kit_video-1.3.1 || true
+          # 安装依赖
           flutter pub get
+          # 显示实际安装的版本
+          echo "=== 已安装的 media_kit 相关包版本 ==="
+          flutter pub deps | grep media_kit || true
           
       - name: 验证 Android Embedding V2
         run: |
           cd ui/flutter_app
           # 确认 AndroidManifest.xml 包含 flutterEmbedding=2
           grep -q 'flutterEmbedding.*2' android/app/src/main/AndroidManifest.xml && echo "✓ Android Embedding V2 已配置" || exit 1
+          # 确认 MainActivity 继承 FlutterActivity
+          grep -q 'FlutterActivity' android/app/src/main/kotlin/com/example/bova_player_flutter/MainActivity.kt && echo "✓ MainActivity 正确继承 FlutterActivity" || exit 1
 
       - name: 设置 Android SDK 环境变量
         run: |
