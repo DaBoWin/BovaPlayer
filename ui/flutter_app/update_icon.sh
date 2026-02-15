@@ -39,7 +39,7 @@ flutter pub get
 # 生成图标
 echo ""
 echo "🔨 生成应用图标..."
-flutter pub run flutter_launcher_icons
+dart run flutter_launcher_icons
 
 # 检查生成结果
 if [ -f "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" ]; then

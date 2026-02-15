@@ -1,29 +1,8 @@
 flutter_launcher_icons:
   android: true
-  ios: true
-  image_path: "assets/logo.png"
+  ios: false
+  image_path: "assets/icon.png"
   
   # Android 自适应图标
-  adaptive_icon_background: "#D4A574"
-  adaptive_icon_foreground: "assets/logo_foreground.png"
-  
-  # iOS
-  ios_content_mode: "scaleAspectFit"
-  
-  # macOS
-  macos:
-    generate: true
-    image_path: "assets/logo.png"
-  
-  # Windows
-  windows:
-    generate: true
-    image_path: "assets/logo.png"
-    icon_size: 256
-  
-  # Web
-  web:
-    generate: true
-    image_path: "assets/logo.png"
-    background_color: "#D4A574"
-    theme_color: "#D4A574"
+  adaptive_icon_background: "#1F2937"  # 高级黑
+  adaptive_icon_foreground: "assets/icon.png"

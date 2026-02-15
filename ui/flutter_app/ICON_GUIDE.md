@@ -34,7 +34,7 @@ cd ui/flutter_app
 ```bash
 cd ui/flutter_app
 flutter pub get
-flutter pub run flutter_launcher_icons
+dart run flutter_launcher_icons
 ```
 
 ### 4️⃣ 重新构建应用
@@ -138,7 +138,7 @@ flutter_launcher_icons:
 ```bash
 flutter clean
 flutter pub get
-flutter pub run flutter_launcher_icons
+dart run flutter_launcher_icons
 flutter build apk --release
 ```
 
