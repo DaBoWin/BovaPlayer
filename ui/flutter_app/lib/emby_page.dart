@@ -322,10 +322,107 @@ class _EmbyPageState extends State<EmbyPage> {
       baseUrl = baseUrl.replaceAll(':443', '');
     }
     
-    // 使用直接流播放（不转码）
-    final url = '$baseUrl/Videos/$itemId/stream?static=true&api_key=${server.accessToken}';
+    // 方法1: 尝试使用 PlaybackInfo API 获取最佳播放地址
+    String? playbackUrl;
+    try {
+      final playbackInfoUrl = '$baseUrl/Items/$itemId/PlaybackInfo?UserId=${server.userId}&api_key=${server.accessToken}';
+      print('[EmbyPage] 获取 PlaybackInfo: $playbackInfoUrl');
+      
+      final response = await http.post(
+        Uri.parse(playbackInfoUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          ..._headers(),
+        },
+        body: jsonEncode({
+          'DeviceProfile': {
+            'MaxStreamingBitrate': 120000000,
+            'MaxStaticBitrate': 100000000,
+            'MusicStreamingTranscodingBitrate': 384000,
+            'DirectPlayProfiles': [
+              {
+                'Container': 'mp4,m4v,mkv,avi,mov,wmv,asf,webm',
+                'Type': 'Video',
+                'VideoCodec': 'h264,hevc,vp8,vp9,av1',
+                'AudioCodec': 'aac,mp3,ac3,eac3,dts,flac,opus,vorbis'
+              }
+            ],
+            'TranscodingProfiles': [],
+            'ContainerProfiles': [],
+            'CodecProfiles': [],
+            'SubtitleProfiles': [
+              {
+                'Format': 'srt',
+                'Method': 'External'
+              },
+              {
+                'Format': 'ass',
+                'Method': 'External'
+              },
+              {
+                'Format': 'vtt',
+                'Method': 'External'
+              }
+            ]
+          }
+        }),
+      ).timeout(const Duration(seconds: 10));
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('[EmbyPage] PlaybackInfo 响应: ${jsonEncode(data)}');
+        
+        // 优先使用 DirectPlay
+        if (data['MediaSources'] != null && (data['MediaSources'] as List).isNotEmpty) {
+          final mediaSource = data['MediaSources'][0];
+          
+          if (mediaSource['SupportsDirectPlay'] == true) {
+            // 直接播放
+            final path = mediaSource['Path'] ?? '';
+            if (path.startsWith('http')) {
+              playbackUrl = path;
+              print('[EmbyPage] 使用 DirectPlay URL: $playbackUrl');
+            } else {
+              // 构建直接播放 URL
+              playbackUrl = '$baseUrl/Videos/$itemId/stream?static=true&mediaSourceId=${mediaSource['Id']}&api_key=${server.accessToken}';
+              print('[EmbyPage] 构建 DirectPlay URL: $playbackUrl');
+            }
+          } else if (mediaSource['SupportsDirectStream'] == true) {
+            // 直接流式传输
+            playbackUrl = '$baseUrl/Videos/$itemId/stream?static=true&mediaSourceId=${mediaSource['Id']}&api_key=${server.accessToken}';
+            print('[EmbyPage] 使用 DirectStream URL: $playbackUrl');
+          } else {
+            // 转码播放
+            final transcodingUrl = mediaSource['TranscodingUrl'];
+            if (transcodingUrl != null) {
+              playbackUrl = '$baseUrl$transcodingUrl';
+              print('[EmbyPage] 使用 Transcoding URL: $playbackUrl');
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print('[EmbyPage] PlaybackInfo API 失败: $e');
+    }
     
-    print('[EmbyPage] Stream URL (Direct Play): $url');
+    // 方法2: 如果 PlaybackInfo 失败，使用传统的直接流播放
+    if (playbackUrl == null) {
+      playbackUrl = '$baseUrl/Videos/$itemId/stream?static=true&api_key=${server.accessToken}';
+      print('[EmbyPage] 使用备用 Stream URL: $playbackUrl');
+    }
+    
+    // 方法3: 尝试多个备用 URL
+    final fallbackUrls = [
+      playbackUrl,
+      '$baseUrl/Videos/$itemId/stream?api_key=${server.accessToken}',
+      '$baseUrl/emby/Videos/$itemId/stream?static=true&api_key=${server.accessToken}',
+      '$baseUrl/Items/$itemId/Download?api_key=${server.accessToken}',
+    ];
+    
+    print('[EmbyPage] 准备尝试的 URLs:');
+    for (var i = 0; i < fallbackUrls.length; i++) {
+      print('[EmbyPage]   [$i] ${fallbackUrls[i]}');
+    }
     
     // 构建 HTTP headers
     final headers = _headers();
@@ -339,7 +436,7 @@ class _EmbyPageState extends State<EmbyPage> {
         context,
         MaterialPageRoute(
           builder: (_) => MediaKitPlayerPage(
-            url: url,
+            url: playbackUrl,
             title: name,
             httpHeaders: headers,
             subtitles: subtitles,
