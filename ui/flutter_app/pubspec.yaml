@@ -34,9 +34,11 @@ dev_dependencies:
 flutter_launcher_icons:
   android: true
   ios: false
-  image_path: "assets/icon.png"
-  adaptive_icon_background: "#1A1A2E"
-  adaptive_icon_foreground: "assets/icon_foreground.png"
+  image_path: "assets/icon.png"  # 主图标路径（512x512）
+  adaptive_icon_background: "#1F2937"  # 背景色（高级黑）
+  adaptive_icon_foreground: "assets/icon_foreground.png"  # 前景图（可选）
+  # 如果没有 icon_foreground.png，可以只用 image_path
+  # adaptive_icon_foreground: "assets/icon.png"
 
 flutter:
   uses-material-design: true
