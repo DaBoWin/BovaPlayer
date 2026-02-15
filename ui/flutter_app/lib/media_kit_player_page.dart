@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -25,7 +26,7 @@ class MediaKitPlayerPage extends StatefulWidget {
 
 class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
   late final Player _player;
-  late final VideoController _videoController;
+  VideoController? _videoController;
   
   bool _isInitializing = true;
   String? _errorMessage;
@@ -58,22 +59,60 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       ),
     );
     
-    // Android 需要启用硬件加速，macOS 需要禁用
-    final bool enableHwAccel = Theme.of(context).platform == TargetPlatform.android;
+    // 延迟初始化 VideoController，避免在 initState 中访问 context
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeVideoController();
+    });
+  }
+  
+  void _initializeVideoController() async {
+    if (!mounted) return;
+    
+    // 检测是否是模拟器 - 使用多种方法
+    bool isEmulator = false;
+    try {
+      // 方法1: 检查 ro.kernel.qemu
+      final result1 = await Process.run('getprop', ['ro.kernel.qemu']);
+      final qemu = result1.stdout.toString().trim();
+      print('[MediaKitPlayer] ro.kernel.qemu = $qemu');
+      
+      // 方法2: 检查 ro.product.model
+      final result2 = await Process.run('getprop', ['ro.product.model']);
+      final model = result2.stdout.toString().trim();
+      print('[MediaKitPlayer] ro.product.model = $model');
+      
+      // 方法3: 检查 ro.hardware
+      final result3 = await Process.run('getprop', ['ro.hardware']);
+      final hardware = result3.stdout.toString().trim();
+      print('[MediaKitPlayer] ro.hardware = $hardware');
+      
+      // 判断是否是模拟器
+      isEmulator = qemu == '1' || 
+                   model.toLowerCase().contains('sdk') || 
+                   model.toLowerCase().contains('emulator') ||
+                   hardware.toLowerCase().contains('ranchu') ||
+                   hardware.toLowerCase().contains('goldfish');
+      
+      print('[MediaKitPlayer] 模拟器检测结果: $isEmulator');
+    } catch (e) {
+      print('[MediaKitPlayer] 模拟器检测失败: $e，默认假设是真机');
+      isEmulator = false;
+    }
+    
+    // 真机启用硬件加速，模拟器禁用
+    final enableHwAccel = !isEmulator && Theme.of(context).platform == TargetPlatform.android;
     
     _videoController = VideoController(
       _player,
       configuration: VideoControllerConfiguration(
         enableHardwareAcceleration: enableHwAccel,
-        // Android 特定配置
-        androidAttachSurfaceAfterVideoParameters: enableHwAccel,
       ),
     );
     
-    print('[MediaKitPlayer] 平台: ${Theme.of(context).platform}, 硬件加速: $enableHwAccel');
+    print('[MediaKitPlayer] 平台: ${Theme.of(context).platform}, 模拟器: $isEmulator, 硬件加速: $enableHwAccel');
     
     // 配置 mpv TLS 选项（修复 HTTPS 播放）
-    _configureMpvTls();
+    await _configureMpvTls(isEmulator);
     
     // 监听播放器状态
     _player.stream.playing.listen((playing) {
@@ -117,7 +156,7 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
   }
 
   /// 配置 mpv 底层选项以支持 HTTPS 自签名证书
-  Future<void> _configureMpvTls() async {
+  Future<void> _configureMpvTls(bool isEmulator) async {
     try {
       final nativePlayer = _player.platform;
       if (nativePlayer == null) return;
@@ -139,12 +178,17 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       await (nativePlayer as dynamic).setProperty('force-seekable', 'yes');
       await (nativePlayer as dynamic).setProperty('network-timeout', '60');
       
-      // 3. 硬件解码配置 - Android 和 macOS 不同
+      // 3. 硬件解码配置 - 根据设备类型和平台
       if (isAndroid) {
-        // Android 使用 mediacodec 硬件解码
-        await (nativePlayer as dynamic).setProperty('hwdec', 'mediacodec-copy');
-        await (nativePlayer as dynamic).setProperty('vo', 'gpu');
-        print('[MediaKitPlayer] Android 配置: hwdec=mediacodec-copy, vo=gpu');
+        if (isEmulator) {
+          // 模拟器使用纯软件解码
+          await (nativePlayer as dynamic).setProperty('hwdec', 'no');
+          print('[MediaKitPlayer] Android 模拟器配置: hwdec=no (纯软件解码)');
+        } else {
+          // 真机使用硬件解码
+          await (nativePlayer as dynamic).setProperty('hwdec', 'mediacodec-copy');
+          print('[MediaKitPlayer] Android 真机配置: hwdec=mediacodec-copy (硬件解码)');
+        }
       } else {
         // macOS 使用 auto-copy
         await (nativePlayer as dynamic).setProperty('hwdec', 'auto-copy');
@@ -238,163 +282,57 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
   }
 
   /// 计算实时网速
-  /// 通过监听播放位置变化来估算下载速度
+  /// 使用缓冲区变化来估算下载速度
   void _updateNetworkSpeed() async {
     if (!mounted) return;
     
     try {
-      final nativePlayer = _player.platform;
-      if (nativePlayer == null) {
-        return;
-      }
+      // 使用 buffer stream 来估算网速
+      final buffer = _player.state.buffer;
+      final position = _player.state.position;
       
-      try {
-        // 方法1: 尝试从 MPV 获取 cache-speed
-        // cache-speed 单位可能是 bytes/s，直接使用
-        final cacheSpeed = await (nativePlayer as dynamic).getProperty('cache-speed');
+      // 计算缓冲区大小变化
+      final now = DateTime.now();
+      final timeDiff = now.difference(_lastSpeedCheck).inSeconds.toDouble();
+      
+      if (timeDiff > 1.0) {
+        final currentBufferMs = buffer.inMilliseconds;
+        final bufferDiff = currentBufferMs - _lastPosition;
         
-        if (cacheSpeed != null) {
-          double? speedValue;
-          if (cacheSpeed is num) {
-            speedValue = cacheSpeed.toDouble();
-          } else if (cacheSpeed is String) {
-            speedValue = double.tryParse(cacheSpeed);
-          }
+        // 估算网速：假设视频码率约为 5 Mbps (625 KB/s)
+        // 缓冲增量 * 估算码率 / 时间差
+        if (bufferDiff > 0) {
+          final estimatedBytesPerSecond = (bufferDiff / 1000.0) * 625.0 / timeDiff;
           
-          if (speedValue != null && speedValue > 0) {
-            // cache-speed 单位是 bytes/s，直接格式化
-            final speed = _formatSpeed(speedValue);
+          if (estimatedBytesPerSecond > 0) {
+            final speed = _formatSpeed(estimatedBytesPerSecond);
             if (mounted) {
               setState(() {
                 _networkSpeed = speed;
               });
             }
-            return;
           }
         }
-      } catch (e) {
-        // cache-speed 不可用
+        
+        _lastPosition = currentBufferMs;
+        _lastSpeedCheck = now;
       }
       
-      try {
-        // 方法2: 尝试获取 demuxer-cache-state，使用 raw-input-rate
-        final cacheState = await (nativePlayer as dynamic).getProperty('demuxer-cache-state');
-        
-        if (cacheState != null && cacheState is Map) {
-          // raw-input-rate 是实时输入速率（字节/秒）
-          final rawInputRate = cacheState['raw-input-rate'];
-          
-          if (rawInputRate != null) {
-            double? speedValue;
-            if (rawInputRate is num) {
-              speedValue = rawInputRate.toDouble();
-            } else if (rawInputRate is String) {
-              speedValue = double.tryParse(rawInputRate);
-            }
-            
-            if (speedValue != null && speedValue > 0) {
-              final speed = _formatSpeed(speedValue);
-              if (mounted) {
-                setState(() {
-                  _networkSpeed = speed;
-                });
-              }
-              return;
-            }
-          }
-          
-          // 备用：计算缓存增长速度
-          final totalBytes = cacheState['total-bytes'];
-          if (totalBytes != null) {
-            int? bytesValue;
-            if (totalBytes is num) {
-              bytesValue = totalBytes.toInt();
-            } else if (totalBytes is String) {
-              bytesValue = int.tryParse(totalBytes);
-            }
-            
-            if (bytesValue != null) {
-              final now = DateTime.now();
-              final timeDiff = now.difference(_lastSpeedCheck).inSeconds.toDouble();
-              
-              if (timeDiff > 0 && _lastPosition > 0 && bytesValue > _lastPosition) {
-                final bytesDiff = bytesValue - _lastPosition;
-                final bytesPerSecond = bytesDiff / timeDiff;
-                
-                if (bytesPerSecond > 0) {
-                  final speed = _formatSpeed(bytesPerSecond);
-                  if (mounted) {
-                    setState(() {
-                      _networkSpeed = speed;
-                    });
-                  }
-                }
-              }
-              
-              _lastPosition = bytesValue;
-              _lastSpeedCheck = now;
-              return;
-            }
-          }
-        }
-      } catch (e) {
-        print('[NetworkSpeed] 方法2失败: $e');
-      }
-      
-      try {
-        // 方法3: 使用 video-bitrate 和 audio-bitrate 估算
-        final videoBitrate = await (nativePlayer as dynamic).getProperty('video-bitrate');
-        final audioBitrate = await (nativePlayer as dynamic).getProperty('audio-bitrate');
-        
-        double totalBitrate = 0;
-        
-        if (videoBitrate != null) {
-          if (videoBitrate is num) {
-            totalBitrate += videoBitrate.toDouble();
-          } else if (videoBitrate is String) {
-            totalBitrate += double.tryParse(videoBitrate) ?? 0;
-          }
-        }
-        
-        if (audioBitrate != null) {
-          if (audioBitrate is num) {
-            totalBitrate += audioBitrate.toDouble();
-          } else if (audioBitrate is String) {
-            totalBitrate += double.tryParse(audioBitrate) ?? 0;
-          }
-        }
-        
-        if (totalBitrate > 0) {
-          // bitrate 单位是 bits/s，转换为 bytes/s
-          final bytesPerSecond = totalBitrate / 8.0;
-          final speed = _formatSpeed(bytesPerSecond);
-          if (mounted) {
-            setState(() {
-              _networkSpeed = speed;
-            });
-          }
-          return;
-        }
-      } catch (e) {
-        print('[NetworkSpeed] 方法3失败: $e');
-      }
-      
-      // 所有方法都失败，显示状态
+      // 显示缓冲状态
       if (_player.state.buffering) {
         if (mounted) {
           setState(() {
             _networkSpeed = '缓冲中...';
           });
         }
-      } else if (_player.state.playing) {
-        if (mounted) {
-          setState(() {
-            _networkSpeed = '-- KB/s';
-          });
-        }
       }
     } catch (e) {
       print('[NetworkSpeed] 更新失败: $e');
+      if (mounted) {
+        setState(() {
+          _networkSpeed = '-- KB/s';
+        });
+      }
     }
   }
 
@@ -513,13 +451,17 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
     // 使用 Container 包裹确保有背景色
     return Container(
       color: Colors.black,
-      child: Video(
-        controller: _videoController,
-        controls: NoVideoControls,
-        fit: BoxFit.contain,
-        // 添加 wakelock 保持屏幕常亮
-        wakelock: true,
-      ),
+      child: _videoController != null
+          ? Video(
+              controller: _videoController!,
+              controls: NoVideoControls,
+              fit: BoxFit.contain,
+              // 添加 wakelock 保持屏幕常亮
+              wakelock: true,
+            )
+          : const Center(
+              child: CircularProgressIndicator(color: Colors.white),
+            ),
     );
   }
 

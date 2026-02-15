@@ -419,78 +419,82 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     if (_errorMessage != null) {
       return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline, color: Colors.redAccent, size: 64),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Text(
-                _errorMessage!,
-                style: const TextStyle(color: Colors.redAccent, fontSize: 14),
-                textAlign: TextAlign.center,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.redAccent, size: 64),
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Text(
+                  _errorMessage!,
+                  style: const TextStyle(color: Colors.redAccent, fontSize: 14),
+                  textAlign: TextAlign.center,
+                ),
               ),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.refresh),
-              label: const Text('重试'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepPurple,
-                foregroundColor: Colors.white,
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.refresh),
+                label: const Text('重试'),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.deepPurple,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: _pickAndPlayFile,
               ),
-              onPressed: _pickAndPlayFile,
-            ),
-          ],
+            ],
+          ),
         ),
       );
     }
 
     if (!_hasVideo) {
       return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.deepPurple.withOpacity(0.15),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.deepPurple.withOpacity(0.15),
+                ),
+                child: Icon(
+                  Icons.video_library_outlined,
+                  size: 60,
+                  color: Colors.deepPurple.shade200,
+                ),
               ),
-              child: Icon(
-                Icons.video_library_outlined,
-                size: 60,
-                color: Colors.deepPurple.shade200,
+              const SizedBox(height: 24),
+              const Text(
+                '还没有选择视频',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              '还没有选择视频',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
+              const SizedBox(height: 8),
+              const Text(
+                '点击右上角文件夹图标选择视频',
+                style: TextStyle(color: Colors.white38, fontSize: 14),
               ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              '点击右上角文件夹图标选择视频',
-              style: TextStyle(color: Colors.white38, fontSize: 14),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.folder_open),
-              label: const Text('选择视频文件'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepPurple,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.folder_open),
+                label: const Text('选择视频文件'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepPurple,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+                onPressed: _pickAndPlayFile,
               ),
-              onPressed: _pickAndPlayFile,
-            ),
-          ],
+            ],
+          ),
         ),
       );
     }

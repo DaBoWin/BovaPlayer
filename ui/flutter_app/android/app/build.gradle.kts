@@ -54,9 +54,37 @@ android {
                 "META-INF/*.kotlin_module"
             )
         }
+        // 允许重复的类文件（选择第一个）
+        jniLibs {
+            pickFirsts += setOf("**/*.so")
+        }
+        dex {
+            useLegacyPackaging = false
+        }
+    }
+}
+
+dependencies {
+    // 强制使用统一版本的依赖，避免冲突
+    constraints {
+        implementation("org.checkerframework:checker-qual:3.42.0") {
+            because("解决多个版本冲突")
+        }
+        implementation("com.google.guava:guava:32.1.3-android") {
+            because("解决多个版本冲突")
+        }
     }
 }
 
 flutter {
     source = "../.."
+}
+
+// 强制所有配置使用统一版本
+configurations.all {
+    resolutionStrategy {
+        force("org.checkerframework:checker-qual:3.42.0")
+        force("com.google.guava:guava:32.1.3-android")
+        force("com.google.code.findbugs:jsr305:3.0.2")
+    }
 }
