@@ -12,8 +12,8 @@ class PlayerScreen extends StatefulWidget {
 }
 
 class _PlayerScreenState extends State<PlayerScreen> {
-  late final Player _player;
-  late final VideoController _videoController;
+  Player? _player;
+  VideoController? _videoController;
   bool _isLoading = false;
   String? _errorMessage;
   bool _hasVideo = false;
@@ -33,72 +33,84 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void initState() {
     super.initState();
-    _player = Player();
-    _videoController = VideoController(_player);
-    
-    // 监听播放器状态变化
-    _player.stream.duration.listen((duration) {
-      if (mounted) {
-        setState(() {
-          _updateVideoInfo();
-        });
-      }
-    });
-    
-    _player.stream.width.listen((width) {
-      if (mounted) {
-        setState(() {
-          _updateVideoInfo();
-        });
-      }
-    });
-    
-    _player.stream.height.listen((height) {
-      if (mounted) {
-        setState(() {
-          _updateVideoInfo();
-        });
-      }
-    });
-    
-    // 监听字幕轨道变化
-    _player.stream.tracks.listen((tracks) {
-      if (mounted) {
-        setState(() {
-          _subtitleTracks = tracks.subtitle;
-        });
-      }
-    });
-    
-    _player.stream.track.listen((track) {
-      if (mounted) {
-        setState(() {
-          _currentSubtitle = track.subtitle;
-        });
-      }
-    });
-    
-    // 监听缓冲状态来计算网速
-    _player.stream.buffer.listen((buffer) {
-      _updateNetworkSpeed(buffer.inMilliseconds);
-    });
-    
-    // 启动网速监控定时器
-    _startSpeedMonitoring();
-    
-    print('[PlayerScreen] Media Kit 播放器已初始化');
+    _initializePlayer();
+  }
+  
+  void _initializePlayer() {
+    try {
+      print('[PlayerScreen] 初始化播放器');
+      _player = Player();
+      _videoController = VideoController(_player!);
+      
+      // 监听播放器状态变化
+      _player!.stream.duration.listen((duration) {
+        if (mounted) {
+          setState(() {
+            _updateVideoInfo();
+          });
+        }
+      });
+      
+      _player!.stream.width.listen((width) {
+        if (mounted) {
+          setState(() {
+            _updateVideoInfo();
+          });
+        }
+      });
+      
+      _player!.stream.height.listen((height) {
+        if (mounted) {
+          setState(() {
+            _updateVideoInfo();
+          });
+        }
+      });
+      
+      // 监听字幕轨道变化
+      _player!.stream.tracks.listen((tracks) {
+        if (mounted) {
+          setState(() {
+            _subtitleTracks = tracks.subtitle;
+          });
+        }
+      });
+      
+      _player!.stream.track.listen((track) {
+        if (mounted) {
+          setState(() {
+            _currentSubtitle = track.subtitle;
+          });
+        }
+      });
+      
+      // 监听缓冲状态来计算网速
+      _player!.stream.buffer.listen((buffer) {
+        _updateNetworkSpeed(buffer.inMilliseconds);
+      });
+      
+      // 启动网速监控定时器
+      _startSpeedMonitoring();
+      
+      print('[PlayerScreen] Media Kit 播放器已初始化');
+    } catch (e) {
+      print('[PlayerScreen] 播放器初始化失败: $e');
+      setState(() {
+        _errorMessage = '播放器初始化失败: $e';
+      });
+    }
   }
 
   @override
   void dispose() {
     _speedTimer?.cancel();
-    _player.dispose();
+    _player?.dispose();
     super.dispose();
   }
   
   void _startSpeedMonitoring() {
     _speedTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted && _player.state.playing) {
+      if (mounted && _player != null && _player!.state.playing) {
         // 网速会在 buffer 监听中更新
         setState(() {});
       }
@@ -123,9 +135,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
   
   void _updateVideoInfo() {
-    final duration = _player.state.duration;
-    final width = _player.state.width;
-    final height = _player.state.height;
+    if (_player == null) return;
+    
+    final duration = _player!.state.duration;
+    final width = _player!.state.width;
+    final height = _player!.state.height;
     
     final durationStr = duration.inSeconds > 0 
         ? '${duration.inMinutes}:${(duration.inSeconds % 60).toString().padLeft(2, '0')}'
@@ -147,6 +161,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
   
   Future<void> _showSubtitleSelector() async {
+    if (_player == null) return;
+    
     if (_subtitleTracks.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -192,7 +208,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   value: 'no',
                   groupValue: _currentSubtitle.id,
                   onChanged: (value) async {
-                    await _player.setSubtitleTrack(SubtitleTrack.no());
+                    await _player?.setSubtitleTrack(SubtitleTrack.no());
                     Navigator.pop(context);
                   },
                   activeColor: Colors.deepPurple.shade200,
@@ -202,7 +218,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   style: TextStyle(color: Colors.white),
                 ),
                 onTap: () async {
-                  await _player.setSubtitleTrack(SubtitleTrack.no());
+                  await _player?.setSubtitleTrack(SubtitleTrack.no());
                   Navigator.pop(context);
                 },
               ),
@@ -213,7 +229,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     value: track.id,
                     groupValue: _currentSubtitle.id,
                     onChanged: (value) async {
-                      await _player.setSubtitleTrack(track);
+                      await _player?.setSubtitleTrack(track);
                       Navigator.pop(context);
                     },
                     activeColor: Colors.deepPurple.shade200,
@@ -229,7 +245,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         )
                       : null,
                   onTap: () async {
-                    await _player.setSubtitleTrack(track);
+                    await _player?.setSubtitleTrack(track);
                     Navigator.pop(context);
                   },
                 );
@@ -243,6 +259,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
   
   Future<void> _loadExternalSubtitle() async {
+    if (_player == null) return;
+    
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -253,7 +271,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (result != null && result.files.isNotEmpty) {
         final filePath = result.files.first.path;
         if (filePath != null) {
-          await _player.setSubtitleTrack(
+          await _player?.setSubtitleTrack(
             SubtitleTrack.uri(filePath),
           );
           
@@ -312,11 +330,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _playFile(String filePath) async {
+    if (_player == null) {
+      print('[PlayerScreen] 播放器未初始化');
+      setState(() {
+        _errorMessage = '播放器未初始化';
+        _isLoading = false;
+        _hasVideo = false;
+      });
+      return;
+    }
+    
     try {
       print('[PlayerScreen] 准备播放文件: $filePath');
 
-      await _player.open(Media(filePath));
-      await _player.play();
+      await _player!.open(Media(filePath));
+      await _player!.play();
 
       setState(() {
         _hasVideo = true;
@@ -493,7 +521,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ),
                   ),
                   // 实时网速显示
-                  if (_player.state.playing && _currentSpeed > 0)
+                  if (_player != null && _player!.state.playing && _currentSpeed > 0)
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
@@ -577,16 +605,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
             color: Colors.black,
             child: Stack(
               children: [
-                Center(
-                  child: Video(
-                    controller: _videoController,
-                    controls: MaterialVideoControls,
+                if (_videoController != null)
+                  Center(
+                    child: Video(
+                      controller: _videoController!,
+                      controls: MaterialVideoControls,
+                    ),
+                  )
+                else
+                  const Center(
+                    child: CircularProgressIndicator(color: Colors.deepPurple),
                   ),
-                ),
                 // 缓冲时显示网速
-                StreamBuilder<bool>(
-                  stream: _player.stream.buffering,
-                  builder: (context, snapshot) {
+                if (_player != null)
+                  StreamBuilder<bool>(
+                    stream: _player!.stream.buffering,
+                    builder: (context, snapshot) {
                     final isBuffering = snapshot.data ?? false;
                     if (!isBuffering) return const SizedBox.shrink();
                     
@@ -657,39 +691,47 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 icon: const Icon(Icons.replay_10),
                 color: Colors.white,
                 iconSize: 32,
-                onPressed: () async {
-                  final currentPos = _player.state.position;
+                onPressed: _player == null ? null : () async {
+                  final currentPos = _player!.state.position;
                   final newPos = currentPos - const Duration(seconds: 10);
-                  await _player.seek(newPos.isNegative ? Duration.zero : newPos);
+                  await _player!.seek(newPos.isNegative ? Duration.zero : newPos);
                 },
                 tooltip: '后退 10 秒',
               ),
               // 播放/暂停
-              StreamBuilder<bool>(
-                stream: _player.stream.playing,
-                builder: (context, snapshot) {
-                  final isPlaying = snapshot.data ?? false;
-                  return IconButton(
-                    icon: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled),
-                    color: Colors.deepPurple.shade200,
-                    iconSize: 56,
-                    onPressed: () async {
-                      await _player.playOrPause();
-                    },
-                    tooltip: isPlaying ? '暂停' : '播放',
-                  );
-                },
-              ),
+              if (_player != null)
+                StreamBuilder<bool>(
+                  stream: _player!.stream.playing,
+                  builder: (context, snapshot) {
+                    final isPlaying = snapshot.data ?? false;
+                    return IconButton(
+                      icon: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled),
+                      color: Colors.deepPurple.shade200,
+                      iconSize: 56,
+                      onPressed: () async {
+                        await _player!.playOrPause();
+                      },
+                      tooltip: isPlaying ? '暂停' : '播放',
+                    );
+                  },
+                )
+              else
+                IconButton(
+                  icon: const Icon(Icons.play_circle_filled),
+                  color: Colors.grey,
+                  iconSize: 56,
+                  onPressed: null,
+                ),
               // 快进 10 秒
               IconButton(
                 icon: const Icon(Icons.forward_10),
                 color: Colors.white,
                 iconSize: 32,
-                onPressed: () async {
-                  final currentPos = _player.state.position;
-                  final duration = _player.state.duration;
+                onPressed: _player == null ? null : () async {
+                  final currentPos = _player!.state.position;
+                  final duration = _player!.state.duration;
                   final newPos = currentPos + const Duration(seconds: 10);
-                  await _player.seek(newPos > duration ? duration : newPos);
+                  await _player!.seek(newPos > duration ? duration : newPos);
                 },
                 tooltip: '前进 10 秒',
               ),
@@ -698,8 +740,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 icon: const Icon(Icons.stop_circle_outlined),
                 color: Colors.white,
                 iconSize: 32,
-                onPressed: () async {
-                  await _player.stop();
+                onPressed: _player == null ? null : () async {
+                  await _player!.stop();
                 },
                 tooltip: '停止',
               ),

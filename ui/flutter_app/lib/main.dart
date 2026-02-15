@@ -10,13 +10,9 @@ import 'emby_page.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  try {
-    // 初始化 media_kit
-    MediaKit.ensureInitialized();
-    print('[Main] media_kit 已初始化');
-  } catch (e) {
-    print('[Main] media_kit 初始化失败: $e');
-  }
+  // 初始化 media_kit（必须在使用任何 media_kit API 之前调用）
+  MediaKit.ensureInitialized();
+  print('[Main] media_kit 已初始化');
 
   try {
     final result = await NativeBridge.initialize();
