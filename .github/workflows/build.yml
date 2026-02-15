@@ -308,7 +308,20 @@ jobs:
         id: release_notes
         run: |
           TAG_NAME="${{ github.ref_name }}"
-          NOTES="## BovaPlayer ${TAG_NAME}\n\n### 📦 下载\n\n| 平台 | 文件 | 说明 |\n|------|------|------|\n"
+          
+          # 获取 tag 的完整 message（包含多行）
+          TAG_MESSAGE=$(git tag -l --format='%(contents)' "${TAG_NAME}")
+          
+          # 开始构建 Release Notes
+          NOTES="## BovaPlayer ${TAG_NAME}\n\n"
+          
+          # 添加 tag message（如果存在）
+          if [ -n "$TAG_MESSAGE" ]; then
+            NOTES="${NOTES}${TAG_MESSAGE}\n\n---\n\n"
+          fi
+          
+          # 添加下载表格
+          NOTES="${NOTES}### 📦 下载\n\n| 平台 | 文件 | 说明 |\n|------|------|------|\n"
           
           if [ -f release-files/BovaPlayer-Windows.zip ]; then
             NOTES="${NOTES}| 🪟 Windows | \`BovaPlayer-Windows.zip\` | 解压即用，包含 MPV 播放引擎 |\n"
@@ -322,7 +335,32 @@ jobs:
             NOTES="${NOTES}| 🤖 Android | \`BovaPlayer-Android.apk\` | 支持所有架构（arm64/arm/x86） |\n"
           fi
           
-          NOTES="${NOTES}\n> **macOS 用户注意**: 首次打开如提示\"已损坏\"，请在终端执行:\n> \`\`\`bash\n> xattr -cr /Applications/BovaPlayer.app\n> \`\`\`"
+          # 添加安装说明
+          NOTES="${NOTES}\n### 📝 安装说明\n\n"
+          
+          if [ -f release-files/BovaPlayer-Android.apk ]; then
+            NOTES="${NOTES}**Android:**\n"
+            NOTES="${NOTES}1. 下载 \`BovaPlayer-Android.apk\`\n"
+            NOTES="${NOTES}2. 在手机上安装（需要允许安装未知来源应用）\n"
+            NOTES="${NOTES}3. 打开应用即可使用\n\n"
+          fi
+          
+          if [ -f release-files/BovaPlayer-macOS.dmg ]; then
+            NOTES="${NOTES}**macOS:**\n"
+            NOTES="${NOTES}1. 下载并打开 \`BovaPlayer-macOS.dmg\`\n"
+            NOTES="${NOTES}2. 将 BovaPlayer 拖入 Applications 文件夹\n"
+            NOTES="${NOTES}3. 首次打开如提示\"已损坏\"，请在终端执行:\n"
+            NOTES="${NOTES}   \`\`\`bash\n"
+            NOTES="${NOTES}   xattr -cr /Applications/BovaPlayer.app\n"
+            NOTES="${NOTES}   \`\`\`\n\n"
+          fi
+          
+          if [ -f release-files/BovaPlayer-Windows.zip ]; then
+            NOTES="${NOTES}**Windows:**\n"
+            NOTES="${NOTES}1. 下载并解压 \`BovaPlayer-Windows.zip\`\n"
+            NOTES="${NOTES}2. 运行 \`BovaPlayer.exe\`\n"
+            NOTES="${NOTES}3. 无需安装，解压即用\n"
+          fi
           
           echo "notes<<EOF" >> $GITHUB_OUTPUT
           echo -e "$NOTES" >> $GITHUB_OUTPUT
