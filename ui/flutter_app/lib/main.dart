@@ -62,16 +62,17 @@ class _MainNavigationState extends State<MainNavigation> {
   Widget build(BuildContext context) {
     print('[MainNavigation] build 被调用，当前索引: $_currentIndex');
     
+    // 只渲染当前选中的页面，避免 IndexedStack 同时初始化所有页面
+    Widget currentPage;
+    if (_currentIndex == 0) {
+      currentPage = const PlayerScreen();
+    } else {
+      currentPage = const EmbyPage();
+    }
+    
     return Scaffold(
       backgroundColor: const Color(0xFF1A1A2E),
-      extendBody: true,
-      body: IndexedStack(
-        index: _currentIndex,
-        children: const [
-          PlayerScreen(),
-          EmbyPage(),
-        ],
-      ),
+      body: currentPage,
       bottomNavigationBar: SafeArea(
         child: Container(
           decoration: BoxDecoration(

@@ -19,7 +19,7 @@ dependencies:
   # 使用最新稳定版本的 media_kit
   media_kit: 1.1.10
   media_kit_video: 1.2.3
-  # media_kit_libs_video 会作为传递依赖自动引入
+  media_kit_libs_video: 1.0.4
   # 字幕支持
   subtitle_wrapper_package: ^2.2.1
   package_info_plus: ^8.0.0
