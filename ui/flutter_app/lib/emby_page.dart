@@ -251,7 +251,7 @@ class _EmbyPageState extends State<EmbyPage> {
     try {
       final s = _activeServer!;
       final r = await http.get(
-        Uri.parse('${s.url}/emby/Users/${s.userId}/Items?ParentId=$seasonId&Fields=Overview,MediaSources&SortBy=SortName'),
+        Uri.parse('${s.url}/emby/Users/${s.userId}/Items?ParentId=$seasonId&Fields=Overview,MediaSources&SortBy=IndexNumber&SortOrder=Ascending'),
         headers: _headers(),
       );
       if (r.statusCode == 200) {
@@ -377,20 +377,20 @@ class _EmbyPageState extends State<EmbyPage> {
           final mediaSource = data['MediaSources'][0];
           
           if (mediaSource['SupportsDirectPlay'] == true) {
-            // 直接播放
+            // 直接播放 - 优先使用 Path
             final path = mediaSource['Path'] ?? '';
             if (path.startsWith('http')) {
               playbackUrl = path;
-              print('[EmbyPage] 使用 DirectPlay URL: $playbackUrl');
+              print('[EmbyPage] 使用 DirectPlay Path: $playbackUrl');
             } else {
-              // 构建直接播放 URL
-              playbackUrl = '$baseUrl/Videos/$itemId/stream?static=true&mediaSourceId=${mediaSource['Id']}&api_key=${server.accessToken}';
-              print('[EmbyPage] 构建 DirectPlay URL: $playbackUrl');
+              // 使用简单的 stream URL，不带 mediaSourceId（更兼容）
+              playbackUrl = '$baseUrl/Videos/$itemId/stream?static=true&api_key=${server.accessToken}';
+              print('[EmbyPage] 构建简单 DirectPlay URL: $playbackUrl');
             }
           } else if (mediaSource['SupportsDirectStream'] == true) {
-            // 直接流式传输
-            playbackUrl = '$baseUrl/Videos/$itemId/stream?static=true&mediaSourceId=${mediaSource['Id']}&api_key=${server.accessToken}';
-            print('[EmbyPage] 使用 DirectStream URL: $playbackUrl');
+            // 直接流式传输 - 也使用简单 URL
+            playbackUrl = '$baseUrl/Videos/$itemId/stream?static=true&api_key=${server.accessToken}';
+            print('[EmbyPage] 使用简单 DirectStream URL: $playbackUrl');
           } else {
             // 转码播放
             final transcodingUrl = mediaSource['TranscodingUrl'];
@@ -411,18 +411,7 @@ class _EmbyPageState extends State<EmbyPage> {
       print('[EmbyPage] 使用备用 Stream URL: $playbackUrl');
     }
     
-    // 方法3: 尝试多个备用 URL
-    final fallbackUrls = [
-      playbackUrl,
-      '$baseUrl/Videos/$itemId/stream?api_key=${server.accessToken}',
-      '$baseUrl/emby/Videos/$itemId/stream?static=true&api_key=${server.accessToken}',
-      '$baseUrl/Items/$itemId/Download?api_key=${server.accessToken}',
-    ];
-    
-    print('[EmbyPage] 准备尝试的 URLs:');
-    for (var i = 0; i < fallbackUrls.length; i++) {
-      print('[EmbyPage]   [$i] ${fallbackUrls[i]}');
-    }
+    print('[EmbyPage] 最终播放 URL: $playbackUrl');
     
     // 构建 HTTP headers
     final headers = _headers();
@@ -430,13 +419,26 @@ class _EmbyPageState extends State<EmbyPage> {
     // 获取字幕列表
     final subtitles = await _fetchSubtitles(itemId);
     
+    // 确保有有效的播放 URL
+    if (playbackUrl == null || playbackUrl.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('无法获取播放地址'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+    
     // 使用 media_kit 播放器（所有平台）
     if (mounted) {
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => MediaKitPlayerPage(
-            url: playbackUrl,
+            url: playbackUrl!,  // 已经检查过不为 null
             title: name,
             httpHeaders: headers,
             subtitles: subtitles,
