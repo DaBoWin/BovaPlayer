@@ -5,6 +5,14 @@ allprojects {
     }
 }
 
+// 解决依赖冲突
+configurations.all {
+    resolutionStrategy {
+        force("org.checkerframework:checker-qual:3.42.0")
+        force("com.google.guava:guava:32.1.3-android")
+    }
+}
+
 val newBuildDir: Directory =
     rootProject.layout.buildDirectory
         .dir("../../build")
