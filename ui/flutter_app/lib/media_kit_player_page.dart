@@ -152,7 +152,7 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
     _initializePlayer();
     _updateClock();
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) => _updateClock());
-    _speedTimer = Timer.periodic(const Duration(seconds: 2), (_) => _updateNetworkSpeed());
+    _speedTimer = Timer.periodic(const Duration(seconds: 1), (_) => _updateNetworkSpeed());
   }
 
   /// 配置 mpv 底层选项以支持 HTTPS 自签名证书
@@ -282,35 +282,65 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
   }
 
   /// 计算实时网速
-  /// 使用缓冲区变化来估算下载速度
+  /// 使用播放位置和缓冲区来估算下载速度
   void _updateNetworkSpeed() async {
     if (!mounted) return;
     
     try {
-      // 使用 buffer stream 来估算网速
       final buffer = _player.state.buffer;
       final position = _player.state.position;
+      final duration = _player.state.duration;
+      final buffering = _player.state.buffering;
       
-      // 计算缓冲区大小变化
+      // 计算时间差
       final now = DateTime.now();
       final timeDiff = now.difference(_lastSpeedCheck).inSeconds.toDouble();
       
-      if (timeDiff > 1.0) {
+      if (timeDiff >= 1.0) {
         final currentBufferMs = buffer.inMilliseconds;
+        final currentPosMs = position.inMilliseconds;
         final bufferDiff = currentBufferMs - _lastPosition;
         
-        // 估算网速：假设视频码率约为 5 Mbps (625 KB/s)
-        // 缓冲增量 * 估算码率 / 时间差
-        if (bufferDiff > 0) {
-          final estimatedBytesPerSecond = (bufferDiff / 1000.0) * 625.0 / timeDiff;
+        // 如果缓冲区在增长，说明正在下载
+        if (bufferDiff > 0 && duration.inMilliseconds > 0) {
+          // 计算视频的平均码率（基于已播放的部分）
+          // 假设视频文件大小可以从时长估算
+          // 一般视频：1080p 约 5-10 Mbps，720p 约 2-5 Mbps，480p 约 1-2 Mbps
           
-          if (estimatedBytesPerSecond > 0) {
-            final speed = _formatSpeed(estimatedBytesPerSecond);
+          // 使用视频分辨率来估算码率
+          final width = _player.state.width ?? 1920;
+          final height = _player.state.height ?? 1080;
+          
+          double estimatedBitrate; // Kbps
+          if (width >= 1920 || height >= 1080) {
+            estimatedBitrate = 8000; // 1080p: 8 Mbps
+          } else if (width >= 1280 || height >= 720) {
+            estimatedBitrate = 4000; // 720p: 4 Mbps
+          } else {
+            estimatedBitrate = 2000; // 480p: 2 Mbps
+          }
+          
+          // 缓冲增量（秒）* 码率（Kbps）/ 8 = 下载的字节数
+          final bufferIncreaseSec = bufferDiff / 1000.0;
+          final downloadedBytes = (bufferIncreaseSec * estimatedBitrate * 1000) / 8;
+          
+          // 下载速度 = 下载的字节数 / 时间差
+          final bytesPerSecond = downloadedBytes / timeDiff;
+          
+          if (bytesPerSecond > 0) {
+            final speed = _formatSpeed(bytesPerSecond);
             if (mounted) {
               setState(() {
                 _networkSpeed = speed;
               });
             }
+          }
+        } else if (bufferDiff < 0) {
+          // 缓冲区在减少，说明在播放但没有下载
+          if (mounted) {
+            setState(() {
+              _networkSpeed = '0 KB/s';
+            });
           }
         }
         
@@ -319,7 +349,7 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       }
       
       // 显示缓冲状态
-      if (_player.state.buffering) {
+      if (buffering) {
         if (mounted) {
           setState(() {
             _networkSpeed = '缓冲中...';
