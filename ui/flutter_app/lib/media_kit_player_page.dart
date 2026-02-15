@@ -1,16 +1,23 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
 
 class MediaKitPlayerPage extends StatefulWidget {
   final String url;
   final String title;
   final Map<String, String>? httpHeaders;
   final List<Map<String, String>>? subtitles;
+  final String? itemId; // 用于保存播放位置
+  final String? serverUrl; // Emby 服务器地址
+  final String? accessToken; // API Token
+  final String? userId; // 用户 ID
   
   const MediaKitPlayerPage({
     super.key,
@@ -18,6 +25,10 @@ class MediaKitPlayerPage extends StatefulWidget {
     required this.title,
     this.httpHeaders,
     this.subtitles,
+    this.itemId,
+    this.serverUrl,
+    this.accessToken,
+    this.userId,
   });
   
   @override
@@ -37,10 +48,27 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
   Timer? _hideTimer;
   Timer? _clockTimer;
   Timer? _speedTimer;
+  Timer? _savePositionTimer;
+  Timer? _reportProgressTimer; // 上报播放进度到 Emby
   String _currentTime = '';
   String _networkSpeed = '-- KB/s';
   int _lastPosition = 0;
   DateTime _lastSpeedCheck = DateTime.now();
+  
+  // 手势控制相关
+  double _brightness = 0.5;
+  double _volume = 0.5;
+  bool _showBrightnessIndicator = false;
+  bool _showVolumeIndicator = false;
+  bool _showSeekIndicator = false;
+  String _seekIndicatorText = '';
+  Timer? _indicatorTimer;
+  
+  // 播放位置记忆
+  Duration? _savedPosition;
+  
+  // 播放会话 ID
+  String? _playSessionId;
 
   @override
   void initState() {
@@ -58,6 +86,9 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
         logLevel: MPVLogLevel.warn,
       ),
     );
+    
+    // 加载保存的播放位置
+    _loadSavedPosition();
     
     // 延迟初始化 VideoController，避免在 initState 中访问 context
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -167,16 +198,26 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       await (nativePlayer as dynamic).setProperty('tls-verify', 'no');
       await (nativePlayer as dynamic).setProperty('tls-ca-file', '');
       
-      // 2. 优化网络和缓冲配置
+      // 2. 优化网络和缓冲配置 - 更快的缓冲
       await (nativePlayer as dynamic).setProperty('user-agent', 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36');
       await (nativePlayer as dynamic).setProperty('cache', 'yes');
-      await (nativePlayer as dynamic).setProperty('demuxer-max-bytes', '50000000');
-      await (nativePlayer as dynamic).setProperty('demuxer-max-back-bytes', '20000000');
-      await (nativePlayer as dynamic).setProperty('demuxer-readahead-secs', '1');
+      
+      // 增大缓冲区以减少卡顿
+      await (nativePlayer as dynamic).setProperty('demuxer-max-bytes', '100000000'); // 100MB
+      await (nativePlayer as dynamic).setProperty('demuxer-max-back-bytes', '50000000'); // 50MB
+      await (nativePlayer as dynamic).setProperty('demuxer-readahead-secs', '5'); // 预读5秒
+      
+      // 快速启动播放
       await (nativePlayer as dynamic).setProperty('cache-pause-initial', 'no');
       await (nativePlayer as dynamic).setProperty('cache-pause-wait', '0');
+      await (nativePlayer as dynamic).setProperty('cache-secs', '10'); // 缓存10秒
+      
       await (nativePlayer as dynamic).setProperty('force-seekable', 'yes');
       await (nativePlayer as dynamic).setProperty('network-timeout', '60');
+      
+      // 启用快速查找
+      await (nativePlayer as dynamic).setProperty('hr-seek', 'yes');
+      await (nativePlayer as dynamic).setProperty('hr-seek-framedrop', 'yes');
       
       // 3. 硬件解码配置 - 根据设备类型和平台
       if (isAndroid) {
@@ -195,7 +236,7 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
         print('[MediaKitPlayer] macOS 配置: hwdec=auto-copy');
       }
       
-      print('[MediaKitPlayer] mpv 配置完成');
+      print('[MediaKitPlayer] mpv 配置完成 - 优化缓冲设置');
     } catch (e) {
       print('[MediaKitPlayer] 配置 mpv 失败: $e');
     }
@@ -221,6 +262,20 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
         print('[MediaKitPlayer] 开始播放...');
         await _player.play();
         
+        // 恢复播放位置
+        if (_savedPosition != null && _savedPosition!.inSeconds > 5) {
+          await _showResumeDialog();
+        }
+        
+        // 启动定时保存播放位置
+        _startSavePositionTimer();
+        
+        // 上报播放开始
+        _reportPlaybackStart();
+        
+        // 启动定时上报播放进度
+        _startReportProgressTimer();
+        
         print('[MediaKitPlayer] 播放器初始化成功');
         
         if (mounted) {
@@ -240,6 +295,20 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       
       await _player.open(media);
       await _player.play();
+      
+      // 恢复播放位置
+      if (_savedPosition != null && _savedPosition!.inSeconds > 5) {
+        await _showResumeDialog();
+      }
+      
+      // 启动定时保存播放位置
+      _startSavePositionTimer();
+      
+      // 上报播放开始
+      _reportPlaybackStart();
+      
+      // 启动定时上报播放进度
+      _startReportProgressTimer();
       
       print('[MediaKitPlayer] 方法2成功');
       
@@ -262,11 +331,321 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
     }
   }
 
+  // ============== 播放位置记忆 ==============
+  
+  Future<void> _loadSavedPosition() async {
+    if (widget.itemId == null) return;
+    
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = 'play_position_${widget.itemId}';
+      final savedSeconds = prefs.getInt(key);
+      
+      if (savedSeconds != null && savedSeconds > 0) {
+        _savedPosition = Duration(seconds: savedSeconds);
+        print('[MediaKitPlayer] 加载保存的播放位置: $_savedPosition');
+      }
+    } catch (e) {
+      print('[MediaKitPlayer] 加载播放位置失败: $e');
+    }
+  }
+  
+  Future<void> _savePlayPosition() async {
+    if (widget.itemId == null) return;
+    
+    try {
+      final position = _player.state.position;
+      final duration = _player.state.duration;
+      
+      // 如果播放进度超过95%，清除保存的位置
+      if (duration.inSeconds > 0 && position.inSeconds / duration.inSeconds > 0.95) {
+        final prefs = await SharedPreferences.getInstance();
+        final key = 'play_position_${widget.itemId}';
+        await prefs.remove(key);
+        print('[MediaKitPlayer] 播放完成，清除保存的位置');
+        return;
+      }
+      
+      // 保存当前位置
+      if (position.inSeconds > 5) {
+        final prefs = await SharedPreferences.getInstance();
+        final key = 'play_position_${widget.itemId}';
+        await prefs.setInt(key, position.inSeconds);
+        print('[MediaKitPlayer] 保存播放位置: ${position.inSeconds}秒');
+      }
+    } catch (e) {
+      print('[MediaKitPlayer] 保存播放位置失败: $e');
+    }
+  }
+  
+  void _startSavePositionTimer() {
+    _savePositionTimer?.cancel();
+    _savePositionTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      _savePlayPosition();
+    });
+  }
+  
+  Future<void> _showResumeDialog() async {
+    if (!mounted) return;
+    
+    final resume = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1F2937),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          '继续播放',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+        ),
+        content: Text(
+          '上次播放到 ${_formatDuration(_savedPosition!)}\n是否继续播放？',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('从头开始', style: TextStyle(color: Colors.white70)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1F2937),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('继续播放'),
+          ),
+        ],
+      ),
+    );
+    
+    if (resume == true && _savedPosition != null) {
+      await _player.seek(_savedPosition!);
+    }
+  }
+
+  // ============== 手势控制 ==============
+  
+  void _handleVerticalDragUpdate(DragUpdateDetails details, bool isLeft) {
+    if (_isLocked) return;
+    
+    final delta = details.delta.dy;
+    
+    if (isLeft) {
+      // 左侧控制亮度
+      setState(() {
+        _brightness = (_brightness - delta / 500).clamp(0.0, 1.0);
+        _showBrightnessIndicator = true;
+        _showVolumeIndicator = false;
+        _showSeekIndicator = false;
+      });
+      
+      // 设置屏幕亮度
+      SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+        statusBarBrightness: _brightness > 0.5 ? Brightness.light : Brightness.dark,
+      ));
+      
+      _startIndicatorTimer();
+    } else {
+      // 右侧控制音量
+      setState(() {
+        _volume = (_volume - delta / 500).clamp(0.0, 1.0);
+        _showVolumeIndicator = true;
+        _showBrightnessIndicator = false;
+        _showSeekIndicator = false;
+      });
+      
+      _player.setVolume(_volume * 100);
+      _startIndicatorTimer();
+    }
+  }
+  
+  void _handleHorizontalDragUpdate(DragUpdateDetails details) {
+    if (_isLocked) return;
+    
+    final delta = details.delta.dx;
+    final seekSeconds = (delta / 5).round();
+    
+    if (seekSeconds.abs() > 0) {
+      final currentPos = _player.state.position;
+      final newPos = currentPos + Duration(seconds: seekSeconds);
+      
+      setState(() {
+        _showSeekIndicator = true;
+        _showBrightnessIndicator = false;
+        _showVolumeIndicator = false;
+        _seekIndicatorText = '${seekSeconds > 0 ? '+' : ''}$seekSeconds 秒';
+      });
+      
+      _startIndicatorTimer();
+    }
+  }
+  
+  void _handleHorizontalDragEnd(DragEndDetails details) {
+    if (_isLocked || !_showSeekIndicator) return;
+    
+    // 实际执行跳转
+    final seekText = _seekIndicatorText;
+    if (seekText.isNotEmpty) {
+      final seconds = int.tryParse(seekText.replaceAll(RegExp(r'[^0-9-]'), ''));
+      if (seconds != null) {
+        _seek(Duration(seconds: seconds));
+      }
+    }
+  }
+  
+  void _startIndicatorTimer() {
+    _indicatorTimer?.cancel();
+    _indicatorTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) {
+        setState(() {
+          _showBrightnessIndicator = false;
+          _showVolumeIndicator = false;
+          _showSeekIndicator = false;
+        });
+      }
+    });
+  }
+
+  // ============== Emby 播放进度上报 ==============
+  
+  Future<void> _reportPlaybackStart() async {
+    if (widget.itemId == null || widget.serverUrl == null || widget.accessToken == null) {
+      print('[MediaKitPlayer] 缺少上报参数，跳过播放开始上报');
+      return;
+    }
+    
+    try {
+      // 生成播放会话 ID
+      _playSessionId = 'bova_${DateTime.now().millisecondsSinceEpoch}';
+      
+      final url = '${widget.serverUrl}/Sessions/Playing';
+      final body = {
+        'ItemId': widget.itemId,
+        'PlaySessionId': _playSessionId,
+        'CanSeek': true,
+        'IsPaused': false,
+        'IsMuted': false,
+        'PositionTicks': 0,
+        'VolumeLevel': (_volume * 100).toInt(),
+        'PlayMethod': 'DirectPlay',
+      };
+      
+      print('[MediaKitPlayer] 上报播放开始: $body');
+      
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Emby-Token': widget.accessToken!,
+        },
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 5));
+      
+      if (response.statusCode == 204 || response.statusCode == 200) {
+        print('[MediaKitPlayer] 播放开始上报成功');
+      } else {
+        print('[MediaKitPlayer] 播放开始上报失败: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('[MediaKitPlayer] 播放开始上报异常: $e');
+    }
+  }
+  
+  void _startReportProgressTimer() {
+    _reportProgressTimer?.cancel();
+    _reportProgressTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      _reportPlaybackProgress();
+    });
+  }
+  
+  Future<void> _reportPlaybackProgress() async {
+    if (widget.itemId == null || widget.serverUrl == null || widget.accessToken == null || _playSessionId == null) {
+      return;
+    }
+    
+    try {
+      final position = _player.state.position;
+      final isPaused = !_player.state.playing;
+      
+      // 转换为 Ticks (1 tick = 100 纳秒)
+      final positionTicks = position.inMicroseconds * 10;
+      
+      final url = '${widget.serverUrl}/Sessions/Playing/Progress';
+      final body = {
+        'ItemId': widget.itemId,
+        'PlaySessionId': _playSessionId,
+        'CanSeek': true,
+        'IsPaused': isPaused,
+        'IsMuted': false,
+        'PositionTicks': positionTicks,
+        'VolumeLevel': (_volume * 100).toInt(),
+        'PlayMethod': 'DirectPlay',
+      };
+      
+      await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Emby-Token': widget.accessToken!,
+        },
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 5));
+      
+      print('[MediaKitPlayer] 上报播放进度: ${position.inSeconds}秒');
+    } catch (e) {
+      print('[MediaKitPlayer] 播放进度上报异常: $e');
+    }
+  }
+  
+  Future<void> _reportPlaybackStopped() async {
+    if (widget.itemId == null || widget.serverUrl == null || widget.accessToken == null || _playSessionId == null) {
+      return;
+    }
+    
+    try {
+      final position = _player.state.position;
+      final positionTicks = position.inMicroseconds * 10;
+      
+      final url = '${widget.serverUrl}/Sessions/Playing/Stopped';
+      final body = {
+        'ItemId': widget.itemId,
+        'PlaySessionId': _playSessionId,
+        'PositionTicks': positionTicks,
+      };
+      
+      print('[MediaKitPlayer] 上报播放停止: ${position.inSeconds}秒');
+      
+      await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Emby-Token': widget.accessToken!,
+        },
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 5));
+      
+      print('[MediaKitPlayer] 播放停止上报成功');
+    } catch (e) {
+      print('[MediaKitPlayer] 播放停止上报异常: $e');
+    }
+  }
+
   @override
   void dispose() {
     _hideTimer?.cancel();
     _clockTimer?.cancel();
     _speedTimer?.cancel();
+    _savePositionTimer?.cancel();
+    _reportProgressTimer?.cancel();
+    _indicatorTimer?.cancel();
+    
+    // 保存播放位置
+    _savePlayPosition();
+    
+    // 上报停止播放
+    _reportPlaybackStopped();
+    
     _player.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
@@ -501,10 +880,22 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       backgroundColor: Colors.black,
       body: GestureDetector(
         onTap: _toggleControls,
+        onVerticalDragUpdate: (details) {
+          final screenWidth = MediaQuery.of(context).size.width;
+          final isLeft = details.globalPosition.dx < screenWidth / 2;
+          _handleVerticalDragUpdate(details, isLeft);
+        },
+        onHorizontalDragUpdate: _handleHorizontalDragUpdate,
+        onHorizontalDragEnd: _handleHorizontalDragEnd,
         child: Stack(
           children: [
             // 视频播放器
             Positioned.fill(child: _buildVideoPlayer()),
+
+            // 手势指示器
+            if (_showBrightnessIndicator) _buildBrightnessIndicator(),
+            if (_showVolumeIndicator) _buildVolumeIndicator(),
+            if (_showSeekIndicator) _buildSeekIndicator(),
 
             // 调试信息（开发时显示）
             if (_isInitializing || _errorMessage != null)
@@ -1037,6 +1428,103 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
               const SizedBox(height: 8),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  // ============== 手势指示器 ==============
+  
+  Widget _buildBrightnessIndicator() {
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.7),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.brightness_6, color: Colors.white, size: 32),
+            const SizedBox(height: 8),
+            Text(
+              '${(_brightness * 100).toInt()}%',
+              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: 120,
+              child: LinearProgressIndicator(
+                value: _brightness,
+                backgroundColor: Colors.white24,
+                valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildVolumeIndicator() {
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.7),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _volume > 0.5 ? Icons.volume_up : (_volume > 0 ? Icons.volume_down : Icons.volume_off),
+              color: Colors.white,
+              size: 32,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${(_volume * 100).toInt()}%',
+              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: 120,
+              child: LinearProgressIndicator(
+                value: _volume,
+                backgroundColor: Colors.white24,
+                valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildSeekIndicator() {
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.7),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _seekIndicatorText.startsWith('+') ? Icons.fast_forward : Icons.fast_rewind,
+              color: Colors.white,
+              size: 32,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _seekIndicatorText,
+              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+          ],
         ),
       ),
     );

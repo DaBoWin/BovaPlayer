@@ -152,6 +152,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _videoInfo = '时长: $durationStr | 分辨率: $resolutionStr';
   }
   
+  Widget _buildControlButton({
+    required IconData icon,
+    required Color color,
+    double size = 32,
+    VoidCallback? onPressed,
+  }) {
+    return IconButton(
+      icon: Icon(icon),
+      color: color,
+      iconSize: size,
+      onPressed: onPressed,
+      splashRadius: 28,
+    );
+  }
+  
   String _formatSpeed(double speedKBps) {
     if (speedKBps < 1024) {
       return '${speedKBps.toStringAsFixed(0)} KB/s';
@@ -367,30 +382,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1A2E),
+      backgroundColor: const Color(0xFFF5F5F5), // 高级白色背景
       appBar: AppBar(
-        title: const Text('本地播放', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: const Color(0xFF16213E),
-        foregroundColor: Colors.white,
+        title: const Text(
+          '本地播放',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF1F2937),
+          ),
+        ),
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xFF1F2937),
         elevation: 0,
         actions: [
-          // 字幕按钮
-          if (_hasVideo)
-            IconButton(
-              icon: const Icon(Icons.subtitles_outlined),
-              onPressed: _showSubtitleSelector,
-              tooltip: '字幕选择',
-            ),
-          // 加载外部字幕
-          if (_hasVideo)
-            IconButton(
-              icon: const Icon(Icons.closed_caption_outlined),
-              onPressed: _loadExternalSubtitle,
-              tooltip: '加载外部字幕',
-            ),
-          // 打开文件
+          // 文件夹图标
           IconButton(
-            icon: const Icon(Icons.folder_open),
+            icon: const Icon(Icons.folder_open_rounded),
             onPressed: _isLoading ? null : _pickAndPlayFile,
             tooltip: '选择视频文件',
           ),
@@ -406,11 +413,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(color: Colors.deepPurple),
+            CircularProgressIndicator(color: Color(0xFF1F2937)),
             SizedBox(height: 16),
             Text(
               '加载中...',
-              style: TextStyle(color: Colors.white54, fontSize: 14),
+              style: TextStyle(color: Color(0xFF6B7280), fontSize: 14),
             ),
           ],
         ),
@@ -423,22 +430,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline, color: Colors.redAccent, size: 64),
+              const Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 64),
               const SizedBox(height: 16),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 32),
                 child: Text(
                   _errorMessage!,
-                  style: const TextStyle(color: Colors.redAccent, fontSize: 14),
+                  style: const TextStyle(color: Color(0xFFEF4444), fontSize: 14),
                   textAlign: TextAlign.center,
                 ),
               ),
               const SizedBox(height: 24),
               ElevatedButton.icon(
-                icon: const Icon(Icons.refresh),
+                icon: const Icon(Icons.refresh_rounded),
                 label: const Text('重试'),
                 style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepPurple,
+                  backgroundColor: const Color(0xFF1F2937),
                   foregroundColor: Colors.white,
                 ),
                 onPressed: _pickAndPlayFile,
@@ -451,28 +458,30 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     if (!_hasVideo) {
       return Center(
-        child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 100), // 避免被底部导航栏遮挡
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // 现代化图标
               Container(
                 width: 120,
                 height: 120,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.deepPurple.withOpacity(0.15),
+                  color: const Color(0xFFF3F4F6), // 浅灰色背景
                 ),
-                child: Icon(
-                  Icons.video_library_outlined,
-                  size: 60,
-                  color: Colors.deepPurple.shade200,
+                child: const Icon(
+                  Icons.play_circle_outline_rounded,
+                  size: 56,
+                  color: Color(0xFF1F2937), // 高级黑
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 32),
               const Text(
                 '还没有选择视频',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: Color(0xFF1F2937),
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
                 ),
@@ -480,16 +489,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
               const SizedBox(height: 8),
               const Text(
                 '点击右上角文件夹图标选择视频',
-                style: TextStyle(color: Colors.white38, fontSize: 14),
+                style: TextStyle(
+                  color: Color(0xFF6B7280),
+                  fontSize: 14,
+                ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 32),
+              // 现代化按钮
               ElevatedButton.icon(
-                icon: const Icon(Icons.folder_open),
-                label: const Text('选择视频文件'),
+                icon: const Icon(Icons.folder_open_rounded, size: 20),
+                label: const Text(
+                  '选择视频文件',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepPurple,
+                  backgroundColor: const Color(0xFF1F2937),
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  shadowColor: const Color(0xFF1F2937).withOpacity(0.3),
                 ),
                 onPressed: _pickAndPlayFile,
               ),
@@ -506,7 +527,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(12),
-          color: const Color(0xFF16213E),
+          color: Colors.white,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -516,9 +537,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     child: Text(
                       _currentFile,
                       style: const TextStyle(
-                        color: Colors.white,
+                        color: Color(0xFF1F2937),
                         fontSize: 14,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w600,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -529,25 +550,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: Colors.green.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: Colors.green.withOpacity(0.5)),
+                        color: const Color(0xFF10B981).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: const Color(0xFF10B981).withOpacity(0.3)),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
-                            Icons.speed,
+                          const Icon(
+                            Icons.speed_rounded,
                             size: 14,
-                            color: Colors.green.shade300,
+                            color: Color(0xFF10B981),
                           ),
                           const SizedBox(width: 4),
                           Text(
                             _formatSpeed(_currentSpeed),
-                            style: TextStyle(
-                              color: Colors.green.shade300,
+                            style: const TextStyle(
+                              color: Color(0xFF10B981),
                               fontSize: 11,
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ],
@@ -562,8 +583,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     Expanded(
                       child: Text(
                         _videoInfo,
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
+                        style: const TextStyle(
+                          color: Color(0xFF6B7280),
                           fontSize: 12,
                         ),
                       ),
@@ -573,24 +594,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: Colors.deepPurple.withOpacity(0.3),
-                          borderRadius: BorderRadius.circular(3),
+                          color: const Color(0xFF1F2937).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
-                              Icons.subtitles,
+                            const Icon(
+                              Icons.subtitles_rounded,
                               size: 12,
-                              color: Colors.deepPurple.shade200,
+                              color: Color(0xFF1F2937),
                             ),
                             const SizedBox(width: 4),
                             Text(
                               _currentSubtitle.title ?? 
                               _currentSubtitle.language ?? 
                               '字幕',
-                              style: TextStyle(
-                                color: Colors.deepPurple.shade200,
+                              style: const TextStyle(
+                                color: Color(0xFF1F2937),
                                 fontSize: 10,
                               ),
                             ),
@@ -674,82 +695,72 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
           ),
         ),
-        // 底部控制栏
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: const Color(0xFF16213E),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.3),
-                blurRadius: 8,
-                offset: const Offset(0, -2),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              // 快退 10 秒
-              IconButton(
-                icon: const Icon(Icons.replay_10),
-                color: Colors.white,
-                iconSize: 32,
-                onPressed: _player == null ? null : () async {
-                  final currentPos = _player!.state.position;
-                  final newPos = currentPos - const Duration(seconds: 10);
-                  await _player!.seek(newPos.isNegative ? Duration.zero : newPos);
-                },
-                tooltip: '后退 10 秒',
-              ),
-              // 播放/暂停
-              if (_player != null)
-                StreamBuilder<bool>(
-                  stream: _player!.stream.playing,
-                  builder: (context, snapshot) {
-                    final isPlaying = snapshot.data ?? false;
-                    return IconButton(
-                      icon: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled),
-                      color: Colors.deepPurple.shade200,
-                      iconSize: 56,
-                      onPressed: () async {
-                        await _player!.playOrPause();
-                      },
-                      tooltip: isPlaying ? '暂停' : '播放',
-                    );
-                  },
-                )
-              else
-                IconButton(
-                  icon: const Icon(Icons.play_circle_filled),
-                  color: Colors.grey,
-                  iconSize: 56,
-                  onPressed: null,
+        // 底部控制栏 - 现代化设计
+        Padding(
+          padding: const EdgeInsets.only(bottom: 80), // 为底部导航栏留出空间
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
                 ),
-              // 快进 10 秒
-              IconButton(
-                icon: const Icon(Icons.forward_10),
-                color: Colors.white,
-                iconSize: 32,
-                onPressed: _player == null ? null : () async {
-                  final currentPos = _player!.state.position;
-                  final duration = _player!.state.duration;
-                  final newPos = currentPos + const Duration(seconds: 10);
-                  await _player!.seek(newPos > duration ? duration : newPos);
-                },
-                tooltip: '前进 10 秒',
-              ),
-              // 停止
-              IconButton(
-                icon: const Icon(Icons.stop_circle_outlined),
-                color: Colors.white,
-                iconSize: 32,
-                onPressed: _player == null ? null : () async {
-                  await _player!.stop();
-                },
-                tooltip: '停止',
-              ),
-            ],
+              ],
+            ),
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                // 快退 10 秒
+                _buildControlButton(
+                  icon: Icons.replay_10_rounded,
+                  color: const Color(0xFF1F2937),
+                  onPressed: _player == null ? null : () async {
+                    final currentPos = _player!.state.position;
+                    final newPos = currentPos - const Duration(seconds: 10);
+                    await _player!.seek(newPos.isNegative ? Duration.zero : newPos);
+                  },
+                ),
+                // 播放/暂停
+                if (_player != null)
+                  StreamBuilder<bool>(
+                    stream: _player!.stream.playing,
+                    builder: (context, snapshot) {
+                      final isPlaying = snapshot.data ?? false;
+                      return _buildControlButton(
+                        icon: isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded,
+                        color: const Color(0xFF1F2937),
+                        size: 52,
+                        onPressed: () async {
+                          await _player!.playOrPause();
+                        },
+                      );
+                    },
+                  )
+                else
+                  _buildControlButton(
+                    icon: Icons.play_circle_filled_rounded,
+                    color: const Color(0xFF9CA3AF),
+                    size: 52,
+                    onPressed: null,
+                  ),
+                // 快进 10 秒
+                _buildControlButton(
+                  icon: Icons.forward_10_rounded,
+                  color: const Color(0xFF1F2937),
+                  onPressed: _player == null ? null : () async {
+                    final currentPos = _player!.state.position;
+                    final duration = _player!.state.duration;
+                    final newPos = currentPos + const Duration(seconds: 10);
+                    await _player!.seek(newPos > duration ? duration : newPos);
+                  },
+                ),
+              ],
+            ),
           ),
         ),
       ],
