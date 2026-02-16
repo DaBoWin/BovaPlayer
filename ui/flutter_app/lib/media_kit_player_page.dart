@@ -239,23 +239,18 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       await (nativePlayer as dynamic).setProperty('tls-verify', 'no');
       await (nativePlayer as dynamic).setProperty('tls-ca-file', '');
       
-      // 2. HTTP/HTTPS 网络配置 - 伪装成 Emby 官方客户端
-      // 使用 Emby for Android 的 User-Agent
-      await (nativePlayer as dynamic).setProperty('user-agent', 'Emby Mobile/3.0.0 (Android; 10)');
+      // 2. HTTP/HTTPS 网络配置 - BovaPlayer 客户端标识
+      await (nativePlayer as dynamic).setProperty('user-agent', 'BovaPlayer/1.0.0 (Android; Flutter)');
       
-      // 添加 Emby 客户端必需的 headers
+      // 添加基本的 HTTP headers
       final headers = [
-        'User-Agent: Emby Mobile/3.0.0 (Android; 10)',
-        'X-Emby-Authorization: MediaBrowser Client="Emby Mobile", Device="Android", DeviceId="bova-flutter", Version="3.0.0"',
+        'User-Agent: BovaPlayer/1.0.0 (Android; Flutter)',
         'Accept: */*',
         'Accept-Encoding: identity',
         'Connection: keep-alive',
       ];
       
       await (nativePlayer as dynamic).setProperty('http-header-fields', headers.join('\r\n'));
-      
-      // 禁用 Range 请求（某些服务器不支持）
-      await (nativePlayer as dynamic).setProperty('stream-lavf-o', 'seekable=0');
       
       // 3. 优化网络和缓冲配置 - 更快的缓冲
       await (nativePlayer as dynamic).setProperty('cache', 'yes');
