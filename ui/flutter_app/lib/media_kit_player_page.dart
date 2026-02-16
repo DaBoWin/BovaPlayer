@@ -991,56 +991,40 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
             if (_showVolumeIndicator) _buildVolumeIndicator(),
             if (_showSeekIndicator) _buildSeekIndicator(),
 
-            // 调试信息（开发时显示）
-            if (_isInitializing || _errorMessage != null)
+            // 错误信息显示
+            if (_errorMessage != null)
               Positioned(
                 top: 100,
                 left: 16,
                 right: 16,
                 child: Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.black87,
-                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.red.withOpacity(0.9),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '播放器状态:',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      const Row(
+                        children: [
+                          Icon(Icons.error_outline, color: Colors.white, size: 24),
+                          SizedBox(width: 8),
+                          Text(
+                            '播放错误',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 12),
                       Text(
-                        '初始化中: $_isInitializing',
-                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                        _errorMessage!,
+                        style: const TextStyle(color: Colors.white, fontSize: 14),
                       ),
-                      Text(
-                        '播放中: ${_player.state.playing}',
-                        style: const TextStyle(color: Colors.white70, fontSize: 12),
-                      ),
-                      Text(
-                        '缓冲中: ${_player.state.buffering}',
-                        style: const TextStyle(color: Colors.white70, fontSize: 12),
-                      ),
-                      Text(
-                        '视频尺寸: ${_player.state.width}x${_player.state.height}',
-                        style: const TextStyle(color: Colors.white70, fontSize: 12),
-                      ),
-                      Text(
-                        '时长: ${_player.state.duration}',
-                        style: const TextStyle(color: Colors.white70, fontSize: 12),
-                      ),
-                      if (_errorMessage != null) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          '错误: $_errorMessage',
-                          style: const TextStyle(color: Colors.red, fontSize: 12),
-                        ),
-                      ],
                     ],
                   ),
                 ),

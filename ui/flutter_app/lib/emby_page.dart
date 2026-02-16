@@ -209,20 +209,70 @@ class _EmbyPageState extends State<EmbyPage> {
   Future<void> _loadContinueWatching() async {
     try {
       final s = _activeServer!;
-      final r = await http.get(
-        Uri.parse('${s.url}/emby/Users/${s.userId}/Items/Resume'
-            '?Limit=10'
-            '&Fields=Overview,PrimaryImageAspectRatio,ProductionYear'
-            '&ImageTypeLimit=1'
-            '&EnableImageTypes=Primary,Backdrop,Thumb'),
+      
+      // 尝试方法1: 使用 Resume 端点
+      var url = '${s.url}/emby/Users/${s.userId}/Items/Resume'
+          '?Limit=10'
+          '&Fields=Overview,PrimaryImageAspectRatio,ProductionYear'
+          '&ImageTypeLimit=1'
+          '&EnableImageTypes=Primary,Backdrop,Thumb'
+          '&api_key=${s.accessToken}';
+      
+      print('[EmbyPage] 加载继续观看 (方法1): $url');
+      
+      var r = await http.get(
+        Uri.parse(url),
         headers: _headers(),
       );
+      
+      print('[EmbyPage] 继续观看响应状态码: ${r.statusCode}');
+      
       if (r.statusCode == 200) {
-        setState(() {
-          _continueWatching = List<Map<String, dynamic>>.from(
-            jsonDecode(r.body)['Items'] ?? [],
+        final data = jsonDecode(r.body);
+        var items = data['Items'] ?? [];
+        print('[EmbyPage] 继续观看项目数量 (方法1): ${items.length}');
+        
+        // 如果方法1没有数据，尝试方法2: 使用 IsResumable 过滤器
+        if (items.isEmpty) {
+          print('[EmbyPage] 方法1无数据，尝试方法2: IsResumable 过滤器');
+          
+          url = '${s.url}/emby/Users/${s.userId}/Items'
+              '?Filters=IsResumable'
+              '&Limit=10'
+              '&Recursive=true'
+              '&Fields=Overview,PrimaryImageAspectRatio,ProductionYear'
+              '&ImageTypeLimit=1'
+              '&EnableImageTypes=Primary,Backdrop,Thumb'
+              '&api_key=${s.accessToken}';
+          
+          print('[EmbyPage] 加载继续观看 (方法2): $url');
+          
+          r = await http.get(
+            Uri.parse(url),
+            headers: _headers(),
           );
+          
+          print('[EmbyPage] 继续观看响应状态码 (方法2): ${r.statusCode}');
+          
+          if (r.statusCode == 200) {
+            final data2 = jsonDecode(r.body);
+            items = data2['Items'] ?? [];
+            print('[EmbyPage] 继续观看项目数量 (方法2): ${items.length}');
+          }
+        }
+        
+        if (items.isNotEmpty) {
+          print('[EmbyPage] 继续观看第一项: ${items[0]['Name']}');
+        }
+        
+        setState(() {
+          _continueWatching = List<Map<String, dynamic>>.from(items);
         });
+        
+        print('[EmbyPage] 继续观看列表已更新: ${_continueWatching.length} 项');
+      } else {
+        print('[EmbyPage] 继续观看 API 返回错误: ${r.statusCode}');
+        print('[EmbyPage] 响应内容: ${r.body}');
       }
     } catch (e) {
       print('[EmbyPage] 加载继续观看失败: $e');
