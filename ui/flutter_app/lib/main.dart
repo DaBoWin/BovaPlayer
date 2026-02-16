@@ -63,6 +63,9 @@ class _MainNavigationState extends State<MainNavigation> {
   Widget build(BuildContext context) {
     print('[MainNavigation] build 被调用，当前索引: $_currentIndex');
     
+    // 检测是否横屏
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    
     // 只渲染当前选中的页面，避免 IndexedStack 同时初始化所有页面
     Widget currentPage;
     if (_currentIndex == 0) {
@@ -83,7 +86,8 @@ class _MainNavigationState extends State<MainNavigation> {
       backgroundColor: const Color(0xFFF5F5F5),
       extendBody: true,
       body: currentPage,
-      bottomNavigationBar: SafeArea(
+      // 横屏时隐藏底部导航栏
+      bottomNavigationBar: isLandscape ? null : SafeArea(
         child: Container(
           margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
           height: 70,

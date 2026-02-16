@@ -186,6 +186,47 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
     _speedTimer = Timer.periodic(const Duration(seconds: 1), (_) => _updateNetworkSpeed());
   }
 
+  /// 测试 URL 是否可访问
+  Future<void> _testUrlAccess() async {
+    try {
+      print('[MediaKitPlayer] 测试 URL 访问性...');
+      
+      // 创建支持自签名证书的 HTTP 客户端
+      final httpClient = HttpClient()
+        ..badCertificateCallback = (X509Certificate cert, String host, int port) {
+          print('[MediaKitPlayer] 接受证书: $host:$port');
+          return true; // 接受所有证书
+        }
+        ..connectionTimeout = const Duration(seconds: 10);
+      
+      final uri = Uri.parse(widget.url);
+      final request = await httpClient.headUrl(uri);
+      
+      // 添加 headers
+      if (widget.httpHeaders != null) {
+        widget.httpHeaders!.forEach((key, value) {
+          request.headers.add(key, value);
+        });
+      }
+      
+      final response = await request.close();
+      print('[MediaKitPlayer] URL 测试响应: ${response.statusCode}');
+      print('[MediaKitPlayer] Content-Type: ${response.headers.contentType}');
+      print('[MediaKitPlayer] Content-Length: ${response.headers.contentLength}');
+      
+      httpClient.close();
+      
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        print('[MediaKitPlayer] ✓ URL 可访问');
+      } else {
+        print('[MediaKitPlayer] ✗ URL 返回错误状态码: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('[MediaKitPlayer] ✗ URL 测试失败: $e');
+      // 不抛出异常，继续尝试播放
+    }
+  }
+
   /// 配置 mpv 底层选项以支持 HTTPS 自签名证书
   Future<void> _configureMpvTls(bool isEmulator) async {
     try {
@@ -194,12 +235,29 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       
       final isAndroid = Theme.of(context).platform == TargetPlatform.android;
       
-      // 1. 禁用 TLS 证书验证
+      // 1. 禁用 TLS 证书验证（支持自签名证书）
       await (nativePlayer as dynamic).setProperty('tls-verify', 'no');
       await (nativePlayer as dynamic).setProperty('tls-ca-file', '');
       
-      // 2. 优化网络和缓冲配置 - 更快的缓冲
-      await (nativePlayer as dynamic).setProperty('user-agent', 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36');
+      // 2. HTTP/HTTPS 网络配置 - 伪装成 Emby 官方客户端
+      // 使用 Emby for Android 的 User-Agent
+      await (nativePlayer as dynamic).setProperty('user-agent', 'Emby Mobile/3.0.0 (Android; 10)');
+      
+      // 添加 Emby 客户端必需的 headers
+      final headers = [
+        'User-Agent: Emby Mobile/3.0.0 (Android; 10)',
+        'X-Emby-Authorization: MediaBrowser Client="Emby Mobile", Device="Android", DeviceId="bova-flutter", Version="3.0.0"',
+        'Accept: */*',
+        'Accept-Encoding: identity',
+        'Connection: keep-alive',
+      ];
+      
+      await (nativePlayer as dynamic).setProperty('http-header-fields', headers.join('\r\n'));
+      
+      // 禁用 Range 请求（某些服务器不支持）
+      await (nativePlayer as dynamic).setProperty('stream-lavf-o', 'seekable=0');
+      
+      // 3. 优化网络和缓冲配置 - 更快的缓冲
       await (nativePlayer as dynamic).setProperty('cache', 'yes');
       
       // 增大缓冲区以减少卡顿
@@ -248,9 +306,50 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       print('[MediaKitPlayer] Stream URL: ${widget.url}');
       print('[MediaKitPlayer] HTTP Headers: ${widget.httpHeaders}');
       
-      // 方法1: 尝试使用 httpHeaders
+      // 先测试 URL 是否可访问
+      await _testUrlAccess();
+      
+      // 方法1: 不使用 httpHeaders（URL 已包含 api_key）
       try {
-        print('[MediaKitPlayer] 尝试方法1: 使用 httpHeaders');
+        print('[MediaKitPlayer] 尝试方法1: 不使用 httpHeaders');
+        final media = Media(widget.url);
+        
+        print('[MediaKitPlayer] 打开媒体...');
+        await _player.open(media);
+        
+        print('[MediaKitPlayer] 开始播放...');
+        await _player.play();
+        
+        // 恢复播放位置
+        if (_savedPosition != null && _savedPosition!.inSeconds > 5) {
+          await _showResumeDialog();
+        }
+        
+        // 启动定时保存播放位置
+        _startSavePositionTimer();
+        
+        // 上报播放开始
+        _reportPlaybackStart();
+        
+        // 启动定时上报播放进度
+        _startReportProgressTimer();
+        
+        print('[MediaKitPlayer] 播放器初始化成功');
+        
+        if (mounted) {
+          setState(() {
+            _isInitializing = false;
+          });
+          _startHideTimer();
+        }
+        return;
+      } catch (e) {
+        print('[MediaKitPlayer] 方法1失败: $e');
+      }
+      
+      // 方法2: 尝试使用 httpHeaders
+      try {
+        print('[MediaKitPlayer] 尝试方法2: 使用 httpHeaders');
         final media = Media(
           widget.url,
           httpHeaders: widget.httpHeaders ?? {},

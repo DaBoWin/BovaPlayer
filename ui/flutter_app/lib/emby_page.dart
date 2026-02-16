@@ -448,8 +448,10 @@ class _EmbyPageState extends State<EmbyPage> {
       baseUrl = baseUrl.replaceAll(':443', '');
     }
     
-    // 方法1: 尝试使用 PlaybackInfo API 获取最佳播放地址
+    // 方法1: 使用 PlaybackInfo API 获取正确的播放地址
     String? playbackUrl;
+    String? mediaSourceId;
+    
     try {
       final playbackInfoUrl = '$baseUrl/Items/$itemId/PlaybackInfo?UserId=${server.userId}&api_key=${server.accessToken}';
       print('[EmbyPage] 获取 PlaybackInfo: $playbackInfoUrl');
@@ -467,10 +469,10 @@ class _EmbyPageState extends State<EmbyPage> {
             'MusicStreamingTranscodingBitrate': 384000,
             'DirectPlayProfiles': [
               {
-                'Container': 'mp4,m4v,mkv,avi,mov,wmv,asf,webm',
+                'Container': 'mp4,m4v,mkv,avi,mov,wmv,asf,webm,flv,ts',
                 'Type': 'Video',
-                'VideoCodec': 'h264,hevc,vp8,vp9,av1',
-                'AudioCodec': 'aac,mp3,ac3,eac3,dts,flac,opus,vorbis'
+                'VideoCodec': 'h264,hevc,vp8,vp9,av1,mpeg4,mpeg2video',
+                'AudioCodec': 'aac,mp3,ac3,eac3,dts,flac,opus,vorbis,pcm'
               }
             ],
             'TranscodingProfiles': [],
@@ -496,51 +498,114 @@ class _EmbyPageState extends State<EmbyPage> {
       
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        print('[EmbyPage] PlaybackInfo 响应: ${jsonEncode(data)}');
+        print('[EmbyPage] PlaybackInfo 响应状态码: ${response.statusCode}');
         
-        // 优先使用 DirectPlay
+        // 打印完整的 PlaybackInfo 响应（查找可能的播放域名）
+        print('[EmbyPage] ===== PlaybackInfo 完整响应 =====');
+        final playbackInfoKeys = data.keys.toList();
+        print('[EmbyPage] PlaybackInfo 顶层字段: $playbackInfoKeys');
+        
+        // 检查是否有播放 URL 相关的字段
+        if (data['PlaybackUrl'] != null) {
+          print('[EmbyPage] PlaybackUrl: ${data['PlaybackUrl']}');
+        }
+        if (data['StreamUrl'] != null) {
+          print('[EmbyPage] StreamUrl: ${data['StreamUrl']}');
+        }
+        if (data['PlaybackBaseUrl'] != null) {
+          print('[EmbyPage] PlaybackBaseUrl: ${data['PlaybackBaseUrl']}');
+        }
+        print('[EmbyPage] =====================================');
+        
+        // 获取 MediaSources
         if (data['MediaSources'] != null && (data['MediaSources'] as List).isNotEmpty) {
           final mediaSource = data['MediaSources'][0];
+          mediaSourceId = mediaSource['Id'];
           
-          if (mediaSource['SupportsDirectPlay'] == true) {
-            // 直接播放 - 优先使用 Path
-            final path = mediaSource['Path'] ?? '';
+          // 打印完整的 MediaSource 信息
+          print('[EmbyPage] ===== MediaSource 完整信息 =====');
+          print('[EmbyPage] MediaSource: ${jsonEncode(mediaSource)}');
+          print('[EmbyPage] =====================================');
+          
+          print('[EmbyPage] MediaSource ID: $mediaSourceId');
+          print('[EmbyPage] Path: ${mediaSource['Path']}');
+          print('[EmbyPage] Container: ${mediaSource['Container']}');
+          print('[EmbyPage] SupportsDirectPlay: ${mediaSource['SupportsDirectPlay']}');
+          print('[EmbyPage] SupportsDirectStream: ${mediaSource['SupportsDirectStream']}');
+          print('[EmbyPage] SupportsTranscoding: ${mediaSource['SupportsTranscoding']}');
+          print('[EmbyPage] DirectStreamUrl: ${mediaSource['DirectStreamUrl']}');
+          print('[EmbyPage] TranscodingUrl: ${mediaSource['TranscodingUrl']}');
+          
+          // 优先使用 API 返回的 DirectStreamUrl
+          if (mediaSource['DirectStreamUrl'] != null && mediaSource['DirectStreamUrl'].toString().isNotEmpty) {
+            final directStreamUrl = mediaSource['DirectStreamUrl'].toString();
+            if (directStreamUrl.startsWith('http')) {
+              playbackUrl = directStreamUrl;
+            } else {
+              playbackUrl = '$baseUrl$directStreamUrl';
+            }
+            print('[EmbyPage] 使用 API 返回的 DirectStreamUrl: $playbackUrl');
+          }
+          // 其次使用 Path（如果是完整 URL）
+          else if (mediaSource['Path'] != null) {
+            final path = mediaSource['Path'].toString();
             if (path.startsWith('http')) {
               playbackUrl = path;
-              print('[EmbyPage] 使用 DirectPlay Path: $playbackUrl');
-            } else {
-              // 使用简单的 stream URL，不带 mediaSourceId（更兼容）
-              playbackUrl = '$baseUrl/Videos/$itemId/stream?static=true&api_key=${server.accessToken}';
-              print('[EmbyPage] 构建简单 DirectPlay URL: $playbackUrl');
+              print('[EmbyPage] 使用 MediaSource Path: $playbackUrl');
             }
-          } else if (mediaSource['SupportsDirectStream'] == true) {
-            // 直接流式传输 - 也使用简单 URL
-            playbackUrl = '$baseUrl/Videos/$itemId/stream?static=true&api_key=${server.accessToken}';
-            print('[EmbyPage] 使用简单 DirectStream URL: $playbackUrl');
-          } else {
-            // 转码播放
-            final transcodingUrl = mediaSource['TranscodingUrl'];
-            if (transcodingUrl != null) {
-              playbackUrl = '$baseUrl$transcodingUrl';
-              print('[EmbyPage] 使用 Transcoding URL: $playbackUrl');
+          }
+          
+          // 如果上面都没有，才自己构建 URL
+          if (playbackUrl == null || playbackUrl.isEmpty) {
+            if (mediaSource['SupportsDirectStream'] == true) {
+              // 获取容器格式
+              final container = mediaSource['Container'] ?? 'mkv';
+              
+              // 使用标准的 DirectStream URL（Static=true 更稳定）
+              playbackUrl = '$baseUrl/Videos/$itemId/stream.'
+                  '$container?'
+                  'MediaSourceId=$mediaSourceId&'
+                  'Static=true&'
+                  'api_key=${server.accessToken}';
+              print('[EmbyPage] 构建 DirectStream URL: $playbackUrl');
+            } 
+            else if (mediaSource['SupportsDirectPlay'] == true) {
+              // 构建 DirectPlay URL
+              playbackUrl = '$baseUrl/Videos/$itemId/stream?'
+                  'MediaSourceId=$mediaSourceId&'
+                  'Static=true&'
+                  'api_key=${server.accessToken}';
+              print('[EmbyPage] 构建 DirectPlay URL: $playbackUrl');
+            }
+            else if (mediaSource['SupportsTranscoding'] == true) {
+              final transcodingUrl = mediaSource['TranscodingUrl'];
+              if (transcodingUrl != null && transcodingUrl.isNotEmpty) {
+                playbackUrl = '$baseUrl$transcodingUrl';
+                print('[EmbyPage] 使用 Transcoding URL: $playbackUrl');
+              }
             }
           }
         }
+      } else {
+        print('[EmbyPage] PlaybackInfo API 返回错误: ${response.statusCode}');
+        print('[EmbyPage] 响应内容: ${response.body}');
       }
     } catch (e) {
-      print('[EmbyPage] PlaybackInfo API 失败: $e');
+      print('[EmbyPage] PlaybackInfo API 异常: $e');
     }
     
-    // 方法2: 如果 PlaybackInfo 失败，使用传统的直接流播放
-    if (playbackUrl == null) {
-      playbackUrl = '$baseUrl/Videos/$itemId/stream?static=true&api_key=${server.accessToken}';
-      print('[EmbyPage] 使用备用 Stream URL: $playbackUrl');
+    // 方法2: 如果 PlaybackInfo 失败，使用最简单的 stream URL
+    if (playbackUrl == null || playbackUrl.isEmpty) {
+      playbackUrl = '$baseUrl/Videos/$itemId/stream?api_key=${server.accessToken}';
+      print('[EmbyPage] 使用备用简单 Stream URL: $playbackUrl');
     }
     
     print('[EmbyPage] 最终播放 URL: $playbackUrl');
     
-    // 构建 HTTP headers
-    final headers = _headers();
+    // 构建播放器需要的 HTTP headers（只包含认证信息，不包含 Content-Type）
+    final playbackHeaders = <String, String>{
+      'X-Emby-Authorization': 'MediaBrowser Client="BovaPlayer", Device="Flutter", DeviceId="bova-flutter", Version="1.0.0", Token="${server.accessToken}"',
+    };
     
     // 获取字幕列表
     final subtitles = await _fetchSubtitles(itemId);
@@ -566,7 +631,7 @@ class _EmbyPageState extends State<EmbyPage> {
           builder: (_) => MediaKitPlayerPage(
             url: playbackUrl!,  // 已经检查过不为 null
             title: name,
-            httpHeaders: headers,
+            httpHeaders: playbackHeaders,  // 使用专门为播放准备的 headers
             subtitles: subtitles,
             itemId: itemId,  // 传递 itemId 用于保存播放位置
             serverUrl: server.url,  // 传递服务器地址

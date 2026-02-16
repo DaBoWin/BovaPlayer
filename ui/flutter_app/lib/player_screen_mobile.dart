@@ -381,9 +381,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 检测是否横屏
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5), // 高级白色背景
-      appBar: AppBar(
+      // 横屏时隐藏 AppBar
+      appBar: isLandscape ? null : AppBar(
         title: const Text(
           '本地播放',
           style: TextStyle(
@@ -457,44 +461,47 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     if (!_hasVideo) {
+      // 检测是否横屏
+      final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+      
       return Center(
         child: Padding(
-          padding: const EdgeInsets.only(bottom: 100), // 避免被底部导航栏遮挡
+          padding: EdgeInsets.only(bottom: isLandscape ? 0 : 100), // 横屏时不需要底部间距
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               // 现代化图标
               Container(
-                width: 120,
-                height: 120,
+                width: isLandscape ? 80 : 120, // 横屏时缩小图标
+                height: isLandscape ? 80 : 120,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: const Color(0xFFF3F4F6), // 浅灰色背景
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.play_circle_outline_rounded,
-                  size: 56,
-                  color: Color(0xFF1F2937), // 高级黑
+                  size: isLandscape ? 40 : 56, // 横屏时缩小图标
+                  color: const Color(0xFF1F2937), // 高级黑
                 ),
               ),
-              const SizedBox(height: 32),
-              const Text(
+              SizedBox(height: isLandscape ? 16 : 32), // 横屏时减小间距
+              Text(
                 '还没有选择视频',
                 style: TextStyle(
-                  color: Color(0xFF1F2937),
-                  fontSize: 18,
+                  color: const Color(0xFF1F2937),
+                  fontSize: isLandscape ? 16 : 18, // 横屏时缩小字体
                   fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
-                '点击右上角文件夹图标选择视频',
-                style: TextStyle(
+              Text(
+                isLandscape ? '点击按钮选择视频' : '点击右上角文件夹图标选择视频',
+                style: const TextStyle(
                   color: Color(0xFF6B7280),
                   fontSize: 14,
                 ),
               ),
-              const SizedBox(height: 32),
+              SizedBox(height: isLandscape ? 16 : 32), // 横屏时减小间距
               // 现代化按钮
               ElevatedButton.icon(
                 icon: const Icon(Icons.folder_open_rounded, size: 20),
