@@ -62,6 +62,7 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
   bool _showVolumeIndicator = false;
   bool _showSeekIndicator = false;
   String _seekIndicatorText = '';
+  int _accumulatedSeekSeconds = 0; // 手势拖拉累计的秒数
   Timer? _indicatorTimer;
   
   // 播放位置记忆
@@ -252,27 +253,34 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       
       await (nativePlayer as dynamic).setProperty('http-header-fields', headers.join('\r\n'));
       
-      // 3. 优化网络和缓冲配置 - 更快的缓冲
+      // 3. 优化网络配置 - 支持负载均衡节点
       await (nativePlayer as dynamic).setProperty('cache', 'yes');
       
-      // 增大缓冲区以减少卡顿
+      // 网络重连和超时配置（重要：负载均衡节点可能需要重试）
+      await (nativePlayer as dynamic).setProperty('network-timeout', '30'); // 30秒超时
+      await (nativePlayer as dynamic).setProperty('http-reconnect', 'yes'); // 启用自动重连
+      await (nativePlayer as dynamic).setProperty('stream-lavf-o', 'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5'); // FFmpeg 重连配置
+      
+      // 缓冲配置 - 适合负载均衡
       await (nativePlayer as dynamic).setProperty('demuxer-max-bytes', '100000000'); // 100MB
       await (nativePlayer as dynamic).setProperty('demuxer-max-back-bytes', '50000000'); // 50MB
-      await (nativePlayer as dynamic).setProperty('demuxer-readahead-secs', '5'); // 预读5秒
+      await (nativePlayer as dynamic).setProperty('demuxer-readahead-secs', '10'); // 预读10秒（增加以应对网络波动）
       
       // 快速启动播放
       await (nativePlayer as dynamic).setProperty('cache-pause-initial', 'no');
-      await (nativePlayer as dynamic).setProperty('cache-pause-wait', '0');
-      await (nativePlayer as dynamic).setProperty('cache-secs', '10'); // 缓存10秒
+      await (nativePlayer as dynamic).setProperty('cache-pause-wait', '1'); // 等待1秒再暂停
+      await (nativePlayer as dynamic).setProperty('cache-secs', '15'); // 缓存15秒
       
+      // 启用 seekable（负载均衡节点通常支持 Range 请求）
       await (nativePlayer as dynamic).setProperty('force-seekable', 'yes');
-      await (nativePlayer as dynamic).setProperty('network-timeout', '60');
       
       // 启用快速查找
       await (nativePlayer as dynamic).setProperty('hr-seek', 'yes');
       await (nativePlayer as dynamic).setProperty('hr-seek-framedrop', 'yes');
       
-      // 3. 硬件解码配置 - 根据设备类型和平台
+      print('[MediaKitPlayer] 网络配置完成 - 已启用负载均衡优化');
+      
+      // 4. 硬件解码配置 - 根据设备类型和平台
       if (isAndroid) {
         if (isEmulator) {
           // 模拟器使用纯软件解码
@@ -554,21 +562,33 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
     }
   }
   
+  // 手势拖拉相关
+  Duration? _seekTargetPosition; // 目标位置
+  
   void _handleHorizontalDragUpdate(DragUpdateDetails details) {
     if (_isLocked) return;
     
-    final delta = details.delta.dx;
-    final seekSeconds = (delta / 5).round();
+    // 获取屏幕宽度和当前拖拽位置
+    final screenWidth = MediaQuery.of(context).size.width;
+    final dragPosition = details.globalPosition.dx;
     
-    if (seekSeconds.abs() > 0) {
-      final currentPos = _player.state.position;
-      final newPos = currentPos + Duration(seconds: seekSeconds);
+    // 计算拖拽位置对应的视频时间点
+    final duration = _player.state.duration;
+    if (duration.inSeconds > 0) {
+      final percentage = (dragPosition / screenWidth).clamp(0.0, 1.0);
+      final targetSeconds = (duration.inSeconds * percentage).round();
+      _seekTargetPosition = Duration(seconds: targetSeconds);
+      
+      // 格式化显示时间
+      final minutes = targetSeconds ~/ 60;
+      final seconds = targetSeconds % 60;
+      final timeStr = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
       
       setState(() {
         _showSeekIndicator = true;
         _showBrightnessIndicator = false;
         _showVolumeIndicator = false;
-        _seekIndicatorText = '${seekSeconds > 0 ? '+' : ''}$seekSeconds 秒';
+        _seekIndicatorText = timeStr;
       });
       
       _startIndicatorTimer();
@@ -576,16 +596,13 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
   }
   
   void _handleHorizontalDragEnd(DragEndDetails details) {
-    if (_isLocked || !_showSeekIndicator) return;
+    if (_isLocked || _seekTargetPosition == null) return;
     
-    // 实际执行跳转
-    final seekText = _seekIndicatorText;
-    if (seekText.isNotEmpty) {
-      final seconds = int.tryParse(seekText.replaceAll(RegExp(r'[^0-9-]'), ''));
-      if (seconds != null) {
-        _seek(Duration(seconds: seconds));
-      }
-    }
+    // 跳转到目标位置
+    _player.seek(_seekTargetPosition!);
+    
+    // 重置
+    _seekTargetPosition = null;
   }
   
   void _startIndicatorTimer() {
