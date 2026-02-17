@@ -253,32 +253,46 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       
       await (nativePlayer as dynamic).setProperty('http-header-fields', headers.join('\r\n'));
       
-      // 3. 优化网络配置 - 支持负载均衡节点
+      // 3. 优化网络配置 - 支持负载均衡节点和连接恢复
       await (nativePlayer as dynamic).setProperty('cache', 'yes');
       
       // 网络重连和超时配置（关键：负载均衡节点需要重试）
-      await (nativePlayer as dynamic).setProperty('network-timeout', '30'); // 30秒超时
+      await (nativePlayer as dynamic).setProperty('network-timeout', '60'); // 增加到60秒超时
       await (nativePlayer as dynamic).setProperty('http-reconnect', 'yes'); // 启用自动重连
       
-      // FFmpeg 重连配置 - 关键参数
+      // FFmpeg 重连配置 - 增强版
       // reconnect: 启用重连
       // reconnect_streamed: 对流媒体也启用重连
       // reconnect_at_eof: 在 EOF 时重连
+      // reconnect_on_network_error: 网络错误时重连
+      // reconnect_on_http_error: HTTP 错误时重连
       // reconnect_delay_max: 最大重连延迟（秒）
-      await (nativePlayer as dynamic).setProperty('stream-lavf-o', 'reconnect=1,reconnect_streamed=1,reconnect_at_eof=1,reconnect_delay_max=10');
+      final lavfOptions = [
+        'reconnect=1',
+        'reconnect_streamed=1',
+        'reconnect_at_eof=1',
+        'reconnect_on_network_error=1',
+        'reconnect_on_http_error=4xx,5xx',
+        'reconnect_delay_max=10',
+        'timeout=60000000', // 60秒超时（微秒）
+        'tcp_nodelay=1', // 禁用 Nagle 算法，减少延迟
+        'listen_timeout=60000000', // 监听超时
+      ].join(',');
       
-      // TCP 配置 - 处理连接重置
-      await (nativePlayer as dynamic).setProperty('stream-lavf-o-append', 'timeout=30000000'); // 30秒超时（微秒）
+      await (nativePlayer as dynamic).setProperty('stream-lavf-o', lavfOptions);
       
-      // 缓冲配置
-      await (nativePlayer as dynamic).setProperty('demuxer-max-bytes', '100000000'); // 100MB
-      await (nativePlayer as dynamic).setProperty('demuxer-max-back-bytes', '50000000'); // 50MB
-      await (nativePlayer as dynamic).setProperty('demuxer-readahead-secs', '10'); // 预读10秒
+      // TCP Keepalive 配置 - 防止连接被中断
+      await (nativePlayer as dynamic).setProperty('stream-lavf-o-append', 'tcp_keepalive=1');
+      
+      // 缓冲配置 - 增加缓冲区以应对网络波动
+      await (nativePlayer as dynamic).setProperty('demuxer-max-bytes', '150000000'); // 150MB
+      await (nativePlayer as dynamic).setProperty('demuxer-max-back-bytes', '75000000'); // 75MB
+      await (nativePlayer as dynamic).setProperty('demuxer-readahead-secs', '15'); // 预读15秒
       
       // 快速启动播放
       await (nativePlayer as dynamic).setProperty('cache-pause-initial', 'no');
       await (nativePlayer as dynamic).setProperty('cache-pause-wait', '1');
-      await (nativePlayer as dynamic).setProperty('cache-secs', '15');
+      await (nativePlayer as dynamic).setProperty('cache-secs', '20'); // 增加缓存时间
       
       // 启用 seekable
       await (nativePlayer as dynamic).setProperty('force-seekable', 'yes');
@@ -287,7 +301,12 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       await (nativePlayer as dynamic).setProperty('hr-seek', 'yes');
       await (nativePlayer as dynamic).setProperty('hr-seek-framedrop', 'yes');
       
-      print('[MediaKitPlayer] 网络配置完成 - 负载均衡优化（增强重连）');
+      // 错误恢复配置
+      await (nativePlayer as dynamic).setProperty('load-unsafe-playlists', 'yes');
+      await (nativePlayer as dynamic).setProperty('demuxer-lavf-analyzeduration', '10000000'); // 10秒分析时间
+      await (nativePlayer as dynamic).setProperty('demuxer-lavf-probe-info', 'yes');
+      
+      print('[MediaKitPlayer] 网络配置完成 - 增强重连和 TCP keepalive');
       
       // 4. 硬件解码配置 - 根据设备类型和平台
       if (isAndroid) {
