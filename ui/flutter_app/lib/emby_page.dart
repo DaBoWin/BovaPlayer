@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'media_kit_player_page.dart';
+import 'unified_player_page.dart';
 
 // ============== 现代化主题配置 ==============
 
@@ -678,7 +678,7 @@ class _EmbyPageState extends State<EmbyPage> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => MediaKitPlayerPage(
+          builder: (_) => UnifiedPlayerPage(
             url: playbackUrl!,  // 已经检查过不为 null
             title: name,
             httpHeaders: playbackHeaders,  // 使用专门为播放准备的 headers

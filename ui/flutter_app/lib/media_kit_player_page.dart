@@ -256,29 +256,38 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       // 3. 优化网络配置 - 支持负载均衡节点
       await (nativePlayer as dynamic).setProperty('cache', 'yes');
       
-      // 网络重连和超时配置（重要：负载均衡节点可能需要重试）
+      // 网络重连和超时配置（关键：负载均衡节点需要重试）
       await (nativePlayer as dynamic).setProperty('network-timeout', '30'); // 30秒超时
       await (nativePlayer as dynamic).setProperty('http-reconnect', 'yes'); // 启用自动重连
-      await (nativePlayer as dynamic).setProperty('stream-lavf-o', 'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5'); // FFmpeg 重连配置
       
-      // 缓冲配置 - 适合负载均衡
+      // FFmpeg 重连配置 - 关键参数
+      // reconnect: 启用重连
+      // reconnect_streamed: 对流媒体也启用重连
+      // reconnect_at_eof: 在 EOF 时重连
+      // reconnect_delay_max: 最大重连延迟（秒）
+      await (nativePlayer as dynamic).setProperty('stream-lavf-o', 'reconnect=1,reconnect_streamed=1,reconnect_at_eof=1,reconnect_delay_max=10');
+      
+      // TCP 配置 - 处理连接重置
+      await (nativePlayer as dynamic).setProperty('stream-lavf-o-append', 'timeout=30000000'); // 30秒超时（微秒）
+      
+      // 缓冲配置
       await (nativePlayer as dynamic).setProperty('demuxer-max-bytes', '100000000'); // 100MB
       await (nativePlayer as dynamic).setProperty('demuxer-max-back-bytes', '50000000'); // 50MB
-      await (nativePlayer as dynamic).setProperty('demuxer-readahead-secs', '10'); // 预读10秒（增加以应对网络波动）
+      await (nativePlayer as dynamic).setProperty('demuxer-readahead-secs', '10'); // 预读10秒
       
       // 快速启动播放
       await (nativePlayer as dynamic).setProperty('cache-pause-initial', 'no');
-      await (nativePlayer as dynamic).setProperty('cache-pause-wait', '1'); // 等待1秒再暂停
-      await (nativePlayer as dynamic).setProperty('cache-secs', '15'); // 缓存15秒
+      await (nativePlayer as dynamic).setProperty('cache-pause-wait', '1');
+      await (nativePlayer as dynamic).setProperty('cache-secs', '15');
       
-      // 启用 seekable（负载均衡节点通常支持 Range 请求）
+      // 启用 seekable
       await (nativePlayer as dynamic).setProperty('force-seekable', 'yes');
       
       // 启用快速查找
       await (nativePlayer as dynamic).setProperty('hr-seek', 'yes');
       await (nativePlayer as dynamic).setProperty('hr-seek-framedrop', 'yes');
       
-      print('[MediaKitPlayer] 网络配置完成 - 已启用负载均衡优化');
+      print('[MediaKitPlayer] 网络配置完成 - 负载均衡优化（增强重连）');
       
       // 4. 硬件解码配置 - 根据设备类型和平台
       if (isAndroid) {
