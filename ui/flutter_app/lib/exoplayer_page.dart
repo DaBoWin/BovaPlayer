@@ -988,10 +988,10 @@ class _ExoPlayerPageState extends State<ExoPlayerPage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.deepPurple : Colors.white.withOpacity(0.1),
+          color: Colors.white.withOpacity(0.1),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected ? Colors.deepPurple : Colors.white.withOpacity(0.2),
+            color: Colors.white.withOpacity(0.2),
             width: 1.5,
           ),
         ),
@@ -1005,10 +1005,10 @@ class _ExoPlayerPageState extends State<ExoPlayerPage> {
               ),
             Text(
               '${speed}x',
-              style: TextStyle(
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 16,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ],
@@ -1108,7 +1108,7 @@ class _ExoPlayerPageState extends State<ExoPlayerPage> {
                                 SnackBar(
                                   content: const Text('字幕切换功能需要重新加载视频'),
                                   duration: const Duration(seconds: 2),
-                                  backgroundColor: Colors.deepPurple,
+                                  backgroundColor: const Color(0xFF1F2937),
                                   behavior: SnackBarBehavior.floating,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(10),
@@ -1141,13 +1141,11 @@ class _ExoPlayerPageState extends State<ExoPlayerPage> {
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: isSelected
-              ? Colors.deepPurple.withOpacity(0.2)
-              : Colors.white.withOpacity(0.05),
+          color: Colors.white.withOpacity(0.05),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected ? Colors.deepPurple : Colors.transparent,
-            width: 1.5,
+            color: Colors.white.withOpacity(0.1),
+            width: 1,
           ),
         ),
         child: Row(
@@ -1156,9 +1154,7 @@ class _ExoPlayerPageState extends State<ExoPlayerPage> {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: isSelected
-                    ? Colors.deepPurple
-                    : Colors.white.withOpacity(0.1),
+                color: Colors.white.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
@@ -1174,10 +1170,10 @@ class _ExoPlayerPageState extends State<ExoPlayerPage> {
                 children: [
                   Text(
                     title,
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 16,
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                   if (subtitle != null) ...[
@@ -1196,7 +1192,7 @@ class _ExoPlayerPageState extends State<ExoPlayerPage> {
             if (isSelected)
               const Icon(
                 Icons.check,
-                color: Colors.deepPurple,
+                color: Colors.white,
                 size: 24,
               ),
           ],
@@ -1267,13 +1263,11 @@ class _ExoPlayerPageState extends State<ExoPlayerPage> {
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: isSelected
-              ? Colors.deepPurple.withOpacity(0.2)
-              : Colors.white.withOpacity(0.05),
+          color: Colors.white.withOpacity(0.05),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected ? Colors.deepPurple : Colors.transparent,
-            width: 1.5,
+            color: Colors.white.withOpacity(0.1),
+            width: 1,
           ),
         ),
         child: Row(
@@ -1282,9 +1276,7 @@ class _ExoPlayerPageState extends State<ExoPlayerPage> {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: isSelected
-                    ? Colors.deepPurple
-                    : Colors.white.withOpacity(0.1),
+                color: Colors.white.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
@@ -1297,17 +1289,17 @@ class _ExoPlayerPageState extends State<ExoPlayerPage> {
             Expanded(
               child: Text(
                 label,
-                style: TextStyle(
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 16,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ),
             if (isSelected)
               const Icon(
                 Icons.check_circle,
-                color: Colors.deepPurple,
+                color: Colors.white,
                 size: 24,
               ),
           ],
