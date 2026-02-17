@@ -45,7 +45,14 @@ class _ExoPlayerPageState extends State<ExoPlayerPage> {
   Timer? _clockTimer;
   Timer? _savePositionTimer;
   Timer? _reportProgressTimer;
+  Timer? _speedTimer;
   String _currentTime = '';
+  String _networkSpeed = '-- KB/s';
+  String _aspectRatio = 'fit';
+  int _lastBufferedPosition = 0;
+  DateTime _lastSpeedCheck = DateTime.now();
+  int _selectedTextTrack = -1; // -1 表示关闭字幕
+  List<Map<String, dynamic>> _textTracks = []; // 字幕轨道列表
   
   // 手势控制相关
   double _brightness = 0.5;
@@ -73,6 +80,7 @@ class _ExoPlayerPageState extends State<ExoPlayerPage> {
     _initializePlayer();
     _updateClock();
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) => _updateClock());
+    _speedTimer = Timer.periodic(const Duration(seconds: 1), (_) => _updateNetworkSpeed());
   }
 
   Future<void> _initializePlayer() async {
@@ -90,6 +98,9 @@ class _ExoPlayerPageState extends State<ExoPlayerPage> {
       _controller!.addListener(() {
         if (mounted) setState(() {});
       });
+      
+      // 尝试获取字幕轨道信息（如果视频有内嵌字幕）
+      _loadTextTracks();
       
       await _controller!.play();
       
@@ -119,6 +130,26 @@ class _ExoPlayerPageState extends State<ExoPlayerPage> {
         });
       }
     }
+  }
+
+  void _loadTextTracks() {
+    // 添加外挂字幕（如果有）
+    if (widget.subtitles != null && widget.subtitles!.isNotEmpty) {
+      for (int i = 0; i < widget.subtitles!.length; i++) {
+        final subtitle = widget.subtitles![i];
+        _textTracks.add({
+          'index': i,
+          'title': subtitle['title'] ?? '字幕 ${i + 1}',
+          'language': subtitle['language'] ?? 'und',
+          'url': subtitle['url'],
+        });
+      }
+      print('[ExoPlayer] 加载了 ${_textTracks.length} 个外挂字幕');
+    }
+    
+    // 注意：video_player 插件默认不支持获取内嵌字幕轨道
+    // 如果需要完整的字幕支持，需要使用 better_player 或自定义 ExoPlayer 插件
+    // 这里我们先支持外挂字幕
   }
 
   // ============== 播放位置记忆 ==============
@@ -405,6 +436,7 @@ class _ExoPlayerPageState extends State<ExoPlayerPage> {
   void dispose() {
     _hideTimer?.cancel();
     _clockTimer?.cancel();
+    _speedTimer?.cancel();
     _savePositionTimer?.cancel();
     _reportProgressTimer?.cancel();
     _indicatorTimer?.cancel();
@@ -423,6 +455,71 @@ class _ExoPlayerPageState extends State<ExoPlayerPage> {
       setState(() {
         _currentTime = DateFormat('HH:mm').format(DateTime.now());
       });
+    }
+  }
+
+  void _updateNetworkSpeed() {
+    if (!mounted || _controller == null || !_controller!.value.isInitialized) return;
+    
+    try {
+      final now = DateTime.now();
+      final timeDiff = now.difference(_lastSpeedCheck).inSeconds.toDouble();
+      
+      if (timeDiff >= 1.0) {
+        final currentBuffered = _controller!.value.buffered.isNotEmpty
+            ? _controller!.value.buffered.last.end.inMilliseconds
+            : 0;
+        
+        final bufferDiff = currentBuffered - _lastBufferedPosition;
+        
+        if (bufferDiff > 0) {
+          // 估算码率（基于分辨率）
+          double estimatedBitrate = 4000; // 默认 4 Mbps
+          
+          // 缓冲增量（秒）* 码率（Kbps）/ 8 = 下载的字节数
+          final bufferIncreaseSec = bufferDiff / 1000.0;
+          final downloadedBytes = (bufferIncreaseSec * estimatedBitrate * 1000) / 8;
+          final bytesPerSecond = downloadedBytes / timeDiff;
+          
+          if (bytesPerSecond > 0) {
+            final speed = _formatSpeed(bytesPerSecond);
+            if (mounted) {
+              setState(() {
+                _networkSpeed = speed;
+              });
+            }
+          }
+        }
+        
+        _lastBufferedPosition = currentBuffered;
+        _lastSpeedCheck = now;
+      }
+      
+      if (_controller!.value.isBuffering) {
+        if (mounted) {
+          setState(() {
+            _networkSpeed = '缓冲中...';
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _networkSpeed = '-- KB/s';
+        });
+      }
+    }
+  }
+
+  String _formatSpeed(double bytesPerSecond) {
+    if (bytesPerSecond < 0) return '0 B/s';
+    
+    if (bytesPerSecond < 1024) {
+      return '${bytesPerSecond.toStringAsFixed(0)} B/s';
+    } else if (bytesPerSecond < 1024 * 1024) {
+      return '${(bytesPerSecond / 1024).toStringAsFixed(1)} KB/s';
+    } else {
+      return '${(bytesPerSecond / (1024 * 1024)).toStringAsFixed(2)} MB/s';
     }
   }
 
@@ -474,6 +571,23 @@ class _ExoPlayerPageState extends State<ExoPlayerPage> {
     Navigator.pop(context);
   }
 
+  void _changeAspectRatio(String ratio) {
+    setState(() => _aspectRatio = ratio);
+    Navigator.pop(context);
+  }
+
+  String _getAspectRatioLabel() {
+    switch (_aspectRatio) {
+      case 'fill':
+        return '填充';
+      case 'stretch':
+        return '拉伸';
+      case 'fit':
+      default:
+        return '适应';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -492,10 +606,25 @@ class _ExoPlayerPageState extends State<ExoPlayerPage> {
             // 视频播放器
             if (_controller != null && _controller!.value.isInitialized)
               Center(
-                child: AspectRatio(
-                  aspectRatio: _controller!.value.aspectRatio,
-                  child: VideoPlayer(_controller!),
-                ),
+                child: _aspectRatio == 'fill'
+                    ? SizedBox.expand(
+                        child: FittedBox(
+                          fit: BoxFit.cover,
+                          child: SizedBox(
+                            width: _controller!.value.size.width,
+                            height: _controller!.value.size.height,
+                            child: VideoPlayer(_controller!),
+                          ),
+                        ),
+                      )
+                    : _aspectRatio == 'stretch'
+                        ? SizedBox.expand(
+                            child: VideoPlayer(_controller!),
+                          )
+                        : AspectRatio(
+                            aspectRatio: _controller!.value.aspectRatio,
+                            child: VideoPlayer(_controller!),
+                          ),
               )
             else if (_isInitializing)
               const Center(
@@ -607,6 +736,35 @@ class _ExoPlayerPageState extends State<ExoPlayerPage> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
+            // 网速显示
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.speed,
+                    color: Colors.greenAccent,
+                    size: 14,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    _networkSpeed,
+                    style: const TextStyle(
+                      color: Colors.greenAccent,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            // 时间显示
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
@@ -727,9 +885,19 @@ class _ExoPlayerPageState extends State<ExoPlayerPage> {
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           _buildBottomButton(
+            icon: Icons.subtitles,
+            label: '字幕',
+            onPressed: _showSubtitleMenu,
+          ),
+          _buildBottomButton(
             icon: Icons.speed,
             label: '${_playbackSpeed}x',
             onPressed: _showSpeedMenu,
+          ),
+          _buildBottomButton(
+            icon: Icons.aspect_ratio,
+            label: _getAspectRatioLabel(),
+            onPressed: _showAspectRatioMenu,
           ),
         ],
       ),
@@ -763,40 +931,385 @@ class _ExoPlayerPageState extends State<ExoPlayerPage> {
   void _showSpeedMenu() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF16213E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF1F2937),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                '播放速度',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    for (final speed in [0.5, 0.75, 1.0, 1.25, 1.5, 2.0])
+                      _buildSpeedChip(speed),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+          ),
+        ),
       ),
-      builder: (context) => SafeArea(
-        child: Column(
+    );
+  }
+
+  Widget _buildSpeedChip(double speed) {
+    final isSelected = _playbackSpeed == speed;
+    return InkWell(
+      onTap: () => _changeSpeed(speed),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.deepPurple : Colors.white.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? Colors.deepPurple : Colors.white.withOpacity(0.2),
+            width: 1.5,
+          ),
+        ),
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(height: 16),
-            const Text(
-              '播放速度',
+            if (isSelected)
+              const Padding(
+                padding: EdgeInsets.only(right: 8),
+                child: Icon(Icons.check_circle, color: Colors.white, size: 18),
+              ),
+            Text(
+              '${speed}x',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 16,
-                fontWeight: FontWeight.bold,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
               ),
             ),
-            const SizedBox(height: 8),
-            for (final speed in [0.5, 0.75, 1.0, 1.25, 1.5, 2.0])
-              ListTile(
-                title: Text(
-                  '${speed}x',
-                  style: TextStyle(
-                    color: _playbackSpeed == speed
-                        ? Colors.deepPurple.shade200
-                        : Colors.white,
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showSubtitleMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.7,
+        ),
+        decoration: const BoxDecoration(
+          color: Color(0xFF1F2937),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                '字幕',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      // 关闭字幕选项
+                      _buildSubtitleOption(
+                        title: '关闭',
+                        subtitle: null,
+                        isSelected: _selectedTextTrack == -1,
+                        onTap: () {
+                          setState(() {
+                            _selectedTextTrack = -1;
+                          });
+                          Navigator.pop(context);
+                          print('[ExoPlayer] 字幕已关闭');
+                        },
+                      ),
+                      // 显示可用的字幕轨道
+                      if (_textTracks.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.all(24.0),
+                          child: Column(
+                            children: [
+                              Icon(
+                                Icons.subtitles_off_outlined,
+                                color: Colors.white.withOpacity(0.3),
+                                size: 48,
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                '暂无可用字幕',
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.5),
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        for (int i = 0; i < _textTracks.length; i++)
+                          _buildSubtitleOption(
+                            title: _textTracks[i]['title'] ?? '字幕 ${i + 1}',
+                            subtitle: _textTracks[i]['language'],
+                            isSelected: _selectedTextTrack == i,
+                            onTap: () {
+                              setState(() {
+                                _selectedTextTrack = i;
+                              });
+                              Navigator.pop(context);
+                              print('[ExoPlayer] 选择字幕: ${_textTracks[i]['title']}');
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: const Text('字幕切换功能需要重新加载视频'),
+                                  duration: const Duration(seconds: 2),
+                                  backgroundColor: Colors.deepPurple,
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                    ],
                   ),
                 ),
-                trailing: _playbackSpeed == speed
-                    ? const Icon(Icons.check, color: Colors.deepPurple)
-                    : null,
-                onTap: () => _changeSpeed(speed),
               ),
-            const SizedBox(height: 8),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSubtitleOption({
+    required String title,
+    String? subtitle,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? Colors.deepPurple.withOpacity(0.2)
+              : Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? Colors.deepPurple : Colors.transparent,
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? Colors.deepPurple
+                    : Colors.white.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                isSelected ? Icons.check_circle : Icons.subtitles_outlined,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                    ),
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.6),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (isSelected)
+              const Icon(
+                Icons.check,
+                color: Colors.deepPurple,
+                size: 24,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAspectRatioMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF1F2937),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                '画面比例',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 16),
+              for (final ratio in [
+                {'value': 'fit', 'label': '适应屏幕', 'icon': Icons.fit_screen},
+                {'value': 'fill', 'label': '填充屏幕', 'icon': Icons.fullscreen},
+                {'value': 'stretch', 'label': '拉伸填充', 'icon': Icons.open_in_full},
+              ])
+                _buildAspectRatioOption(
+                  value: ratio['value'] as String,
+                  label: ratio['label'] as String,
+                  icon: ratio['icon'] as IconData,
+                ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAspectRatioOption({
+    required String value,
+    required String label,
+    required IconData icon,
+  }) {
+    final isSelected = _aspectRatio == value;
+    return InkWell(
+      onTap: () => _changeAspectRatio(value),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? Colors.deepPurple.withOpacity(0.2)
+              : Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? Colors.deepPurple : Colors.transparent,
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? Colors.deepPurple
+                    : Colors.white.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                ),
+              ),
+            ),
+            if (isSelected)
+              const Icon(
+                Icons.check_circle,
+                color: Colors.deepPurple,
+                size: 24,
+              ),
           ],
         ),
       ),
