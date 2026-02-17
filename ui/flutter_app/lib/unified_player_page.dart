@@ -1,10 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'exoplayer_page.dart';
 import 'media_kit_player_page.dart';
 
 /// 统一播放器入口
-/// Android 使用 ExoPlayer，其他平台使用 media_kit
+/// 所有平台统一使用 media_kit (基于 libmpv)
 class UnifiedPlayerPage extends StatelessWidget {
   final String url;
   final String title;
@@ -29,31 +28,17 @@ class UnifiedPlayerPage extends StatelessWidget {
   
   @override
   Widget build(BuildContext context) {
-    // Android 使用 ExoPlayer，其他平台使用 media_kit
-    if (Platform.isAndroid) {
-      print('[UnifiedPlayer] 使用 ExoPlayer (Android)');
-      return ExoPlayerPage(
-        url: url,
-        title: title,
-        httpHeaders: httpHeaders,
-        subtitles: subtitles,
-        itemId: itemId,
-        serverUrl: serverUrl,
-        accessToken: accessToken,
-        userId: userId,
-      );
-    } else {
-      print('[UnifiedPlayer] 使用 media_kit (${Platform.operatingSystem})');
-      return MediaKitPlayerPage(
-        url: url,
-        title: title,
-        httpHeaders: httpHeaders,
-        subtitles: subtitles,
-        itemId: itemId,
-        serverUrl: serverUrl,
-        accessToken: accessToken,
-        userId: userId,
-      );
-    }
+    // 所有平台统一使用 media_kit
+    print('[UnifiedPlayer] 使用 media_kit (${Platform.operatingSystem})');
+    return MediaKitPlayerPage(
+      url: url,
+      title: title,
+      httpHeaders: httpHeaders,
+      subtitles: subtitles,
+      itemId: itemId,
+      serverUrl: serverUrl,
+      accessToken: accessToken,
+      userId: userId,
+    );
   }
 }
