@@ -303,7 +303,8 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       
       // 错误恢复配置
       await (nativePlayer as dynamic).setProperty('load-unsafe-playlists', 'yes');
-      await (nativePlayer as dynamic).setProperty('demuxer-lavf-analyzeduration', '10000000'); // 10秒分析时间
+      // demuxer-lavf-analyzeduration 单位是秒，不是微秒
+      await (nativePlayer as dynamic).setProperty('demuxer-lavf-analyzeduration', '10'); // 10秒分析时间
       await (nativePlayer as dynamic).setProperty('demuxer-lavf-probe-info', 'yes');
       
       print('[MediaKitPlayer] 网络配置完成 - 增强重连和 TCP keepalive');
