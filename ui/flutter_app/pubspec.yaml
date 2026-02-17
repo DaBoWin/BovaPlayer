@@ -20,9 +20,9 @@ dependencies:
   media_kit: 1.1.10
   media_kit_video: 1.2.3
   media_kit_libs_video: 1.0.4
-  # ExoPlayer 支持 (Android 专用) - 使用 better_player (支持动态字幕切换)
-  better_player: ^0.0.84
-  video_player: ^2.8.2
+  # ExoPlayer 支持 (Android 专用) - 已切换到 Media Kit，保留作为备选
+  # better_player: ^0.0.84
+  # video_player: ^2.8.2
   package_info_plus: ^8.0.0
 
 dev_dependencies:
