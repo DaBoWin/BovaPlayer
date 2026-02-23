@@ -151,38 +151,45 @@ jobs:
       - name: 修补 media_kit_video（添加 onSurfaceDestroyed 方法）
         run: |
           cd ui/flutter_app
-          # 查找所有 VideoOutput.java 文件
-          find ~/.pub-cache -name "VideoOutput.java" -path "*/media_kit_video/android/*" | while read VIDEO_OUTPUT_FILE; do
-            echo "检查文件: $VIDEO_OUTPUT_FILE"
-            
-            # 检查是否已经有 onSurfaceDestroyed 方法
-            if ! grep -q "onSurfaceDestroyed" "$VIDEO_OUTPUT_FILE"; then
-              echo "需要添加 onSurfaceDestroyed 方法到: $VIDEO_OUTPUT_FILE"
+          
+          # 提取 pub cache 目录并通过 python 脚本精准修补
+          python -c '
+          import os, glob
+          
+          pub_cache = os.path.expanduser("~/.pub-cache")
+          search_pattern = os.path.join(pub_cache, "**", "media_kit_video", "android", "**", "VideoOutput.java")
+          import glob
+          files = glob.glob(search_pattern, recursive=True)
+          
+          for file_path in files:
+              print(f"检查文件: {file_path}")
+              with open(file_path, "r", encoding="utf-8") as f:
+                  content = f.read()
               
-              # 创建临时文件
-              TEMP_FILE=$(mktemp)
+              if "onSurfaceDestroyed" in content:
+                  print("✓ onSurfaceDestroyed 方法已存在")
+                  continue
+                  
+              print(f"需要添加 onSurfaceDestroyed 方法到: {file_path}")
               
-              # 在类的最后一个方法后添加新方法
-              awk '
-              /^}$/ && !done {
-                print "  public void onSurfaceDestroyed() {";
-                print "    onSurfaceCleanup();";
-                print "  }";
-                print "";
-                done = 1;
-              }
-              { print $0; }
-              ' "$VIDEO_OUTPUT_FILE" > "$TEMP_FILE"
+              # 1. 移除 public void onSurfaceCleanup() 紧邻上方的 @Override
+              # 使用 replace 替换精确的方法签名
+              import re
+              content = re.sub(r"@Override\s+public void onSurfaceCleanup\(\)", "public void onSurfaceCleanup()", content)
               
-              # 替换原文件
-              mv "$TEMP_FILE" "$VIDEO_OUTPUT_FILE"
+              # 2. 在文件末尾的 } 前插入 onSurfaceDestroyed
+              injection = """
+    public void onSurfaceDestroyed() {
+        onSurfaceCleanup();
+    }
+}"""
+              content = re.sub(r"}\s*$", injection, content)
               
-              echo "✓ 已添加 onSurfaceDestroyed 方法"
-              grep -A 2 "onSurfaceDestroyed" "$VIDEO_OUTPUT_FILE"
-            else
-              echo "✓ onSurfaceDestroyed 方法已存在"
-            fi
-          done
+              with open(file_path, "w", encoding="utf-8") as f:
+                  f.write(content)
+              
+              print("✓ 已精准修复文件")
+          '
 
       - name: 构建 APK
         run: |
