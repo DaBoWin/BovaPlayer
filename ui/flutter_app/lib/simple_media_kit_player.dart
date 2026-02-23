@@ -29,12 +29,8 @@ class _SimpleMediaKitPlayerState extends State<SimpleMediaKitPlayer> {
     
     // 创建播放器，配置 MPV 参数支持 HTTPS
     player = Player(
-      configuration: PlayerConfiguration(
+      configuration: const PlayerConfiguration(
         title: 'BovaPlayer',
-        // 允许所有协议
-        protocolWhitelist: const ['http', 'https', 'file', 'tcp', 'tls'],
-        // 启用调试日志，方便排查 HTTPS / TLS 问题
-        logLevel: MPVLogLevel.warn,
       ),
     );
     // 使用软件渲染以确保兼容性（避免黑屏）

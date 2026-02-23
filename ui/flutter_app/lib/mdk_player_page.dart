@@ -437,9 +437,6 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
     _savePlayPosition();
     _reportPlaybackStopped();
 
-    if (!kIsWeb && (Platform.isMacOS || Platform.isWindows)) {
-      windowManager.setFullScreen(false);
-    }
     if (!kIsWeb && Platform.isMacOS) {
       _trafficLightsChannel.invokeMethod('show');
     }
@@ -717,11 +714,7 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
                 IconButton(
                   icon: const Icon(Icons.arrow_back, color: Colors.white),
                   onPressed: () {
-                    if (widget.isSubWindow) {
-                      windowManager.close();
-                    } else {
-                      Navigator.pop(context);
-                    }
+                    Navigator.pop(context);
                   },
                 ),
                 Expanded(
@@ -854,7 +847,7 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
                     final delta = details.delta.dx;
                     final msDelta = (delta / totalWidth) * maxMs;
                     setState(() {
-                      _dragPosition = (_dragPosition + msDelta).clamp(0.0, maxMs);
+                      _dragPosition = (_dragPosition + msDelta).clamp(0.0, maxMs).toDouble();
                     });
                   },
                   onHorizontalDragEnd: (details) {

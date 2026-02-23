@@ -15,15 +15,19 @@ dependencies:
   file_picker: ^8.0.0
   http: ^1.1.0
   shared_preferences: ^2.2.2
-  intl: ^0.19.0
+  intl: ^0.20.2
   # 使用最新稳定版本的 media_kit (跨平台)
-  media_kit: 1.1.10
-  media_kit_video: 1.2.3
-  media_kit_libs_video: 1.0.4
-  # ExoPlayer 支持 (Android 专用) - 已切换到 Media Kit，保留作为备选
-  # better_player: ^0.0.84
+  media_kit: ^1.1.10
+  media_kit_video: ^1.2.4
+  media_kit_libs_video: ^1.0.4
+  # ExoPlayer / AVPlayer 原生支持
+  better_player_plus: ^1.0.8
   # video_player: ^2.8.2
   package_info_plus: ^8.0.0
+  media_kit_libs_macos_video: ^1.1.4
+  fvp: ^0.35.2
+  window_manager: ^0.4.3
+  desktop_multi_window: ^0.3.0
 
 dev_dependencies:
   flutter_test:
@@ -35,6 +39,8 @@ dev_dependencies:
 flutter_launcher_icons:
   android: true
   ios: false
+  macos: true
+  windows: true
   image_path: "assets/icon.png"  # 主图标路径（1096x1096）
   adaptive_icon_background: "#1F2937"  # 背景色（高级黑）
   adaptive_icon_foreground: "assets/icon.png"  # 前景图使用同一图标

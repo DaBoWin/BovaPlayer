@@ -65,6 +65,9 @@ android {
 }
 
 dependencies {
+    // SMB 支持所需依赖
+    implementation("eu.agno3.jcifs:jcifs-ng:2.1.10")
+
     // 强制使用统一版本的依赖，避免冲突
     constraints {
         implementation("org.checkerframework:checker-qual:3.42.0") {

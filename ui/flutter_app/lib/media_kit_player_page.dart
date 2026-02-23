@@ -1572,7 +1572,7 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
                       final delta = details.delta.dx;
                       final msDelta = (delta / totalWidth) * maxMs;
                       setState(() {
-                        _dragProgressPosition = (_dragProgressPosition + msDelta).clamp(0.0, maxMs);
+                        _dragProgressPosition = (_dragProgressPosition + msDelta).clamp(0.0, maxMs).toDouble();
                       });
                     },
                     onHorizontalDragEnd: (details) {

@@ -13,12 +13,9 @@ on:
 
 jobs:
   # ============================================================
-  #  Windows 构建 (MSYS2 + MPV)
+  #  Windows 构建 (Flutter + MDK)
   # ============================================================
   build-windows:
-    # 只在以下情况运行：
-    # 1. tag 不包含 -android 或 -macos
-    # 2. 手动触发且选择了 windows 或 all
     if: |
       (github.event_name == 'push' && !contains(github.ref, '-android') && !contains(github.ref, '-macos')) ||
       (github.event_name == 'workflow_dispatch' && (github.event.inputs.platforms == 'all' || github.event.inputs.platforms == 'windows'))
@@ -26,48 +23,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup MSYS2
-        uses: msys2/setup-msys2@v2
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
-          msystem: MINGW64
-          update: true
-          install: >-
-            mingw-w64-x86_64-mpv
-            mingw-w64-x86_64-pkg-config
-            mingw-w64-x86_64-rust
-            mingw-w64-x86_64-gcc
+          flutter-version: '3.27.1'
+          channel: 'stable'
+          cache: true
 
-      - name: Build Windows (MSYS2 环境)
-        shell: msys2 {0}
+      - name: Build Windows (Flutter)
         run: |
-          export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig:$PKG_CONFIG_PATH"
-          cd core
-          cargo build --release --bin bova-gui
+          cd ui/flutter_app
+          flutter pub get
+          flutter build windows --release
 
-      - name: 打包 Windows 发布文件
-        shell: msys2 {0}
-        run: |
-          mkdir -p release
-          cp core/target/release/bova-gui.exe release/BovaPlayer.exe
-          # 只复制需要的 DLL
-          for dll in libmpv-2.dll libavcodec-61.dll libavformat-61.dll libavutil-59.dll \
-                     libswscale-8.dll libswresample-5.dll libavfilter-10.dll libavdevice-61.dll \
-                     zlib1.dll libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
-            if [ -f "/mingw64/bin/$dll" ]; then
-              cp "/mingw64/bin/$dll" release/
-            fi
-          done
-          # 也复制 mpv 需要的其他依赖
-          ldd release/BovaPlayer.exe | grep mingw64 | awk '{print $3}' | while read dep; do
-            if [ -f "$dep" ]; then
-              cp "$dep" release/ 2>/dev/null || true
-            fi
-          done
-          # 打包 ZIP（使用 PowerShell，MSYS2 没有 7z）
-
-      - name: 打包 ZIP
+      - name: 整理发布产物
         shell: pwsh
         run: |
+          mkdir release
+          Copy-Item "ui\flutter_app\build\windows\x64\runner\Release\*" -Destination "release" -Recurse
           Compress-Archive -Path release\* -DestinationPath BovaPlayer-Windows.zip
 
       - name: Upload Windows Artifact
@@ -77,12 +50,10 @@ jobs:
           path: BovaPlayer-Windows.zip
 
   # ============================================================
-  #  macOS 构建 (Homebrew MPV)
+  # ============================================================
+  #  macOS 构建 (Flutter + MDK)
   # ============================================================
   build-macos:
-    # 只在以下情况运行：
-    # 1. tag 不包含 -android 或 -windows
-    # 2. 手动触发且选择了 macos 或 all
     if: |
       (github.event_name == 'push' && !contains(github.ref, '-android') && !contains(github.ref, '-windows')) ||
       (github.event_name == 'workflow_dispatch' && (github.event.inputs.platforms == 'all' || github.event.inputs.platforms == 'macos'))
@@ -90,72 +61,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.1'
+          channel: 'stable'
+          cache: true
 
-      - name: 安装系统依赖
+      - name: Build macOS (Flutter)
         run: |
-          brew install pkg-config mpv
-
-      - name: Build macOS
-        run: |
-          cd core
-          cargo build --release --bin bova-gui
-
-      - name: 创建 App Bundle
-        run: |
-          APP_NAME="BovaPlayer"
-          APP_DIR="core/target/release/${APP_NAME}.app"
-          mkdir -p "${APP_DIR}/Contents/MacOS"
-          mkdir -p "${APP_DIR}/Contents/Resources"
-          mkdir -p "${APP_DIR}/Contents/Frameworks"
-
-          # 复制可执行文件
-          cp core/target/release/bova-gui "${APP_DIR}/Contents/MacOS/${APP_NAME}"
-
-          # 复制 MPV 动态库到 Frameworks
-          MPV_LIB=$(brew --prefix mpv)/lib/libmpv.dylib
-          if [ -f "$MPV_LIB" ]; then
-            cp "$MPV_LIB" "${APP_DIR}/Contents/Frameworks/"
-            install_name_tool -add_rpath "@executable_path/../Frameworks" "${APP_DIR}/Contents/MacOS/${APP_NAME}" 2>/dev/null || true
-          fi
-
-          # 创建 Info.plist
-          cat > "${APP_DIR}/Contents/Info.plist" << 'PLIST'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>CFBundleDevelopmentRegion</key>
-              <string>en</string>
-              <key>CFBundleExecutable</key>
-              <string>BovaPlayer</string>
-              <key>CFBundleIdentifier</key>
-              <string>com.bova.player</string>
-              <key>CFBundleInfoDictionaryVersion</key>
-              <string>6.0</string>
-              <key>CFBundleName</key>
-              <string>BovaPlayer</string>
-              <key>CFBundlePackageType</key>
-              <string>APPL</string>
-              <key>CFBundleShortVersionString</key>
-              <string>0.0.1</string>
-              <key>CFBundleVersion</key>
-              <string>1</string>
-              <key>LSMinimumSystemVersion</key>
-              <string>10.15</string>
-              <key>NSHighResolutionCapable</key>
-              <true/>
-              <key>NSSupportsAutomaticGraphicsSwitching</key>
-              <true/>
-          </dict>
-          </plist>
-          PLIST
+          cd ui/flutter_app
+          flutter pub get
+          flutter build macos --release
 
       - name: 创建 DMG
         run: |
           hdiutil create -volname "BovaPlayer" \
-            -srcfolder core/target/release/BovaPlayer.app \
+            -srcfolder ui/flutter_app/build/macos/Build/Products/Release/BovaPlayer.app \
             -ov -format UDZO \
             BovaPlayer-macOS.dmg
 
