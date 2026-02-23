@@ -18,8 +18,8 @@ dependencies:
   intl: ^0.20.2
   # 使用最新稳定版本的 media_kit (跨平台)
   media_kit: ^1.1.10
-  media_kit_video: ^1.2.4
-  media_kit_libs_video: ^1.0.4
+  media_kit_video: ^1.2.6
+  media_kit_libs_video: ^1.0.7
   # ExoPlayer / AVPlayer 原生支持
   better_player_plus: ^1.0.8
   # video_player: ^2.8.2

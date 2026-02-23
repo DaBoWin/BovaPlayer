@@ -157,11 +157,15 @@ jobs:
           import os, glob
           
           pub_cache = os.path.expanduser("~/.pub-cache")
-          search_pattern = os.path.join(pub_cache, "**", "media_kit_video", "android", "**", "VideoOutput.java")
+          # 扩大搜索范围，避免因为 media_kit_video-1.3.1 带上了版本号后缀导致匹配不到
+          search_pattern = os.path.join(pub_cache, "**", "VideoOutput.java")
           import glob
           files = glob.glob(search_pattern, recursive=True)
           
           for file_path in files:
+              # 只处理 media_kit_video 模块下的该文件
+              if "media_kit_video" not in file_path or "android" not in file_path:
+                  continue
               print(f"检查文件: {file_path}")
               with open(file_path, "r", encoding="utf-8") as f:
                   content = f.read()
