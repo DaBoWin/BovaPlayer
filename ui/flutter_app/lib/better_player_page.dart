@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:better_player/better_player.dart';
+import 'package:better_player_plus/better_player_plus.dart';
 import 'player/player_utils.dart';
 import 'player/emby_reporter.dart';
 import 'player/player_gestures.dart';
@@ -36,6 +38,7 @@ class BetterPlayerPage extends StatefulWidget {
 class _BetterPlayerPageState extends State<BetterPlayerPage> with PlayerGesturesMixin {
   BetterPlayerController? _betterPlayerController;
   late EmbyReporter _embyReporter;
+  static const _trafficLightsChannel = MethodChannel('com.bovaplayer/traffic_lights');
   
   bool _showControls = true;
   bool _isLocked = false;
@@ -48,6 +51,8 @@ class _BetterPlayerPageState extends State<BetterPlayerPage> with PlayerGestures
   int _lastBufferPosition = 0;
   DateTime _lastSpeedCheck = DateTime.now();
   int _selectedSubtitleIndex = -1; // -1 表示关闭字幕
+  bool _isDraggingProgress = false;
+  double _dragProgressPosition = 0;
   
   Duration? _savedPosition;
 
@@ -67,6 +72,11 @@ class _BetterPlayerPageState extends State<BetterPlayerPage> with PlayerGestures
   @override
   void seekTo(Duration position) {
     _betterPlayerController?.seekTo(position);
+  }
+
+  @override
+  Duration? getCurrentPosition() {
+    return _betterPlayerController?.videoPlayerController?.value.position;
   }
 
   @override
@@ -219,6 +229,11 @@ class _BetterPlayerPageState extends State<BetterPlayerPage> with PlayerGestures
     }
     _embyReporter.dispose();
     
+    // 恢复 macOS 红绿灯
+    if (Platform.isMacOS) {
+      _trafficLightsChannel.invokeMethod('show');
+    }
+    
     _betterPlayerController?.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
@@ -318,7 +333,12 @@ class _BetterPlayerPageState extends State<BetterPlayerPage> with PlayerGestures
     _hideTimer?.cancel();
     if (!_isLocked && (_betterPlayerController?.isPlaying() ?? false)) {
       _hideTimer = Timer(const Duration(seconds: 4), () {
-        if (mounted) setState(() => _showControls = false);
+        if (mounted) {
+          setState(() => _showControls = false);
+          if (Platform.isMacOS) {
+            _trafficLightsChannel.invokeMethod('hide');
+          }
+        }
       });
     }
   }
@@ -326,7 +346,16 @@ class _BetterPlayerPageState extends State<BetterPlayerPage> with PlayerGestures
   void _toggleControls() {
     if (_isLocked) return;
     setState(() => _showControls = !_showControls);
-    if (_showControls) _startHideTimer();
+    if (_showControls) {
+      if (Platform.isMacOS) {
+        _trafficLightsChannel.invokeMethod('show');
+      }
+      _startHideTimer();
+    } else {
+      if (Platform.isMacOS) {
+        _trafficLightsChannel.invokeMethod('hide');
+      }
+    }
   }
 
   @override
@@ -342,6 +371,7 @@ class _BetterPlayerPageState extends State<BetterPlayerPage> with PlayerGestures
                 final isLeft = details.globalPosition.dx < screenWidth / 2;
                 handleVerticalDragUpdate(details, isLeft);
               },
+              onHorizontalDragStart: handleHorizontalDragStart,
               onHorizontalDragUpdate: (details) => handleHorizontalDragUpdate(details, context),
               onHorizontalDragEnd: handleHorizontalDragEnd,
               child: Stack(
@@ -359,10 +389,53 @@ class _BetterPlayerPageState extends State<BetterPlayerPage> with PlayerGestures
                   buildVolumeIndicator(),
                   buildSeekIndicator(),
 
-                  // 控制层
-                  if (_showControls && !_isLocked) _buildControls(),
-
                   // 锁屏按钮
+                  if (_showControls && !_isLocked) 
+                    Positioned.fill(
+                      child: Stack(
+                        children: [
+                          // 顶部状态栏阴影 (微弱)
+                          Positioned(
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            height: 100,
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [Colors.black54, Colors.transparent],
+                                ),
+                              ),
+                            ),
+                          ),
+                          // 顶部工具栏
+                          Positioned(
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            child: _buildTopBar(),
+                          ),
+                          // 左侧悬浮工具栏 (字幕/比例)
+                          Positioned(
+                            left: 24,
+                            top: 0,
+                            bottom: 0,
+                            child: Center(child: _buildLeftToolbar()),
+                          ),
+                          // 底部悬浮控制台 (高斯模糊胶囊)
+                          Positioned(
+                            bottom: 40,
+                            left: 0,
+                            right: 0,
+                            child: Center(child: _buildBottomPill()),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  // 总是可点击的锁屏按钮
                   if (_showControls)
                     Positioned(
                       left: 16,
@@ -381,261 +454,302 @@ class _BetterPlayerPageState extends State<BetterPlayerPage> with PlayerGestures
     );
   }
 
-  Widget _buildControls() {
-    return Positioned.fill(
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.black.withOpacity(0.7),
-              Colors.transparent,
-              Colors.transparent,
-              Colors.black.withOpacity(0.7),
-            ],
-            stops: const [0.0, 0.2, 0.8, 1.0],
-          ),
-        ),
-        child: Column(
-          children: [
-            _buildTopBar(),
-            const Spacer(),
-            _buildCenterControls(),
-            const Spacer(),
-            _buildProgressBar(),
-            _buildBottomBar(),
-          ],
-        ),
-      ),
-    );
-  }
+  // --- 现代 UI 组件 ---
 
   Widget _buildTopBar() {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         child: Row(
           children: [
             IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
               onPressed: () => Navigator.pop(context),
             ),
+            const SizedBox(width: 8),
+            // 原生引擎标签
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.blueAccent.withOpacity(0.8),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text(
+                'NATIVE',
+                style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(width: 8),
+            // 将标题居中
             Expanded(
               child: Text(
                 widget.title,
-                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w400,
+                  letterSpacing: 0.5,
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            // 网速显示
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.speed,
-                    color: Colors.greenAccent,
-                    size: 14,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    _networkSpeed,
-                    style: const TextStyle(
-                      color: Colors.greenAccent,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
+            // 右侧网速与时间
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.speed, color: Colors.greenAccent, size: 14),
+                const SizedBox(width: 4),
+                Text(
+                  _networkSpeed,
+                  style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  _currentTime,
+                  style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            // 时间显示
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                _currentTime,
-                style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
-              ),
-            ),
-            const SizedBox(width: 8),
           ],
         ),
       ),
     );
   }
-
-  Widget _buildCenterControls() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _buildCircleButton(
-          icon: Icons.replay_10,
-          onPressed: () {
-            final position = _betterPlayerController!.videoPlayerController!.value.position;
-            _betterPlayerController!.seekTo(position - const Duration(seconds: 10));
-          },
-        ),
-        const SizedBox(width: 48),
-        _buildCircleButton(
-          icon: (_betterPlayerController?.isPlaying() ?? false) ? Icons.pause : Icons.play_arrow,
-          size: 64,
-          onPressed: () {
-            if (_betterPlayerController!.isPlaying() ?? false) {
-              _betterPlayerController!.pause();
-            } else {
-              _betterPlayerController!.play();
-            }
-            _startHideTimer();
-          },
-        ),
-        const SizedBox(width: 48),
-        _buildCircleButton(
-          icon: Icons.forward_10,
-          onPressed: () {
-            final position = _betterPlayerController!.videoPlayerController!.value.position;
-            _betterPlayerController!.seekTo(position + const Duration(seconds: 10));
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCircleButton({
-    required IconData icon,
-    required VoidCallback onPressed,
-    double size = 48,
-  }) {
+  Widget _buildLeftToolbar() {
     return Container(
-      width: size,
-      height: size,
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.3),
-        shape: BoxShape.circle,
+        color: Colors.black.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(16),
       ),
-      child: IconButton(
-        icon: Icon(icon, color: Colors.white, size: size * 0.5),
-        onPressed: onPressed,
-        padding: EdgeInsets.zero,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildToolIconButton(Icons.subtitles_outlined, _showSubtitleMenu),
+          const SizedBox(height: 16),
+          _buildToolIconButton(Icons.crop_free, () {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('画面比例功能在此核心暂不适用')),
+            );
+          }),
+        ],
       ),
     );
   }
 
-  Widget _buildProgressBar() {
+  Widget _buildToolIconButton(IconData icon, VoidCallback onPressed) {
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+        child: Icon(icon, color: Colors.white, size: 22),
+      ),
+    );
+  }
+
+  Widget _buildBottomPill() {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.75, 
+          constraints: const BoxConstraints(maxWidth: 800),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.55),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.white12, width: 0.5),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 时间与进度条
+              _buildProgressBarPill(),
+              const SizedBox(height: 4),
+              // 控制按钮
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // 左侧：音量 (这里通过手势控制，可以留空或加个喇叭图标)
+                  Row(
+                    children: [
+                      Icon(Icons.volume_up_rounded, color: Colors.white70, size: 20),
+                    ],
+                  ),
+                  // 中间：播放控制
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.replay_10_rounded),
+                        color: Colors.white,
+                        iconSize: 28,
+                        onPressed: () {
+                          final position = _betterPlayerController!.videoPlayerController!.value.position;
+                          _betterPlayerController!.seekTo(position - const Duration(seconds: 10));
+                          _startHideTimer();
+                        },
+                      ),
+                      const SizedBox(width: 16),
+                      Container(
+                        decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                        child: IconButton(
+                          icon: Icon((_betterPlayerController?.isPlaying() ?? false) ? Icons.pause_rounded : Icons.play_arrow_rounded),
+                          color: Colors.black,
+                          iconSize: 32,
+                          onPressed: () {
+                            if (_betterPlayerController!.isPlaying() ?? false) {
+                              _betterPlayerController!.pause();
+                            } else {
+                              _betterPlayerController!.play();
+                            }
+                            _startHideTimer();
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      IconButton(
+                        icon: const Icon(Icons.forward_10_rounded),
+                        color: Colors.white,
+                        iconSize: 28,
+                        onPressed: () {
+                          final position = _betterPlayerController!.videoPlayerController!.value.position;
+                          _betterPlayerController!.seekTo(position + const Duration(seconds: 10));
+                          _startHideTimer();
+                        },
+                      ),
+                    ],
+                  ),
+                  // 右侧：倍速
+                  InkWell(
+                    onTap: _showSpeedMenu,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(12)),
+                      child: Text('倍速', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProgressBarPill() {
     if (_betterPlayerController == null) return const SizedBox.shrink();
     
     final position = _betterPlayerController!.videoPlayerController?.value.position ?? Duration.zero;
     final duration = _betterPlayerController!.videoPlayerController?.value.duration ?? Duration.zero;
     
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          Text(
-            PlayerUtils.formatDuration(position),
-            style: const TextStyle(color: Colors.white, fontSize: 12),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: SliderTheme(
-              data: SliderThemeData(
-                trackHeight: 3,
-                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-                activeTrackColor: Colors.white,
-                inactiveTrackColor: Colors.white.withOpacity(0.3),
-                thumbColor: Colors.white,
-                overlayColor: Colors.white.withOpacity(0.3),
-              ),
-              child: Slider(
-                value: position.inMilliseconds.toDouble().clamp(
-                  0,
-                  duration.inMilliseconds.toDouble(),
-                ),
-                max: duration.inMilliseconds > 0 ? duration.inMilliseconds.toDouble() : 1,
-                onChanged: (value) {
-                  _betterPlayerController!.seekTo(Duration(milliseconds: value.toInt()));
-                },
-                onChangeEnd: (_) => _startHideTimer(),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            PlayerUtils.formatDuration(duration),
-            style: const TextStyle(color: Colors.white, fontSize: 12),
-          ),
-        ],
-      ),
-    );
-  }
+    return Row(
+      children: [
+        Text(
+          _isDraggingProgress
+              ? PlayerUtils.formatDuration(Duration(milliseconds: _dragProgressPosition.toInt()))
+              : PlayerUtils.formatDuration(position),
+          style: const TextStyle(color: Colors.white, fontSize: 12, fontFamily: 'monospace'),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final totalWidth = constraints.maxWidth;
+              final maxMs = duration.inMilliseconds.toDouble();
+              final currentMs = _isDraggingProgress
+                  ? _dragProgressPosition
+                  : position.inMilliseconds.toDouble();
+              final progress = maxMs > 0 ? (currentMs / maxMs).clamp(0.0, 1.0) : 0.0;
 
-  Widget _buildBottomBar() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          _buildBottomButton(
-            icon: Icons.subtitles,
-            label: '字幕',
-            onPressed: _showSubtitleMenu,
-          ),
-          _buildBottomButton(
-            icon: Icons.speed,
-            label: '速度',
-            onPressed: _showSpeedMenu,
-          ),
-          _buildBottomButton(
-            icon: Icons.aspect_ratio,
-            label: '比例',
-            onPressed: () {
-              // Better Player 0.0.84 不支持动态切换画面比例
-              // 显示提示信息
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('画面比例功能暂不可用'),
-                  duration: Duration(seconds: 2),
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onHorizontalDragStart: (details) {
+                  _hideTimer?.cancel();
+                  setState(() {
+                    _isDraggingProgress = true;
+                    _dragProgressPosition = position.inMilliseconds.toDouble();
+                  });
+                },
+                onHorizontalDragUpdate: (details) {
+                  if (maxMs <= 0) return;
+                  final delta = details.delta.dx;
+                  final msDelta = (delta / totalWidth) * maxMs;
+                  setState(() {
+                    _dragProgressPosition = (_dragProgressPosition + msDelta).clamp(0.0, maxMs);
+                  });
+                },
+                onHorizontalDragEnd: (details) {
+                  _betterPlayerController!.seekTo(Duration(milliseconds: _dragProgressPosition.toInt()));
+                  setState(() {
+                    _isDraggingProgress = false;
+                  });
+                  _startHideTimer();
+                },
+                child: Container(
+                  height: 48,
+                  alignment: Alignment.center,
+                  child: Stack(
+                    alignment: Alignment.centerLeft,
+                    clipBehavior: Clip.none,
+                    children: [
+                      // 背景轨道
+                      Container(
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      // 已播放轨道
+                      FractionallySizedBox(
+                        widthFactor: progress,
+                        child: Container(
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      // 滑块圆点
+                      Positioned(
+                        left: (progress * totalWidth) - 6,
+                        child: Container(
+                          width: 12,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.3),
+                                blurRadius: 4,
+                                offset: const Offset(0, 1),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               );
             },
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBottomButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onPressed,
-  }) {
-    return InkWell(
-      onTap: onPressed,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: Colors.white, size: 24),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: const TextStyle(color: Colors.white, fontSize: 11),
-            ),
-          ],
         ),
-      ),
+        const SizedBox(width: 12),
+        Text(
+          PlayerUtils.formatDuration(duration),
+          style: const TextStyle(color: Colors.white54, fontSize: 12, fontFamily: 'monospace'),
+        ),
+      ],
     );
   }
 

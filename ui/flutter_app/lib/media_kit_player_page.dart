@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -38,6 +39,7 @@ class MediaKitPlayerPage extends StatefulWidget {
 class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
   late final Player _player;
   VideoController? _videoController;
+  static const _trafficLightsChannel = MethodChannel('com.bovaplayer/traffic_lights');
   
   bool _isInitializing = true;
   String? _errorMessage;
@@ -64,7 +66,12 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
   String _seekIndicatorText = '';
   int _accumulatedSeekSeconds = 0; // 手势拖拉累计的秒数
   Timer? _indicatorTimer;
+  bool _isDraggingProgress = false;
+  double _dragProgressPosition = 0;
   
+  // 性能面板
+  bool _showStatsPanel = false;
+
   // 播放位置记忆
   Duration? _savedPosition;
   
@@ -83,8 +90,6 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
     _player = Player(
       configuration: const PlayerConfiguration(
         title: 'BovaPlayer',
-        protocolWhitelist: ['http', 'https', 'file', 'tcp', 'tls'],
-        logLevel: MPVLogLevel.warn,
       ),
     );
     
@@ -100,46 +105,46 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
   void _initializeVideoController() async {
     if (!mounted) return;
     
-    // 检测是否是模拟器 - 使用多种方法
+    // 检测是否是模拟器 - 仅在 Android 平台检测
     bool isEmulator = false;
-    try {
-      // 方法1: 检查 ro.kernel.qemu
-      final result1 = await Process.run('getprop', ['ro.kernel.qemu']);
-      final qemu = result1.stdout.toString().trim();
-      print('[MediaKitPlayer] ro.kernel.qemu = $qemu');
-      
-      // 方法2: 检查 ro.product.model
-      final result2 = await Process.run('getprop', ['ro.product.model']);
-      final model = result2.stdout.toString().trim();
-      print('[MediaKitPlayer] ro.product.model = $model');
-      
-      // 方法3: 检查 ro.hardware
-      final result3 = await Process.run('getprop', ['ro.hardware']);
-      final hardware = result3.stdout.toString().trim();
-      print('[MediaKitPlayer] ro.hardware = $hardware');
-      
-      // 判断是否是模拟器
-      isEmulator = qemu == '1' || 
-                   model.toLowerCase().contains('sdk') || 
-                   model.toLowerCase().contains('emulator') ||
-                   hardware.toLowerCase().contains('ranchu') ||
-                   hardware.toLowerCase().contains('goldfish');
-      
-      print('[MediaKitPlayer] 模拟器检测结果: $isEmulator');
-    } catch (e) {
-      print('[MediaKitPlayer] 模拟器检测失败: $e，默认假设是真机');
-      isEmulator = false;
+    final isAndroid = Theme.of(context).platform == TargetPlatform.android;
+    
+    if (isAndroid) {
+      try {
+        // 方法1: 检查 ro.kernel.qemu
+        final result1 = await Process.run('getprop', ['ro.kernel.qemu']);
+        final qemu = result1.stdout.toString().trim();
+        print('[MediaKitPlayer] ro.kernel.qemu = $qemu');
+        
+        // 方法2: 检查 ro.product.model
+        final result2 = await Process.run('getprop', ['ro.product.model']);
+        final model = result2.stdout.toString().trim();
+        print('[MediaKitPlayer] ro.product.model = $model');
+        
+        // 方法3: 检查 ro.hardware
+        final result3 = await Process.run('getprop', ['ro.hardware']);
+        final hardware = result3.stdout.toString().trim();
+        print('[MediaKitPlayer] ro.hardware = $hardware');
+        
+        // 判断是否是模拟器
+        isEmulator = qemu == '1' || 
+                     model.toLowerCase().contains('sdk') || 
+                     model.toLowerCase().contains('emulator') ||
+                     hardware.toLowerCase().contains('ranchu') ||
+                     hardware.toLowerCase().contains('goldfish');
+        
+        print('[MediaKitPlayer] 模拟器检测结果: $isEmulator');
+      } catch (e) {
+        print('[MediaKitPlayer] 模拟器检测失败: $e，默认假设是真机');
+        isEmulator = false;
+      }
     }
     
     // 真机启用硬件加速，模拟器禁用
-    final enableHwAccel = !isEmulator && Theme.of(context).platform == TargetPlatform.android;
+    final enableHwAccel = !isEmulator && isAndroid;
     
-    _videoController = VideoController(
-      _player,
-      configuration: VideoControllerConfiguration(
-        enableHardwareAcceleration: enableHwAccel,
-      ),
-    );
+    // 初始化控制器
+    _initVideoController(enableHwAccel);
     
     print('[MediaKitPlayer] 平台: ${Theme.of(context).platform}, 模拟器: $isEmulator, 硬件加速: $enableHwAccel');
     
@@ -147,6 +152,26 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
     await _configureMpvTls(isEmulator);
     
     // 监听播放器状态
+    _setupPlayerListeners();
+    
+    _initializePlayer();
+    _updateClock();
+    _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) => _updateClock());
+    _speedTimer = Timer.periodic(const Duration(seconds: 1), (_) => _updateNetworkSpeed());
+  }
+
+  void _initVideoController(bool enableHwAccel) {
+    // 销毁旧的控制器
+    _videoController = null;
+    _videoController = VideoController(
+      _player,
+      configuration: VideoControllerConfiguration(
+        enableHardwareAcceleration: enableHwAccel,
+      ),
+    );
+  }
+
+  void _setupPlayerListeners() {
     _player.stream.playing.listen((playing) {
       print('[MediaKitPlayer] 播放状态变化: $playing');
       if (mounted) setState(() {});
@@ -180,11 +205,6 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       print('[MediaKitPlayer] 视频时长: $duration');
       if (mounted) setState(() {});
     });
-    
-    _initializePlayer();
-    _updateClock();
-    _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) => _updateClock());
-    _speedTimer = Timer.periodic(const Duration(seconds: 1), (_) => _updateNetworkSpeed());
   }
 
   /// 测试 URL 是否可访问
@@ -241,11 +261,11 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       await (nativePlayer as dynamic).setProperty('tls-ca-file', '');
       
       // 2. HTTP/HTTPS 网络配置 - BovaPlayer 客户端标识
-      await (nativePlayer as dynamic).setProperty('user-agent', 'BovaPlayer/1.0.0 (Android; Flutter)');
+      await (nativePlayer as dynamic).setProperty('user-agent', 'BovaPlayer/1.0.0 (macOS; Flutter)');
       
       // 添加基本的 HTTP headers
       final headers = [
-        'User-Agent: BovaPlayer/1.0.0 (Android; Flutter)',
+        'User-Agent: BovaPlayer/1.0.0 (macOS; Flutter)',
         'Accept: */*',
         'Accept-Encoding: identity',
         'Connection: keep-alive',
@@ -257,26 +277,34 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       await (nativePlayer as dynamic).setProperty('cache', 'yes');
       
       // 网络重连和超时配置（关键：负载均衡节点需要重试）
-      await (nativePlayer as dynamic).setProperty('network-timeout', '60'); // 增加到60秒超时
+      await (nativePlayer as dynamic).setProperty('network-timeout', '120'); // 增加到120秒超时（大文件需要）
       await (nativePlayer as dynamic).setProperty('http-reconnect', 'yes'); // 启用自动重连
+      await (nativePlayer as dynamic).setProperty('stream-open-timeout', '120'); // 流打开超时120秒
       
-      // FFmpeg 重连配置 - 增强版
+      // FFmpeg 重连配置 - 增强版 + 多线程优化
       // reconnect: 启用重连
       // reconnect_streamed: 对流媒体也启用重连
       // reconnect_at_eof: 在 EOF 时重连
       // reconnect_on_network_error: 网络错误时重连
       // reconnect_on_http_error: HTTP 错误时重连
       // reconnect_delay_max: 最大重连延迟（秒）
+      // multiple_requests: 启用 HTTP 范围请求（多线程下载）
+      // seekable: 启用可查找（支持范围请求）
       final lavfOptions = [
         'reconnect=1',
         'reconnect_streamed=1',
         'reconnect_at_eof=1',
         'reconnect_on_network_error=1',
         'reconnect_on_http_error=4xx,5xx',
-        'reconnect_delay_max=10',
-        'timeout=60000000', // 60秒超时（微秒）
+        'reconnect_delay_max=15', // 增加到15秒
+        'timeout=120000000', // 120秒超时（微秒）- 大文件需要更长时间
         'tcp_nodelay=1', // 禁用 Nagle 算法，减少延迟
-        'listen_timeout=60000000', // 监听超时
+        'listen_timeout=120000000', // 监听超时120秒
+        'tls_verify=0', // 禁用 TLS 证书验证
+        'user_agent=BovaPlayer/1.0.0 (macOS; Flutter)', // 设置 User-Agent
+        'multiple_requests=1', // 启用多个并发请求（关键：多线程下载）
+        'seekable=1', // 启用可查找
+        'rw_timeout=120000000', // 读写超时120秒（微秒）
       ].join(',');
       
       await (nativePlayer as dynamic).setProperty('stream-lavf-o', lavfOptions);
@@ -284,15 +312,27 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       // TCP Keepalive 配置 - 防止连接被中断
       await (nativePlayer as dynamic).setProperty('stream-lavf-o-append', 'tcp_keepalive=1');
       
-      // 缓冲配置 - 增加缓冲区以应对网络波动
-      await (nativePlayer as dynamic).setProperty('demuxer-max-bytes', '150000000'); // 150MB
-      await (nativePlayer as dynamic).setProperty('demuxer-max-back-bytes', '75000000'); // 75MB
-      await (nativePlayer as dynamic).setProperty('demuxer-readahead-secs', '15'); // 预读15秒
+      // 多线程解码配置
+      await (nativePlayer as dynamic).setProperty('vd-lavc-threads', '4'); // 视频解码线程数
+      await (nativePlayer as dynamic).setProperty('ad-lavc-threads', '2'); // 音频解码线程数
+      await (nativePlayer as dynamic).setProperty('demuxer-thread', 'yes'); // 启用解复用线程
       
-      // 快速启动播放
-      await (nativePlayer as dynamic).setProperty('cache-pause-initial', 'no');
-      await (nativePlayer as dynamic).setProperty('cache-pause-wait', '1');
-      await (nativePlayer as dynamic).setProperty('cache-secs', '20'); // 增加缓存时间
+      // 缓冲配置 - 优化快速启动 + 并行加载
+      await (nativePlayer as dynamic).setProperty('demuxer-max-bytes', '50000000'); // 50MB
+      await (nativePlayer as dynamic).setProperty('demuxer-max-back-bytes', '25000000'); // 25MB
+      await (nativePlayer as dynamic).setProperty('demuxer-readahead-secs', '3'); // 预读3秒
+      
+      // 快速启动播放 - 关键优化
+      await (nativePlayer as dynamic).setProperty('cache-pause-initial', 'yes'); // 等待初始缓存（大文件需要）
+      await (nativePlayer as dynamic).setProperty('cache-pause-wait', '2'); // 等待2秒缓存
+      await (nativePlayer as dynamic).setProperty('cache-secs', '10'); // 缓存10秒（增加稳定性）
+      
+      // 预读优化 - 启用快速预读
+      await (nativePlayer as dynamic).setProperty('cache-on-disk', 'no'); // 内存缓存更快
+      await (nativePlayer as dynamic).setProperty('demuxer-donate-buffer', 'yes'); // 捐赠缓冲区给解码器
+      
+      // HTTP 范围请求优化（支持多线程下载）
+      await (nativePlayer as dynamic).setProperty('stream-buffer-size', '4096'); // 4KB 流缓冲（小缓冲快速响应）
       
       // 启用 seekable
       await (nativePlayer as dynamic).setProperty('force-seekable', 'yes');
@@ -303,11 +343,15 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       
       // 错误恢复配置
       await (nativePlayer as dynamic).setProperty('load-unsafe-playlists', 'yes');
-      // demuxer-lavf-analyzeduration 单位是秒，不是微秒
-      await (nativePlayer as dynamic).setProperty('demuxer-lavf-analyzeduration', '10'); // 10秒分析时间
-      await (nativePlayer as dynamic).setProperty('demuxer-lavf-probe-info', 'yes');
+      // demuxer-lavf-analyzeduration 单位是秒 - 大幅减少分析时间以加快启动
+      await (nativePlayer as dynamic).setProperty('demuxer-lavf-analyzeduration', '1'); // 1秒分析时间（减少）
+      await (nativePlayer as dynamic).setProperty('demuxer-lavf-probesize', '1000000'); // 1MB 探测大小
+      await (nativePlayer as dynamic).setProperty('demuxer-lavf-probe-info', 'nostreams'); // 减少探测
       
-      print('[MediaKitPlayer] 网络配置完成 - 增强重连和 TCP keepalive');
+      // 启用 MPV 详细日志以查看多线程状态
+      await (nativePlayer as dynamic).setProperty('msg-level', 'all=info,ffmpeg=debug');
+      
+      print('[MediaKitPlayer] 网络配置完成 - 多线程加载 + 快速启动');
       
       // 4. 硬件解码配置 - 根据设备类型和平台
       if (isAndroid) {
@@ -321,9 +365,19 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
           print('[MediaKitPlayer] Android 真机配置: hwdec=mediacodec-copy (硬件解码)');
         }
       } else {
-        // macOS 使用 auto-copy
-        await (nativePlayer as dynamic).setProperty('hwdec', 'auto-copy');
-        print('[MediaKitPlayer] macOS 配置: hwdec=auto-copy');
+        // macOS 端: 修复 HDR及画面发暗偏灰问题 
+        // 之前尝试的高级 tone-mapping 和 hdr-compute-peak 严重吃 GPU 导致卡顿掉帧
+        // 回退到性能最好的 auto-copy 配合简单的基础调亮，放弃昂贵的逐帧高光计算
+        await (nativePlayer as dynamic).setProperty('hwdec', 'auto-copy'); 
+        
+        await (nativePlayer as dynamic).setProperty('target-colorspace-hint', 'yes');
+        
+        // 仅使用最轻量级的基础参数大幅提亮画面，不消耗过多算力
+        await (nativePlayer as dynamic).setProperty('brightness', '8'); 
+        await (nativePlayer as dynamic).setProperty('gamma', '8');      
+        await (nativePlayer as dynamic).setProperty('contrast', '2');   
+        
+        print('[MediaKitPlayer] macOS 配置: hwdec=auto-copy, 移除重度渲染特效，轻量级基础提亮');
       }
       
       print('[MediaKitPlayer] mpv 配置完成 - 优化缓冲设置');
@@ -338,8 +392,8 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       print('[MediaKitPlayer] Stream URL: ${widget.url}');
       print('[MediaKitPlayer] HTTP Headers: ${widget.httpHeaders}');
       
-      // 先测试 URL 是否可访问
-      await _testUrlAccess();
+      // 先测试 URL 是否可访问 - 注释掉以加快播放速度
+      // await _testUrlAccess();
       
       // 方法1: 不使用 httpHeaders（URL 已包含 api_key）
       try {
@@ -456,7 +510,7 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       if (mounted) {
         setState(() {
           _isInitializing = false;
-          _errorMessage = '播放失败: $e\n\n请尝试在浏览器中打开此URL测试:\n${widget.url}';
+          _errorMessage = '$e';
         });
       }
     }
@@ -592,25 +646,41 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
   }
   
   // 手势拖拉相关
-  Duration? _seekTargetPosition; // 目标位置
+  Duration? _seekStartPosition; // 手势按下时的初始播放位置
+  Duration? _seekTargetPosition; // 计算出的目标位置
   
-  void _handleHorizontalDragUpdate(DragUpdateDetails details) {
+  void _handleHorizontalDragStart(DragStartDetails details) {
     if (_isLocked) return;
+    // 记录拖拽开始时的当前播放进度
+    _seekStartPosition = _player.state.position;
+    _seekTargetPosition = _seekStartPosition;
+  }
+
+  void _handleHorizontalDragUpdate(DragUpdateDetails details) {
+    if (_isLocked || _seekStartPosition == null) return;
     
-    // 获取屏幕宽度和当前拖拽位置
+    // 获取屏幕宽度和当前的横向移动增量
     final screenWidth = MediaQuery.of(context).size.width;
-    final dragPosition = details.globalPosition.dx;
+    final delta = details.primaryDelta ?? 0.0;
     
-    // 计算拖拽位置对应的视频时间点
+    // 定义滑动灵敏度：滑满全屏大约跨度 180 秒（3 分钟），也可根据视频总时长动态调整
+    // 这里采用：屏幕每滑动 1%，步进 1.5 秒
     final duration = _player.state.duration;
     if (duration.inSeconds > 0) {
-      final percentage = (dragPosition / screenWidth).clamp(0.0, 1.0);
-      final targetSeconds = (duration.inSeconds * percentage).round();
-      _seekTargetPosition = Duration(seconds: targetSeconds);
+      final percentageDelta = delta / screenWidth;
+      // 我们设定滑过全屏等于移动 180 秒，如果是长视频也可以改大
+      // 或者按视频总长度的 5%~10% 来映射
+      final secondsDelta = (percentageDelta * 180).round(); 
+      
+      var newTargetSeconds = (_seekTargetPosition!.inSeconds + secondsDelta);
+      // 保证不越界
+      newTargetSeconds = newTargetSeconds.clamp(0, duration.inSeconds);
+      
+      _seekTargetPosition = Duration(seconds: newTargetSeconds);
       
       // 格式化显示时间
-      final minutes = targetSeconds ~/ 60;
-      final seconds = targetSeconds % 60;
+      final minutes = newTargetSeconds ~/ 60;
+      final seconds = newTargetSeconds % 60;
       final timeStr = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
       
       setState(() {
@@ -631,7 +701,12 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
     _player.seek(_seekTargetPosition!);
     
     // 重置
+    _seekStartPosition = null;
     _seekTargetPosition = null;
+    
+    setState(() {
+      _showSeekIndicator = false;
+    });
   }
   
   void _startIndicatorTimer() {
@@ -786,6 +861,11 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
     // 上报停止播放
     _reportPlaybackStopped();
     
+    // 恢复 macOS 红绿灯
+    if (Platform.isMacOS) {
+      _trafficLightsChannel.invokeMethod('show');
+    }
+    
     _player.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
@@ -901,7 +981,12 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
     _hideTimer?.cancel();
     if (!_isLocked && _player.state.playing) {
       _hideTimer = Timer(const Duration(seconds: 4), () {
-        if (mounted) setState(() => _showControls = false);
+        if (mounted) {
+          setState(() => _showControls = false);
+          if (Platform.isMacOS) {
+            _trafficLightsChannel.invokeMethod('hide');
+          }
+        }
       });
     }
   }
@@ -909,7 +994,16 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
   void _toggleControls() {
     if (_isLocked) return;
     setState(() => _showControls = !_showControls);
-    if (_showControls) _startHideTimer();
+    if (_showControls) {
+      if (Platform.isMacOS) {
+        _trafficLightsChannel.invokeMethod('show');
+      }
+      _startHideTimer();
+    } else {
+      if (Platform.isMacOS) {
+        _trafficLightsChannel.invokeMethod('hide');
+      }
+    }
   }
 
   String _formatDuration(Duration d) {
@@ -1014,6 +1108,15 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
     );
   }
 
+  void _retryPlay() {
+    setState(() {
+      _errorMessage = null;
+      _isInitializing = true;
+    });
+    // 重启播放流程
+    _initializePlayer();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1025,6 +1128,7 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
           final isLeft = details.globalPosition.dx < screenWidth / 2;
           _handleVerticalDragUpdate(details, isLeft);
         },
+        onHorizontalDragStart: _handleHorizontalDragStart,
         onHorizontalDragUpdate: _handleHorizontalDragUpdate,
         onHorizontalDragEnd: _handleHorizontalDragEnd,
         child: Stack(
@@ -1032,91 +1136,150 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
             // 视频播放器
             Positioned.fill(child: _buildVideoPlayer()),
 
+            // 缓冲指示器
+            if (!_isInitializing && _errorMessage == null && _player.state.buffering && _player.state.playing)
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: const BoxDecoration(
+                    color: Colors.black54,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 3,
+                  ),
+                ),
+              ),
+
             // 手势指示器
             if (_showBrightnessIndicator) _buildBrightnessIndicator(),
             if (_showVolumeIndicator) _buildVolumeIndicator(),
             if (_showSeekIndicator) _buildSeekIndicator(),
 
-            // 错误信息显示
+            // 错误信息显示 (自动重试面板)
             if (_errorMessage != null)
-              Positioned(
-                top: 100,
-                left: 16,
-                right: 16,
+              Center(
                 child: Container(
-                  padding: const EdgeInsets.all(16),
+                  margin: const EdgeInsets.symmetric(horizontal: 40),
+                  padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.9),
-                    borderRadius: BorderRadius.circular(12),
+                    color: const Color(0xFF1F2937).withOpacity(0.95),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white12),
                   ),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.error_outline, color: Colors.white, size: 24),
-                          SizedBox(width: 8),
-                          Text(
-                            '播放错误',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
+                      const Icon(Icons.error_outline, color: Colors.redAccent, size: 48),
+                      const SizedBox(height: 16),
+                      const Text(
+                        '播放出错',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       Text(
                         _errorMessage!,
-                        style: const TextStyle(color: Colors.white, fontSize: 14),
+                        style: const TextStyle(color: Colors.white70, fontSize: 14),
+                        textAlign: TextAlign.center,
+                        maxLines: 4,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          OutlinedButton(
+                            onPressed: () => Navigator.pop(context),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              side: const BorderSide(color: Colors.white54),
+                            ),
+                            child: const Text('返回'),
+                          ),
+                          const SizedBox(width: 16),
+                          ElevatedButton.icon(
+                            onPressed: _retryPlay,
+                            icon: const Icon(Icons.refresh, size: 20),
+                            label: const Text('重试播放'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.deepPurple,
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
               ),
 
-            // 控制层
-            if (_showControls && !_isLocked && !_isInitializing)
+            // 控制层 - 无边框悬浮重构
+            if (_showControls && !_isLocked && !_isInitializing && _errorMessage == null)
               Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withOpacity(0.7),
-                        Colors.transparent,
-                        Colors.transparent,
-                        Colors.black.withOpacity(0.7),
-                      ],
-                      stops: const [0.0, 0.2, 0.8, 1.0],
+                child: Stack(
+                  children: [
+                    // 给顶部和底部微微加一层极淡的渐变以防全白画面看不到字，但不使用之前的深黑底色
+                    Positioned(
+                      top: 0, left: 0, right: 0, height: 120,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.black54, Colors.transparent],
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                  child: Column(
-                    children: [
-                      // 顶部栏
-                      _buildTopBar(),
-                      
-                      const Spacer(),
-                      
-                      // 中间控制
-                      _buildCenterControls(),
-                      
-                      const Spacer(),
-                      
-                      // 进度条
-                      _buildProgressBar(),
-                      
-                      // 底部栏
-                      _buildBottomBar(),
-                    ],
-                  ),
+                    Positioned(
+                      bottom: 0, left: 0, right: 0, height: 160,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.bottomCenter,
+                            end: Alignment.topCenter,
+                            colors: [Colors.black54, Colors.transparent],
+                          ),
+                        ),
+                      ),
+                    ),
+                    
+                    // 顶部栏
+                    Positioned(
+                      top: 0, left: 0, right: 0,
+                      child: _buildTopBar(),
+                    ),
+                    
+                    // 左侧悬浮工具栏
+                    Positioned(
+                      left: 20,
+                      top: 0,
+                      bottom: 0,
+                      child: Center(
+                        child: _buildLeftToolbar(),
+                      ),
+                    ),
+                    
+                    // 底部悬浮控制胶囊
+                    Positioned(
+                      bottom: 32,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: _buildBottomPill(),
+                      ),
+                    ),
+                  ],
                 ),
               ),
 
             // 锁屏按钮
-            if (_showControls)
+            if (_showControls && _errorMessage == null)
               Positioned(
                 left: 16,
                 top: MediaQuery.of(context).size.height / 2 - 24,
@@ -1136,76 +1299,95 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
                   },
                 ),
               ),
+              
+            // 性能监控面板
+            if (_showStatsPanel) _buildStatsPanel(),
           ],
         ),
       ),
     );
+  }
+
+  void _setVolume(double value) {
+    setState(() {
+      _volume = value;
+    });
+    _player.setVolume(value * 100);
+    _startHideTimer();
   }
 
   Widget _buildTopBar() {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         child: Row(
           children: [
             IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
               onPressed: () => Navigator.pop(context),
             ),
+            const SizedBox(width: 8),
+            // 万能解码引擎标签
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.deepPurpleAccent.withOpacity(0.8),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text(
+                'MPV',
+                style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(width: 8),
+            // 将标题居中
             Expanded(
               child: Text(
                 widget.title,
+                textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w400,
+                  letterSpacing: 0.5,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            // 网速显示
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
-                borderRadius: BorderRadius.circular(4),
+            // 面板开关
+            IconButton(
+              icon: Icon(
+                _showStatsPanel ? Icons.info : Icons.info_outline,
+                color: _showStatsPanel ? Colors.deepPurpleAccent : Colors.white70,
+                size: 20,
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.speed,
-                    color: Colors.greenAccent,
-                    size: 14,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    _networkSpeed,
-                    style: const TextStyle(
-                      color: Colors.greenAccent,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
+              onPressed: () {
+                setState(() => _showStatsPanel = !_showStatsPanel);
+                if (_showStatsPanel) {
+                  _hideTimer?.cancel();
+                } else {
+                  _startHideTimer();
+                }
+              },
             ),
             const SizedBox(width: 8),
-            // 时间显示
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                _currentTime,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
+            // 网速
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.speed, color: Colors.greenAccent, size: 14),
+                const SizedBox(width: 4),
+                Text(
+                  _networkSpeed,
+                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
                 ),
-              ),
+              ],
+            ),
+            const SizedBox(width: 16),
+            // 时间显示
+            Text(
+              _currentTime,
+              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
             ),
             const SizedBox(width: 8),
           ],
@@ -1214,150 +1396,252 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
     );
   }
 
-  Widget _buildCenterControls() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _buildCircleButton(
-          icon: Icons.replay_10,
-          onPressed: () => _seek(const Duration(seconds: -10)),
-        ),
-        const SizedBox(width: 48),
-        _buildCircleButton(
-          icon: _player.state.playing ? Icons.pause : Icons.play_arrow,
-          size: 64,
-          onPressed: _togglePlayPause,
-        ),
-        const SizedBox(width: 48),
-        _buildCircleButton(
-          icon: Icons.forward_10,
-          onPressed: () => _seek(const Duration(seconds: 10)),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCircleButton({
-    required IconData icon,
-    required VoidCallback onPressed,
-    double size = 48,
-  }) {
+  Widget _buildLeftToolbar() {
     return Container(
-      width: size,
-      height: size,
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.3),
-        shape: BoxShape.circle,
+        color: Colors.black.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(16),
       ),
-      child: IconButton(
-        icon: Icon(icon, color: Colors.white, size: size * 0.5),
-        onPressed: onPressed,
-        padding: EdgeInsets.zero,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildToolIconButton(Icons.subtitles_outlined, _showSubtitleMenu),
+          const SizedBox(height: 16),
+          _buildToolIconButton(Icons.crop_free, _showAspectRatioMenu),
+        ],
       ),
     );
   }
 
-  Widget _buildProgressBar() {
+  Widget _buildToolIconButton(IconData icon, VoidCallback onPressed) {
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Icon(icon, color: Colors.white70, size: 22),
+      ),
+    );
+  }
+
+  Widget _buildBottomPill() {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.75, // 使用安全一点的最大宽度组合
+          constraints: const BoxConstraints(maxWidth: 800),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.55),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.white12, width: 0.5),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 上排：时间与进度条
+              _buildProgressBarPill(),
+              const SizedBox(height: 4),
+              // 下排：控制按钮
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // 左侧功能
+                  Row(
+                    children: [
+                      _buildToolIconButton(Icons.monitor_outlined, () {}),
+                      const SizedBox(width: 12),
+                      Icon(
+                        _volume > 0.5 ? Icons.volume_up : (_volume > 0 ? Icons.volume_down : Icons.volume_off),
+                        color: Colors.white70,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 80,
+                        child: SliderTheme(
+                          data: const SliderThemeData(
+                            trackHeight: 2,
+                            thumbShape: RoundSliderThumbShape(enabledThumbRadius: 5),
+                            overlayShape: RoundSliderOverlayShape(overlayRadius: 10),
+                            activeTrackColor: Colors.white,
+                            inactiveTrackColor: Colors.white24,
+                            thumbColor: Colors.white,
+                          ),
+                          child: Slider(
+                            value: _volume,
+                            max: 1.0,
+                            onChanged: _setVolume,
+                            onChangeEnd: (_) => _startHideTimer(),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  
+                  // 中间核心控制
+                  Row(
+                    children: [
+                      _buildToolIconButton(Icons.fast_rewind_rounded, () => _seek(const Duration(seconds: -10))),
+                      const SizedBox(width: 16),
+                      InkWell(
+                        onTap: _togglePlayPause,
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            _player.state.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                            color: Colors.white,
+                            size: 32,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      _buildToolIconButton(Icons.fast_forward_rounded, () => _seek(const Duration(seconds: 10))),
+                    ],
+                  ),
+                  
+                  // 右侧功能
+                  Row(
+                    children: [
+                      InkWell(
+                        onTap: _showSpeedMenu,
+                        borderRadius: BorderRadius.circular(4),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                          child: Text(
+                            '${_playbackSpeed}x',
+                            style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProgressBarPill() {
     return StreamBuilder<Duration>(
       stream: _player.stream.position,
       builder: (context, snapshot) {
         final position = snapshot.data ?? Duration.zero;
         final duration = _player.state.duration;
         
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              Text(
-                _formatDuration(position),
-                style: const TextStyle(color: Colors.white, fontSize: 12),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: SliderTheme(
-                  data: SliderThemeData(
-                    trackHeight: 3,
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-                    activeTrackColor: Colors.white,
-                    inactiveTrackColor: Colors.white.withOpacity(0.3),
-                    thumbColor: Colors.white,
-                    overlayColor: Colors.white.withOpacity(0.3),
-                  ),
-                  child: Slider(
-                    value: position.inMilliseconds.toDouble().clamp(
-                      0,
-                      duration.inMilliseconds.toDouble(),
-                    ),
-                    max: duration.inMilliseconds > 0
-                        ? duration.inMilliseconds.toDouble()
-                        : 1,
-                    onChanged: (value) {
-                      _player.seek(Duration(milliseconds: value.toInt()));
-                    },
-                    onChangeEnd: (_) => _startHideTimer(),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                _formatDuration(duration),
-                style: const TextStyle(color: Colors.white, fontSize: 12),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildBottomBar() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          _buildBottomButton(
-            icon: Icons.subtitles,
-            label: '字幕',
-            onPressed: _showSubtitleMenu,
-          ),
-          _buildBottomButton(
-            icon: Icons.speed,
-            label: '${_playbackSpeed}x',
-            onPressed: _showSpeedMenu,
-          ),
-          _buildBottomButton(
-            icon: Icons.aspect_ratio,
-            label: _getAspectRatioLabel(),
-            onPressed: _showAspectRatioMenu,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBottomButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onPressed,
-  }) {
-    return InkWell(
-      onTap: onPressed,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        return Row(
           children: [
-            Icon(icon, color: Colors.white, size: 24),
-            const SizedBox(height: 4),
             Text(
-              label,
-              style: const TextStyle(color: Colors.white, fontSize: 11),
+              _isDraggingProgress 
+                  ? _formatDuration(Duration(milliseconds: _dragProgressPosition.toInt()))
+                  : _formatDuration(position),
+              style: const TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'monospace'),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final totalWidth = constraints.maxWidth;
+                  final maxMs = duration.inMilliseconds.toDouble();
+                  final currentMs = _isDraggingProgress
+                      ? _dragProgressPosition
+                      : position.inMilliseconds.toDouble();
+                  final progress = maxMs > 0 ? (currentMs / maxMs).clamp(0.0, 1.0) : 0.0;
+
+                  return GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onHorizontalDragStart: (details) {
+                      _hideTimer?.cancel();
+                      setState(() {
+                        _isDraggingProgress = true;
+                        _dragProgressPosition = position.inMilliseconds.toDouble();
+                      });
+                    },
+                    onHorizontalDragUpdate: (details) {
+                      if (maxMs <= 0) return;
+                      final delta = details.delta.dx;
+                      final msDelta = (delta / totalWidth) * maxMs;
+                      setState(() {
+                        _dragProgressPosition = (_dragProgressPosition + msDelta).clamp(0.0, maxMs);
+                      });
+                    },
+                    onHorizontalDragEnd: (details) {
+                      _player.seek(Duration(milliseconds: _dragProgressPosition.toInt()));
+                      setState(() {
+                        _isDraggingProgress = false;
+                      });
+                      _startHideTimer();
+                    },
+                    child: Container(
+                      height: 48,
+                      alignment: Alignment.center,
+                      child: Stack(
+                        alignment: Alignment.centerLeft,
+                        clipBehavior: Clip.none,
+                        children: [
+                          // 背景轨道
+                          Container(
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                          ),
+                          // 已播放轨道
+                          FractionallySizedBox(
+                            widthFactor: progress,
+                            child: Container(
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).primaryColor,
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                            ),
+                          ),
+                          // 滑块圆点
+                          Positioned(
+                            left: (progress * totalWidth) - 8,
+                            child: Container(
+                              width: 16,
+                              height: 16,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.3),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 1),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              _formatDuration(duration),
+              style: const TextStyle(color: Colors.white54, fontSize: 12, fontFamily: 'monospace'),
             ),
           ],
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -1373,73 +1657,69 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
     }
   }
 
+  Widget _buildBottomSheetContainer(BuildContext context, String title, Widget menuContent) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? Colors.black.withOpacity(0.7) : Colors.white.withOpacity(0.85);
+    final grabberColor = isDark ? Colors.white38 : Colors.black26;
+    final titleColor = isDark ? Colors.white : Colors.black87;
+
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          color: bgColor,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: grabberColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Text(title, style: TextStyle(color: titleColor, fontSize: 18, fontWeight: FontWeight.bold)),
+              ),
+              Flexible(child: menuContent),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showSubtitleMenu() {
     final tracks = _player.state.tracks.subtitle;
     
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF16213E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) => SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 8),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white24,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                '字幕',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              ListTile(
-                title: const Text(
-                  '关闭',
-                  style: TextStyle(color: Colors.white),
-                ),
-                trailing: _player.state.track.subtitle == SubtitleTrack.no()
-                    ? const Icon(Icons.check, color: Colors.deepPurple)
-                    : null,
-                onTap: () {
-                  _player.setSubtitleTrack(SubtitleTrack.no());
-                  Navigator.pop(context);
-                },
-              ),
-              for (final track in tracks)
-                ListTile(
-                  title: Text(
-                    track.title ?? track.language ?? '字幕 ${track.id}',
-                    style: TextStyle(
-                      color: _player.state.track.subtitle.id == track.id
-                          ? Colors.deepPurple.shade200
-                          : Colors.white,
-                    ),
-                  ),
-                  trailing: _player.state.track.subtitle.id == track.id
-                      ? const Icon(Icons.check, color: Colors.deepPurple)
-                      : null,
-                  onTap: () {
-                    _player.setSubtitleTrack(track);
-                    Navigator.pop(context);
-                  },
-                ),
-              const SizedBox(height: 8),
-            ],
-          ),
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => _buildBottomSheetContainer(
+        context,
+        '字幕选择',
+        ListView(
+          shrinkWrap: true,
+          children: [
+            _buildActionItem('关闭字幕', true, _player.state.track.subtitle == SubtitleTrack.no(), () {
+              _player.setSubtitleTrack(SubtitleTrack.no());
+              Navigator.pop(context);
+            }),
+            ...tracks.map((track) {
+              final title = track.title ?? track.language ?? '字幕 ${track.id}';
+              final isSelected = _player.state.track.subtitle.id == track.id;
+              return _buildActionItem(title, true, isSelected, () {
+                _player.setSubtitleTrack(track);
+                Navigator.pop(context);
+              });
+            }),
+          ],
         ),
       ),
     );
@@ -1448,52 +1728,20 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
   void _showSpeedMenu() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF16213E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) => SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 8),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white24,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                '播放速度',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              for (final speed in [0.5, 0.75, 1.0, 1.25, 1.5, 2.0])
-                ListTile(
-                  title: Text(
-                    '${speed}x',
-                    style: TextStyle(
-                      color: _playbackSpeed == speed
-                          ? Colors.deepPurple.shade200
-                          : Colors.white,
-                    ),
-                  ),
-                  trailing: _playbackSpeed == speed
-                      ? const Icon(Icons.check, color: Colors.deepPurple)
-                      : null,
-                  onTap: () => _changeSpeed(speed),
-                ),
-              const SizedBox(height: 8),
-            ],
-          ),
+      backgroundColor: Colors.transparent,
+      builder: (context) => _buildBottomSheetContainer(
+        context,
+        '播放速度',
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ...[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((speed) {
+              return _buildActionItem('${speed}x', true, _playbackSpeed == speed, () {
+                _changeSpeed(speed);
+                Navigator.pop(context);
+              });
+            }),
+          ],
         ),
       ),
     );
@@ -1502,56 +1750,61 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
   void _showAspectRatioMenu() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF16213E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      backgroundColor: Colors.transparent,
+      builder: (context) => _buildBottomSheetContainer(
+        context,
+        '画面比例',
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ...[
+              {'value': 'fit', 'label': '适应屏幕'},
+              {'value': 'fill', 'label': '填充屏幕'},
+              {'value': 'stretch', 'label': '拉伸填充'},
+            ].map((ratio) {
+              return _buildActionItem(ratio['label']!, true, _aspectRatio == ratio['value'], () {
+                _changeAspectRatio(ratio['value']!);
+                Navigator.pop(context);
+              });
+            }),
+          ],
+        ),
       ),
-      builder: (context) => SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 8),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white24,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                '画面比例',
+    );
+  }
+
+  Widget _buildActionItem<T>(String title, T value, T groupValue, VoidCallback onTap) {
+    bool isSelected = value == groupValue;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isSelected 
+        ? Theme.of(context).primaryColor 
+        : (isDark ? Colors.white : Colors.black87);
+    final inactiveIconColor = isDark ? Colors.white38 : Colors.black26;
+
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        decoration: BoxDecoration(
+          color: isSelected ? Theme.of(context).primaryColor.withOpacity(0.1) : Colors.transparent,
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                title, 
                 style: TextStyle(
-                  color: Colors.white,
+                  color: textColor,
                   fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500
+                )
               ),
-              const SizedBox(height: 8),
-              for (final ratio in [
-                {'value': 'fit', 'label': '适应屏幕'},
-                {'value': 'fill', 'label': '填充屏幕'},
-                {'value': 'stretch', 'label': '拉伸填充'},
-              ])
-                ListTile(
-                  title: Text(
-                    ratio['label']!,
-                    style: TextStyle(
-                      color: _aspectRatio == ratio['value']
-                          ? Colors.deepPurple.shade200
-                          : Colors.white,
-                    ),
-                  ),
-                  trailing: _aspectRatio == ratio['value']
-                      ? const Icon(Icons.check, color: Colors.deepPurple)
-                      : null,
-                  onTap: () => _changeAspectRatio(ratio['value']!),
-                ),
-              const SizedBox(height: 8),
-            ],
-          ),
+            ),
+            if (isSelected) 
+              Icon(Icons.check_circle, color: Theme.of(context).primaryColor, size: 24)
+            else
+              Icon(Icons.circle_outlined, color: inactiveIconColor, size: 24),
+          ],
         ),
       ),
     );
@@ -1648,6 +1901,94 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
               _seekIndicatorText,
               style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============== 性能监控面板 ==============
+
+  Widget _buildStatsPanel() {
+    final state = _player.state;
+    final videoParams = state.videoParams;
+    final audioParams = state.audioParams;
+    
+    // 尝试寻找真实的视频帧率 (track 经常显示为 auto)
+    double? actualFps = state.track.video.fps;
+    if (actualFps == null) {
+      // 从所有视频轨道中找第一个带有 fps 数据的（通常实际解码轨道存在于其中）
+      for (final track in state.tracks.video) {
+        if (track.fps != null) {
+          actualFps = track.fps;
+          break;
+        }
+      }
+    }
+    
+    // 汇总要显示的信息
+    final stats = <String, String>{
+      '视频分辨率': '${videoParams.w ?? '?'} x ${videoParams.h ?? '?'}',
+      '视频帧率': actualFps?.toStringAsFixed(2) ?? '未知',
+      // `track` 经常是 auto 并且不包含码率，我们显示 audioBitrate 
+      '音频码率': state.audioBitrate != null ? '${(state.audioBitrate! / 1000).toStringAsFixed(0)} Kbps' : '未知',
+      '音频声道数': audioParams.channelCount?.toString() ?? '未知',
+      '音频采样率': audioParams.sampleRate?.toString() ?? '未知',
+      '缓冲比例': '${state.bufferingPercentage.toStringAsFixed(1)}%',
+      '总缓冲时长': _formatDuration(state.buffer),
+      '网速估算': _networkSpeed,
+    };
+
+    return Positioned(
+      top: 60,
+      right: 16,
+      child: Container(
+        width: 260,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.85),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.white24),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.analytics_outlined, color: Colors.white70, size: 16),
+                SizedBox(width: 8),
+                Text(
+                  '播放统计信息',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const Divider(color: Colors.white24, height: 16),
+            ...stats.entries.map((e) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        e.key,
+                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                      Text(
+                        e.value,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
           ],
         ),
       ),

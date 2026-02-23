@@ -18,6 +18,7 @@ mixin PlayerGesturesMixin<T extends StatefulWidget> on State<T> {
   bool get isLocked;
   void setVolume(double volume);
   Duration? getCurrentDuration();
+  Duration? getCurrentPosition(); // 获取当前播放位置
   void seekTo(Duration position);
 
   /// 处理垂直拖拽（亮度/音量）
@@ -54,21 +55,30 @@ mixin PlayerGesturesMixin<T extends StatefulWidget> on State<T> {
     }
   }
 
-  /// 处理水平拖拽（进度）
+  /// 处理水平拖拽开始（记录当前播放位置）
+  void handleHorizontalDragStart(DragStartDetails details) {
+    if (isLocked) return;
+    _seekTargetPosition = getCurrentPosition();
+  }
+
+  /// 处理水平拖拽（从当前位置进行增量偏移）
   void handleHorizontalDragUpdate(DragUpdateDetails details, BuildContext context) {
     if (isLocked) return;
     
     final screenWidth = MediaQuery.of(context).size.width;
-    final dragPosition = details.globalPosition.dx;
-    
     final duration = getCurrentDuration();
+    
     if (duration != null && duration.inSeconds > 0) {
-      final percentage = (dragPosition / screenWidth).clamp(0.0, 1.0);
-      final targetSeconds = (duration.inSeconds * percentage).round();
-      _seekTargetPosition = Duration(seconds: targetSeconds);
+      // 第一次拖拽时，以当前播放位置为起点
+      _seekTargetPosition ??= getCurrentPosition() ?? Duration.zero;
       
-      final minutes = targetSeconds ~/ 60;
-      final seconds = targetSeconds % 60;
+      // 根据手指滑动距离计算时间偏移（全屏宽度 = 180秒）
+      final deltaSec = (details.delta.dx / screenWidth) * 180;
+      final newSeconds = (_seekTargetPosition!.inSeconds + deltaSec).round().clamp(0, duration.inSeconds);
+      _seekTargetPosition = Duration(seconds: newSeconds);
+      
+      final minutes = newSeconds ~/ 60;
+      final seconds = newSeconds % 60;
       final timeStr = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
       
       setState(() {

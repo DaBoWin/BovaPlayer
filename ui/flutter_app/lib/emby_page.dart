@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:window_manager/window_manager.dart';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'unified_player_page.dart';
 
 // ============== 现代化主题配置 ==============
@@ -86,6 +89,54 @@ class _EmbyPageState extends State<EmbyPage> {
   EmbyServer? _activeServer;
   bool _isLoading = false;
   String? _errorMsg;
+  Timer? _searchTimer;
+  
+  PreferredSizeWidget _buildDesktopAppBar({
+    required Widget title,
+    List<Widget>? actions,
+    bool showBackButton = false,
+  }) {
+    final bool isDesktop = !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
+
+    if (!isDesktop) {
+      return AppBar(
+        title: title,
+        backgroundColor: AppTheme.cardBackground,
+        foregroundColor: AppTheme.textPrimary,
+        elevation: 0,
+        actions: actions,
+      );
+    }
+
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(42.0),
+      child: DragToMoveArea(
+        child: AppBar(
+          backgroundColor: AppTheme.cardBackground,
+          foregroundColor: AppTheme.textPrimary,
+          elevation: 0,
+          toolbarHeight: 42.0,
+          centerTitle: true,
+          // Reserve space on macOS for traffic lights if no back button
+          leading: showBackButton 
+            ? BackButton(color: AppTheme.textPrimary) 
+            : (Platform.isMacOS ? const SizedBox(width: 80) : null),
+          leadingWidth: showBackButton ? 56 : (Platform.isMacOS ? 80 : 56),
+          title: Padding(
+            padding: EdgeInsets.only(top: Platform.isMacOS ? 4.0 : 0.0), // Bump title down slightly
+            child: DefaultTextStyle(
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, letterSpacing: 0.5, color: AppTheme.textPrimary),
+              child: title,
+            ),
+          ),
+          actions: actions?.map((action) => Padding(
+            padding: EdgeInsets.only(top: Platform.isMacOS ? 4.0 : 0.0), // Bump actions down slightly to match title
+            child: action,
+          )).toList(),
+        ),
+      ),
+    );
+  }
 
   // 视图模式
   EmbyViewMode _viewMode = EmbyViewMode.serverList;
@@ -109,6 +160,14 @@ class _EmbyPageState extends State<EmbyPage> {
   List<Map<String, dynamic>> _seriesSeasons = [];
   Map<String, List<Map<String, dynamic>>> _seasonEpisodes = {};
   int _selectedSeasonIndex = 0;
+  
+  // 详情页 - 流格式选择
+  List<Map<String, dynamic>> _itemMediaSources = [];
+  String? _selectedMediaSourceId;
+  int? _selectedAudioStreamIndex;
+  
+  final ScrollController _browserScrollController = ScrollController();
+  final ScrollController _dashboardScrollController = ScrollController();
 
   @override
   void initState() {
@@ -123,6 +182,8 @@ class _EmbyPageState extends State<EmbyPage> {
 
   @override
   void dispose() {
+    _browserScrollController.dispose();
+    _dashboardScrollController.dispose();
     super.dispose();
   }
 
@@ -481,8 +542,67 @@ class _EmbyPageState extends State<EmbyPage> {
         setState(() {
           _selectedItem = item;
           _viewMode = EmbyViewMode.itemDetail;
+          _itemMediaSources = [];
+          _selectedMediaSourceId = null;
+          _selectedAudioStreamIndex = null;
         });
+        _loadItemPlaybackInfo(item['Id']);
         break;
+    }
+  }
+
+  // ============== 获取多版本与流信息 ==============
+  Future<void> _loadItemPlaybackInfo(String itemId) async {
+    try {
+      final s = _activeServer!;
+      var baseUrl = s.url;
+      if (baseUrl.contains(':443')) baseUrl = baseUrl.replaceAll(':443', '');
+      
+      final playbackInfoUrl = '$baseUrl/Items/$itemId/PlaybackInfo?UserId=${s.userId}&api_key=${s.accessToken}';
+      final response = await http.post(
+        Uri.parse(playbackInfoUrl),
+        headers: {'Content-Type': 'application/json', ..._headers()},
+        body: jsonEncode({
+          'DeviceProfile': {
+            'MaxStreamingBitrate': 120000000,
+            'MaxStaticBitrate': 100000000,
+            'DirectPlayProfiles': [
+              {
+                'Container': 'mp4,m4v,mkv,avi,mov,wmv,asf,webm,flv,ts',
+                'Type': 'Video',
+                'VideoCodec': 'h264,hevc,vp8,vp9,av1,mpeg4,mpeg2video',
+                'AudioCodec': 'aac,mp3,ac3,eac3,dts,flac,opus,vorbis,pcm'
+              }
+            ],
+          }
+        }),
+      ).timeout(const Duration(seconds: 10));
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['MediaSources'] != null) {
+          final sources = List<Map<String, dynamic>>.from(data['MediaSources']);
+          setState(() {
+            _itemMediaSources = sources;
+            if (sources.isNotEmpty) {
+              _selectedMediaSourceId = sources[0]['Id'];
+              // 寻找第一条默认音频轨
+              final streams = sources[0]['MediaStreams'] as List?;
+              if (streams != null) {
+                final audioStream = streams.firstWhere(
+                  (s) => s['Type'] == 'Audio' && s['IsDefault'] == true,
+                  orElse: () => streams.firstWhere((s) => s['Type'] == 'Audio', orElse: () => null),
+                );
+                if (audioStream != null) {
+                  _selectedAudioStreamIndex = audioStream['Index'];
+                }
+              }
+            }
+          });
+        }
+      }
+    } catch (e) {
+      print('[EmbyPage] 获取 PlaybackInfo 失败: $e');
     }
   }
 
@@ -513,6 +633,8 @@ class _EmbyPageState extends State<EmbyPage> {
           ..._headers(),
         },
         body: jsonEncode({
+          if (_selectedMediaSourceId != null) 'MediaSourceId': _selectedMediaSourceId,
+          if (_selectedAudioStreamIndex != null) 'AudioStreamIndex': _selectedAudioStreamIndex,
           'DeviceProfile': {
             'MaxStreamingBitrate': 120000000,
             'MaxStaticBitrate': 100000000,
@@ -522,10 +644,27 @@ class _EmbyPageState extends State<EmbyPage> {
                 'Container': 'mp4,m4v,mkv,avi,mov,wmv,asf,webm,flv,ts',
                 'Type': 'Video',
                 'VideoCodec': 'h264,hevc,vp8,vp9,av1,mpeg4,mpeg2video',
-                'AudioCodec': 'aac,mp3,ac3,eac3,dts,flac,opus,vorbis,pcm'
+                // 移除 eac3, dts, truehd 等需要专利授权或不被支持的音轨编码，迫使 Emby 服务端触发音频降级转码
+                'AudioCodec': 'aac,mp3,ac3,flac,opus,vorbis,pcm'
               }
             ],
-            'TranscodingProfiles': [],
+            'TranscodingProfiles': [
+              {
+                'Container': 'ts',
+                'Type': 'Audio',
+                'AudioCodec': 'aac',
+                'Protocol': 'hls',
+                'Context': 'Streaming'
+              },
+              {
+                'Container': 'ts',
+                'Type': 'Video',
+                'AudioCodec': 'aac',
+                'VideoCodec': 'h264,hevc',
+                'Protocol': 'hls',
+                'Context': 'Streaming'
+              }
+            ],
             'ContainerProfiles': [],
             'CodecProfiles': [],
             'SubtitleProfiles': [
@@ -586,17 +725,27 @@ class _EmbyPageState extends State<EmbyPage> {
           print('[EmbyPage] DirectStreamUrl: ${mediaSource['DirectStreamUrl']}');
           print('[EmbyPage] TranscodingUrl: ${mediaSource['TranscodingUrl']}');
           
-          // 优先使用 API 返回的 DirectStreamUrl
+          // 优先使用 API 返回的 DirectStreamUrl（服务端在剥离了 TrueHD 之后，对于剩下的 HEVC 画面应当走不损耗性能的视频轨直通 DirectStream 操作）
           if (mediaSource['DirectStreamUrl'] != null && mediaSource['DirectStreamUrl'].toString().isNotEmpty) {
             final directStreamUrl = mediaSource['DirectStreamUrl'].toString();
-            if (directStreamUrl.startsWith('http')) {
-              playbackUrl = directStreamUrl;
-            } else {
-              playbackUrl = '$baseUrl$directStreamUrl';
+            final extAudio = _selectedAudioStreamIndex != null ? '&AudioStreamIndex=$_selectedAudioStreamIndex' : '';
+            playbackUrl = directStreamUrl.startsWith('http') ? directStreamUrl : '$baseUrl$directStreamUrl';
+            if (!playbackUrl.contains('AudioStreamIndex') && extAudio.isNotEmpty) {
+              playbackUrl += extAudio;
             }
-            print('[EmbyPage] 使用 API 返回的 DirectStreamUrl: $playbackUrl');
+            print('[EmbyPage] 使用 API 返回的 DirectStreamUrl (视频直传/音频降级): $playbackUrl');
           }
-          // 其次使用 Path（如果是完整 URL）
+          // 其次才使用 API 返回的全局转码串流 URL（万一连 HEVC 也不支持，才会生成 HLS 地址）
+          else if (mediaSource['SupportsTranscoding'] == true && mediaSource['TranscodingUrl'] != null && mediaSource['TranscodingUrl'].toString().isNotEmpty) {
+            final transcodingUrl = mediaSource['TranscodingUrl'].toString();
+            final extAudio = _selectedAudioStreamIndex != null ? '&AudioStreamIndex=$_selectedAudioStreamIndex' : '';
+            playbackUrl = transcodingUrl.startsWith('http') ? transcodingUrl : '$baseUrl$transcodingUrl';
+            if (!playbackUrl.contains('AudioStreamIndex') && extAudio.isNotEmpty) {
+              playbackUrl += extAudio;
+            }
+            print('[EmbyPage] 使用 API 返回的 TranscodingUrl (音视频全局转码): $playbackUrl');
+          }
+          // 再次使用 Path（如果是完整 URL）
           else if (mediaSource['Path'] != null) {
             final path = mediaSource['Path'].toString();
             if (path.startsWith('http')) {
@@ -605,35 +754,26 @@ class _EmbyPageState extends State<EmbyPage> {
             }
           }
           
-          // 如果上面都没有，才自己构建 URL
+          // 如果上面都没有，才尝试自己回退构建 URL
           if (playbackUrl == null || playbackUrl.isEmpty) {
-            if (mediaSource['SupportsDirectStream'] == true) {
-              // 获取容器格式
-              final container = mediaSource['Container'] ?? 'mkv';
-              
-              // 使用标准的 DirectStream URL（Static=true 更稳定）
-              playbackUrl = '$baseUrl/Videos/$itemId/stream.'
-                  '$container?'
-                  'MediaSourceId=$mediaSourceId&'
-                  'Static=true&'
-                  'api_key=${server.accessToken}';
-              print('[EmbyPage] 构建 DirectStream URL: $playbackUrl');
-            } 
-            else if (mediaSource['SupportsDirectPlay'] == true) {
-              // 构建 DirectPlay URL
+            final extAudio = _selectedAudioStreamIndex != null ? '&AudioStreamIndex=$_selectedAudioStreamIndex' : '';
+            if (mediaSource['SupportsDirectPlay'] == true) {
+              // 构建 DirectPlay URL (允许完整文件下载 / Static=true)
               playbackUrl = '$baseUrl/Videos/$itemId/stream?'
                   'MediaSourceId=$mediaSourceId&'
                   'Static=true&'
-                  'api_key=${server.accessToken}';
-              print('[EmbyPage] 构建 DirectPlay URL: $playbackUrl');
+                  'api_key=${server.accessToken}$extAudio';
+              print('[EmbyPage] 构建手动 DirectPlay URL: $playbackUrl');
             }
-            else if (mediaSource['SupportsTranscoding'] == true) {
-              final transcodingUrl = mediaSource['TranscodingUrl'];
-              if (transcodingUrl != null && transcodingUrl.isNotEmpty) {
-                playbackUrl = '$baseUrl$transcodingUrl';
-                print('[EmbyPage] 使用 Transcoding URL: $playbackUrl');
-              }
-            }
+            else if (mediaSource['SupportsDirectStream'] == true) {
+              // 获取容器格式 (不能传 Static=true，否则会阻断转重采机制)
+              final container = mediaSource['Container'] ?? 'mkv';
+              playbackUrl = '$baseUrl/Videos/$itemId/stream.'
+                  '$container?'
+                  'MediaSourceId=$mediaSourceId&'
+                  'api_key=${server.accessToken}$extAudio';
+              print('[EmbyPage] 构建手动 DirectStream URL: $playbackUrl');
+            } 
           }
         }
       } else {
@@ -673,20 +813,20 @@ class _EmbyPageState extends State<EmbyPage> {
       return;
     }
     
-    // 使用 media_kit 播放器（所有平台）
+    // 使用页面导航进入播放器
     if (mounted) {
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => UnifiedPlayerPage(
-            url: playbackUrl!,  // 已经检查过不为 null
+            url: playbackUrl!,
             title: name,
-            httpHeaders: playbackHeaders,  // 使用专门为播放准备的 headers
+            httpHeaders: playbackHeaders,
             subtitles: subtitles,
-            itemId: itemId,  // 传递 itemId 用于保存播放位置
-            serverUrl: server.url,  // 传递服务器地址
-            accessToken: server.accessToken,  // 传递 API Token
-            userId: server.userId,  // 传递用户 ID
+            itemId: itemId,
+            serverUrl: server.url,
+            accessToken: server.accessToken,
+            userId: server.userId,
           ),
         ),
       ).then((_) {
@@ -970,17 +1110,15 @@ class _EmbyPageState extends State<EmbyPage> {
   Widget _buildServerListPage() {
     return Scaffold(
       backgroundColor: AppTheme.background,
-      appBar: AppBar(
-        title: const Text('Emby 服务器', style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
-        backgroundColor: AppTheme.cardBackground,
-        foregroundColor: AppTheme.textPrimary,
-        elevation: 0,
+      appBar: _buildDesktopAppBar(
+        title: const Text('BovaPlayer'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.add_rounded),
+            icon: const Icon(Icons.add_rounded, color: AppTheme.textPrimary),
             onPressed: () => _showAddServerDialog(),
             tooltip: '添加服务器',
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: _servers.isEmpty ? _buildEmptyServerList() : _buildServerList(),
@@ -1240,61 +1378,88 @@ class _EmbyPageState extends State<EmbyPage> {
   // ===================================
   //  2) 仪表板 - 现代化设计
   // ===================================
-
   Widget _buildDashboard() {
     final s = _activeServer!;
     return Scaffold(
       backgroundColor: AppTheme.background,
-      body: CustomScrollView(
-        slivers: [
-          // 现代化 AppBar
-          SliverAppBar(
-            floating: true,
-            backgroundColor: AppTheme.cardBackground,
-            foregroundColor: AppTheme.textPrimary,
-            elevation: 0,
-            leading: Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryLight,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.play_arrow_rounded, color: AppTheme.primary, size: 20),
-              ),
-            ),
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  s.name,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
-                Text(
-                  s.username,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppTheme.textSecondary,
-                    fontWeight: FontWeight.normal,
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.refresh_rounded, color: AppTheme.textSecondary),
-                onPressed: _loadDashboard,
-              ),
-              IconButton(
-                icon: const Icon(Icons.menu_rounded, color: AppTheme.textSecondary),
-                onPressed: _goToServerList,
-              ),
-            ],
+      appBar: _buildDesktopAppBar(
+        title: const Text('BovaPlayer'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded, color: AppTheme.textSecondary),
+            onPressed: _loadDashboard,
+            tooltip: '刷新',
           ),
+          IconButton(
+            icon: const Icon(Icons.menu_rounded, color: AppTheme.textSecondary),
+            onPressed: _goToServerList,
+            tooltip: '切换服务器',
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: ScrollbarTheme(
+        data: ScrollbarThemeData(
+          thumbColor: MaterialStateProperty.all(AppTheme.primary.withOpacity(0.4)),
+          trackBorderColor: MaterialStateProperty.all(Colors.transparent),
+          crossAxisMargin: 2,
+          mainAxisMargin: 2,
+          minThumbLength: 64,
+        ),
+        child: Scrollbar(
+          thumbVisibility: true,
+          trackVisibility: false,
+          interactive: true,
+          thickness: 8,
+          radius: const Radius.circular(4),
+          controller: _dashboardScrollController,
+          child: CustomScrollView(
+            controller: _dashboardScrollController,
+            slivers: [
+              // 服务器信息展示 (原 SliverAppBar 替代品)
+              SliverToBoxAdapter(
+                child: Container(
+                  color: AppTheme.cardBackground,
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryLight,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.play_arrow_rounded, color: AppTheme.primary, size: 24),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              s.name,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              s.username,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: AppTheme.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
           
           // 轮播横幅 - 显示最新/推荐内容
           if (_latestItems.isNotEmpty) ...[
@@ -1407,6 +1572,8 @@ class _EmbyPageState extends State<EmbyPage> {
           ],
           const SliverToBoxAdapter(child: SizedBox(height: 32)),
         ],
+      ),
+      ),
       ),
     );
   }
@@ -2095,27 +2262,61 @@ class _EmbyPageState extends State<EmbyPage> {
   }
 
   Widget _buildGridView() {
-    return GridView.builder(
-      key: ValueKey('grid_${_sortBy}_${_browseItems.length}'), // 添加 key 确保重建
-      padding: const EdgeInsets.all(16),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 160,
-        childAspectRatio: 0.55,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
+    return ScrollbarTheme(
+      data: ScrollbarThemeData(
+        thumbColor: MaterialStateProperty.all(AppTheme.primary.withOpacity(0.4)),
+        trackBorderColor: MaterialStateProperty.all(Colors.transparent),
+        crossAxisMargin: 2,
+        mainAxisMargin: 2,
+        minThumbLength: 64,
       ),
-      itemCount: _browseItems.length,
-      itemBuilder: (_, i) => _posterCard(_browseItems[i]),
+      child: Scrollbar(
+        thumbVisibility: true, // 强制显示滚动条滑块
+        trackVisibility: false, // 隐藏整条灰色背景轨道
+        interactive: true,
+        thickness: 8,
+        radius: const Radius.circular(4),
+        controller: _browserScrollController, // 绑定 Controller 才能在桌面端强制显示
+        child: GridView.builder(
+        controller: _browserScrollController, // 绑定 Controller
+        key: ValueKey('grid_${_sortBy}_${_browseItems.length}'), // 添加 key 确保重建
+        padding: const EdgeInsets.all(16),
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 160,
+          childAspectRatio: 0.55,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+        ),
+        itemCount: _browseItems.length,
+        itemBuilder: (_, i) => _posterCard(_browseItems[i]),
+      ),
+      ),
     );
   }
 
   Widget _buildListView() {
-    return ListView.builder(
-      key: ValueKey('list_${_sortBy}_${_browseItems.length}'), // 添加 key 确保重建
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      itemCount: _browseItems.length,
-      itemBuilder: (_, i) {
-        final item = _browseItems[i];
+    return ScrollbarTheme(
+      data: ScrollbarThemeData(
+        thumbColor: MaterialStateProperty.all(AppTheme.primary.withOpacity(0.4)),
+        trackBorderColor: MaterialStateProperty.all(Colors.transparent),
+        crossAxisMargin: 2,
+        mainAxisMargin: 2,
+        minThumbLength: 64,
+      ),
+      child: Scrollbar(
+        thumbVisibility: true, // 强制显示滚动条滑块
+        trackVisibility: false, // 隐藏整条灰色背景轨道
+        interactive: true,
+        thickness: 8,
+        radius: const Radius.circular(4),
+        controller: _browserScrollController, // 绑定 Controller
+        child: ListView.builder(
+        controller: _browserScrollController, // 绑定 Controller
+        key: ValueKey('list_${_sortBy}_${_browseItems.length}'), // 添加 key 确保重建
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        itemCount: _browseItems.length,
+        itemBuilder: (_, i) {
+          final item = _browseItems[i];
         final name = item['Name'] ?? '';
         final year = item['ProductionYear']?.toString() ?? '';
         final itemId = item['Id'] ?? '';
@@ -2216,6 +2417,8 @@ class _EmbyPageState extends State<EmbyPage> {
           ),
         );
       },
+    ),
+    ),
     );
   }
 
@@ -2356,6 +2559,22 @@ class _EmbyPageState extends State<EmbyPage> {
                 ),
               ),
             ),
+            
+          // 多版本选项与音轨选择 (Movie/Episode/Video)
+          if (type == 'Movie' || type == 'Episode' || type == 'Video')
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildMediaSourceSelectors(),
+                    const SizedBox(height: 24),
+                    _buildStreamInfoCards(),
+                  ],
+                ),
+              ),
+            ),
 
           // 简介
           SliverToBoxAdapter(
@@ -2428,6 +2647,349 @@ class _EmbyPageState extends State<EmbyPage> {
           )),
 
           const SliverToBoxAdapter(child: SizedBox(height: 40)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMediaSourceSelectors() {
+    if (_itemMediaSources.isEmpty) {
+      if (_isLoadingBrowse) {
+        return const SizedBox(
+          height: 48,
+          child: Center(
+            child: SizedBox(
+               width: 20, height: 20,
+               child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.textTertiary)
+            )
+          )
+        );
+      }
+      return const SizedBox();
+    }
+
+    // 取得当前选中的媒体源信息
+    final currentSource = _itemMediaSources.firstWhere(
+      (s) => s['Id'] == _selectedMediaSourceId,
+      orElse: () => _itemMediaSources.first,
+    );
+
+    // 从当前媒体源提取音频流
+    final streams = currentSource['MediaStreams'] as List? ?? [];
+    final audioStreams = streams.where((s) => s['Type'] == 'Audio').toList();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppTheme.cardBackground,
+        borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+        border: Border.all(color: AppTheme.textTertiary.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '播放选项',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildDropdownSelector(
+                  icon: Icons.movie_creation_outlined,
+                  label: '视频格式',
+                  value: _selectedMediaSourceId,
+                  items: _itemMediaSources,
+                  valueKey: 'Id',
+                  displayBuilder: (item) {
+                    final name = item['Name'] ?? 'Unknown';
+                    final container = item['Container']?.toString().toUpperCase() ?? '';
+                    final videoCodec = item['VideoType']?.toString().toUpperCase() 
+                        ?? item['VideoCodec']?.toString().toUpperCase() 
+                        ?? '';
+                    
+                    List<String> tags = [];
+                    if (container.isNotEmpty) tags.add(container);
+                    if (videoCodec.isNotEmpty && videoCodec != container) tags.add(videoCodec);
+                    
+                    if (tags.isNotEmpty) {
+                      return '$name (${tags.join(' / ')})';
+                    }
+                    return name;
+                  },
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() {
+                        _selectedMediaSourceId = val;
+                        // 切换 Source 后，尝试重置为其默认的 Audio
+                        final newSource = _itemMediaSources.firstWhere((s) => s['Id'] == val);
+                        final newStreams = newSource['MediaStreams'] as List? ?? [];
+                        final newAudio = newStreams.firstWhere(
+                          (s) => s['Type'] == 'Audio' && s['IsDefault'] == true,
+                          orElse: () => newStreams.firstWhere((s) => s['Type'] == 'Audio', orElse: () => null),
+                        );
+                        _selectedAudioStreamIndex = newAudio?['Index'];
+                      });
+                    }
+                  },
+                ),
+              ),
+              if (audioStreams.isNotEmpty) const SizedBox(width: 12),
+              if (audioStreams.isNotEmpty)
+                Expanded(
+                  child: _buildDropdownSelector(
+                    icon: Icons.audiotrack_outlined,
+                    label: '音频格式',
+                    value: _selectedAudioStreamIndex,
+                    items: audioStreams,
+                    valueKey: 'Index',
+                    displayBuilder: (item) {
+                      return item['DisplayTitle']?.toString() ?? '未知';
+                    },
+                    onChanged: (val) {
+                      if (val != null) setState(() => _selectedAudioStreamIndex = val);
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDropdownSelector({
+    required IconData icon,
+    required String label,
+    required dynamic value,
+    required List<dynamic> items,
+    required String valueKey,
+    String? displayKey,
+    String Function(dynamic)? displayBuilder,
+    required Function(dynamic) onChanged,
+  }) {
+    if (items.isEmpty) return const SizedBox();
+    
+    String getDisplayText(dynamic item) {
+      if (displayBuilder != null) return displayBuilder(item);
+      if (displayKey != null) return item[displayKey]?.toString() ?? '未知';
+      return '未知';
+    }
+    
+    // 如果只有 1 个选项，展示为文本即可无需下拉交互
+    if (items.length == 1) {
+      final text = getDisplayText(items[0]);
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 14, color: AppTheme.textTertiary),
+              const SizedBox(width: 4),
+              Text(label, style: const TextStyle(fontSize: 12, color: AppTheme.textTertiary)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(text, style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
+        ],
+      );
+    }
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 14, color: AppTheme.textTertiary),
+            const SizedBox(width: 4),
+            Text(label, style: const TextStyle(fontSize: 12, color: AppTheme.textTertiary)),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Container(
+          height: 36,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: AppTheme.primaryLight.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<dynamic>(
+              value: value,
+              isExpanded: true,
+              dropdownColor: AppTheme.cardBackground,
+              icon: const Icon(Icons.keyboard_arrow_down, size: 18),
+              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+              items: items.map((item) {
+                return DropdownMenuItem<dynamic>(
+                  value: item[valueKey],
+                  child: Text(
+                    getDisplayText(item),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                );
+              }).toList(),
+              onChanged: onChanged,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStreamInfoCards() {
+    if (_itemMediaSources.isEmpty || _selectedMediaSourceId == null) {
+      return const SizedBox();
+    }
+
+    final currentSource = _itemMediaSources.firstWhere(
+      (s) => s['Id'] == _selectedMediaSourceId,
+      orElse: () => _itemMediaSources.first,
+    );
+
+    final streams = currentSource['MediaStreams'] as List? ?? [];
+    
+    // 我们找出 1 个视频流，选中的音频流，以及全部或选中的字幕流
+    final videoStream = streams.firstWhere((s) => s['Type'] == 'Video', orElse: () => null);
+    final audioStream = streams.firstWhere((s) => s['Type'] == 'Audio' && s['Index'] == _selectedAudioStreamIndex, orElse: () {
+      return streams.firstWhere((s) => s['Type'] == 'Audio', orElse: () => null);
+    });
+    
+    // 字幕可能有很多，取默认或者第一个
+    final subtitleStream = streams.firstWhere((s) => s['Type'] == 'Subtitle' && s['IsDefault'] == true, orElse: () {
+      return streams.firstWhere((s) => s['Type'] == 'Subtitle', orElse: () => null);
+    });
+
+    if (videoStream == null && audioStream == null && subtitleStream == null) {
+      return const SizedBox();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '音视频字幕信息',
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
+        ),
+        const SizedBox(height: 12),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (videoStream != null) _buildStreamCard('视频', Icons.videocam_rounded, videoStream),
+              if (audioStream != null) _buildStreamCard('音频', Icons.music_note_rounded, audioStream),
+              if (subtitleStream != null) _buildStreamCard('字幕', Icons.subtitles_rounded, subtitleStream),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStreamCard(String title, IconData icon, dynamic stream) {
+    if (stream == null || stream is! Map<String, dynamic>) return const SizedBox();
+    
+    // 提取通用和特定的流属性
+    final type = stream['Type'];
+    Map<String, String> properties = {};
+    
+    void addProp(String key, String? val) {
+      if (val != null && val.isNotEmpty) {
+        properties[key] = val;
+      }
+    }
+
+    addProp('标题', stream['DisplayTitle']?.toString() ?? stream['Title']?.toString());
+    addProp('语言', stream['Language']);
+    addProp('编码', stream['Codec']?.toString().toUpperCase());
+    
+    if (type == 'Video') {
+      addProp('配置文件', stream['Profile']);
+      addProp('等级', stream['Level']?.toString());
+      if (stream['Width'] != null && stream['Height'] != null) {
+        addProp('分辨率', '${stream['Width']}x${stream['Height']}');
+      }
+      addProp('宽高比', stream['AspectRatio']);
+      addProp('隔行扫描', stream['IsInterlaced'] == true ? '是' : '否');
+      addProp('帧率', stream['RealFrameRate']?.toString() ?? stream['AverageFrameRate']?.toString());
+      if (stream['BitRate'] != null) {
+        addProp('比特率', '${(stream['BitRate'] / 1000).round()} kbps');
+      }
+      addProp('视频范围', stream['VideoRangeType'] ?? stream['VideoRange']);
+      addProp('颜色基色', stream['ColorPrimaries']);
+      addProp('色域', stream['ColorSpace']);
+      addProp('色偏', stream['ColorTransfer']);
+      if (stream['BitDepth'] != null) {
+        addProp('位深度', '${stream['BitDepth']} bit');
+      }
+      addProp('像素格式', stream['PixelFormat']);
+      addProp('参考帧', stream['RefFrames']?.toString());
+    } else if (type == 'Audio') {
+      addProp('声道布局', stream['ChannelLayout']);
+      if (stream['Channels'] != null) {
+        addProp('声道数', '${stream['Channels']} ch');
+      }
+      if (stream['SampleRate'] != null) {
+        addProp('采样率', '${stream['SampleRate']} Hz');
+      }
+      addProp('隔行扫描', stream['IsInterlaced'] == true ? '是' : '否');
+      if (stream['BitRate'] != null) {
+        addProp('比特率', '${(stream['BitRate'] / 1000).round()} kbps');
+      }
+      addProp('默认', stream['IsDefault'] == true ? '是' : '否');
+    } else if (type == 'Subtitle') {
+      addProp('内嵌标题', stream['Title']);
+      addProp('隔行扫描', stream['IsInterlaced'] == true ? '是' : '否');
+      addProp('默认', stream['IsDefault'] == true ? '是' : '否');
+      addProp('强制', stream['IsForced'] == true ? '是' : '否');
+    }
+
+    return Container(
+      width: 250,
+      margin: const EdgeInsets.only(right: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryLight.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 18, color: AppTheme.textPrimary),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          ...properties.entries.map((e) => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 70,
+                  child: Text(
+                    '${e.key}:',
+                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    e.value,
+                    style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+          )),
         ],
       ),
     );
@@ -2716,7 +3278,7 @@ class _EmbyPageState extends State<EmbyPage> {
           final label = epNum != null ? 'Episode $epNum' : epName;
 
           return GestureDetector(
-            onTap: () => _playItem(epId, epName),
+            onTap: () => _handleItemClick(ep),
             child: Container(
               width: 240,
               margin: const EdgeInsets.only(right: 12),

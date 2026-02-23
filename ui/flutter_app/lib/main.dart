@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'dart:ui';
+import 'package:window_manager/window_manager.dart';
+import 'dart:io' show Platform;
 import 'native_bridge.dart';
 
 // 条件导入：Web 使用 player_screen.dart，移动端/桌面端使用 player_screen_mobile.dart
@@ -22,6 +24,24 @@ void main() async {
     print('[Main] Failed to initialize native library: $error');
   }
   
+  // 初始化桌面端窗口设置 (无边框体验)
+  if (!kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux)) {
+    await windowManager.ensureInitialized();
+    WindowOptions windowOptions = const WindowOptions(
+      size: Size(1280, 800),
+      minimumSize: Size(800, 600),
+      center: true,
+      backgroundColor: Colors.transparent,
+      skipTaskbar: false,
+      titleBarStyle: TitleBarStyle.hidden,
+      title: 'BovaPlayer',
+    );
+    windowManager.waitUntilReadyToShow(windowOptions, () async {
+      await windowManager.show();
+      await windowManager.focus();
+    });
+  }
+
   runApp(const BovaPlayerApp());
 }
 
