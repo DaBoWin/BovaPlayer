@@ -178,11 +178,7 @@ jobs:
               content = re.sub(r"@Override\s+public void onSurfaceCleanup\(\)", "public void onSurfaceCleanup()", content)
               
               # 2. 在文件末尾的 } 前插入 onSurfaceDestroyed
-              injection = """
-    public void onSurfaceDestroyed() {
-        onSurfaceCleanup();
-    }
-}"""
+              injection = "    public void onSurfaceDestroyed() {\n        onSurfaceCleanup();\n    }\n}"
               content = re.sub(r"}\s*$", injection, content)
               
               with open(file_path, "w", encoding="utf-8") as f:
