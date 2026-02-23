@@ -159,15 +159,17 @@ jobs:
             if ! grep -q "onSurfaceDestroyed" "$VIDEO_OUTPUT_FILE"; then
               echo "需要添加 onSurfaceDestroyed 方法到: $VIDEO_OUTPUT_FILE"
               
+              # 去除所有的 @Override 注解，因为 Flutter 新版的回调接口发生了变化
+              sed -i 's/@Override//g' "$VIDEO_OUTPUT_FILE"
+              
               # 创建临时文件
               TEMP_FILE=$(mktemp)
               
               # 在类的最后一个方法后添加新方法
               awk '
               /^}$/ && !done {
-                print "  @Override";
                 print "  public void onSurfaceDestroyed() {";
-                print "    // Surface destroyed, cleanup if needed";
+                print "    onSurfaceCleanup();";
                 print "  }";
                 print "";
                 done = 1;
