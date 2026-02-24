@@ -26,8 +26,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: 'latest'
-          channel: 'stable'
+          channel: 'beta'
           cache: true
 
       - name: Build Windows (Flutter)
@@ -64,8 +63,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: 'latest'
-          channel: 'stable'
+          channel: 'beta'
           cache: true
 
       - name: Build macOS (Flutter)
@@ -110,8 +108,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: 'latest'
-          channel: 'stable'
+          channel: 'beta'
           cache: true
 
       - name: 缓存 Gradle 依赖
