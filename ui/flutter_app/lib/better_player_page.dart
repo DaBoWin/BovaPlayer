@@ -8,7 +8,7 @@ import 'package:better_player_plus/better_player_plus.dart';
 import 'player/player_utils.dart';
 import 'player/emby_reporter.dart';
 import 'player/player_gestures.dart';
-import 'media_kit_player_page.dart';  // 用于错误时切换
+import 'mpv_android_player_page.dart';  // 用于错误时切换到 mpv-android
 
 class BetterPlayerPage extends StatefulWidget {
   final String url;
@@ -465,11 +465,11 @@ class _BetterPlayerPageState extends State<BetterPlayerPage> with PlayerGestures
                               const SizedBox(height: 32),
                               ElevatedButton.icon(
                                 onPressed: () {
-                                  // 切换到 Media Kit (MPV)
+                                  // 切换到 mpv-android（完整 FFmpeg 支持）
                                   Navigator.pushReplacement(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) => MediaKitPlayerPage(
+                                      builder: (context) => MpvAndroidPlayerPage(
                                         url: widget.url,
                                         title: widget.title,
                                         httpHeaders: widget.httpHeaders,
@@ -483,7 +483,7 @@ class _BetterPlayerPageState extends State<BetterPlayerPage> with PlayerGestures
                                   );
                                 },
                                 icon: const Icon(Icons.swap_horiz),
-                                label: const Text('切换到 MPV 播放器'),
+                                label: const Text('切换到 MPV-Android 播放器'),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.deepPurple,
                                   foregroundColor: Colors.white,

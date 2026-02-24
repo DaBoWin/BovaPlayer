@@ -2,6 +2,8 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // mpv-android 仓库
+        maven { url = uri("https://jitpack.io") }
     }
 }
 

@@ -1,0 +1,14 @@
+name: media_kit_libs_macos_video
+description: Full flavor MPV library for macOS (with TrueHD support)
+version: 1.0.4+homebrew
+publish_to: none
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: '>=3.0.0'
+
+flutter:
+  plugin:
+    platforms:
+      macos:
+        pluginClass: MediaKitLibsMacosVideoPlugin

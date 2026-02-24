@@ -67,6 +67,9 @@ android {
 dependencies {
     // SMB 支持所需依赖
     implementation("eu.agno3.jcifs:jcifs-ng:2.1.10")
+    
+    // MPV Android 播放器（包含完整的 FFmpeg）
+    implementation("is.xyz.mpv:libmpv:latest.release")
 
     // 强制使用统一版本的依赖，避免冲突
     constraints {
