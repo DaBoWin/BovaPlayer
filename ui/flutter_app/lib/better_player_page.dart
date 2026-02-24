@@ -164,9 +164,22 @@ class _BetterPlayerPageState extends State<BetterPlayerPage> with PlayerGestures
           enableOverflowMenu: false,
           showControls: false,
         ),
+        // 字幕渲染样式配置
+        subtitlesConfiguration: const BetterPlayerSubtitlesConfiguration(
+          fontSize: 20,
+          fontColor: Colors.white,
+          outlineColor: Colors.black,
+          outlineSize: 2.0,
+          backgroundColor: Color(0x80000000),
+          bottomPadding: 20,
+        ),
         eventListener: (event) {
           if (event.betterPlayerEventType == BetterPlayerEventType.initialized) {
             print('[BetterPlayer] 初始化完成');
+            // 自动选中第一条字幕
+            if (widget.subtitles != null && widget.subtitles!.isNotEmpty) {
+              _autoSelectFirstSubtitle();
+            }
             if (_savedPosition != null && _savedPosition!.inSeconds > 5) {
               _showResumeDialog();
             }
@@ -219,6 +232,24 @@ class _BetterPlayerPageState extends State<BetterPlayerPage> with PlayerGestures
       final duration = _betterPlayerController?.videoPlayerController?.value.duration;
       PlayerUtils.savePlayPosition(widget.itemId, position, duration);
     });
+  }
+
+  /// 自动选中第一条字幕
+  Future<void> _autoSelectFirstSubtitle() async {
+    if (widget.subtitles == null || widget.subtitles!.isEmpty) return;
+    try {
+      final firstSub = widget.subtitles![0];
+      final subtitleSource = BetterPlayerSubtitlesSource(
+        type: BetterPlayerSubtitlesSourceType.network,
+        name: firstSub['title'],
+        urls: [firstSub['url']!],
+      );
+      await _betterPlayerController?.setupSubtitleSource(subtitleSource);
+      setState(() => _selectedSubtitleIndex = 0);
+      print('[BetterPlayer] 自动选中字幕: ${firstSub['title']}');
+    } catch (e) {
+      print('[BetterPlayer] 自动选中字幕失败: $e');
+    }
   }
 
   Future<void> _showResumeDialog() async {

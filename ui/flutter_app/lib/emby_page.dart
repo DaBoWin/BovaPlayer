@@ -725,8 +725,31 @@ class _EmbyPageState extends State<EmbyPage> {
           print('[EmbyPage] DirectStreamUrl: ${mediaSource['DirectStreamUrl']}');
           print('[EmbyPage] TranscodingUrl: ${mediaSource['TranscodingUrl']}');
           
-          // 优先使用 API 返回的 DirectStreamUrl（服务端在剥离了 TrueHD 之后，对于剩下的 HEVC 画面应当走不损耗性能的视频轨直通 DirectStream 操作）
-          if (mediaSource['DirectStreamUrl'] != null && mediaSource['DirectStreamUrl'].toString().isNotEmpty) {
+          // Android ExoPlayer 不支持 TrueHD / DTS-HD MA 等高级音频编解码器
+          // 检测音频编码，如果不受支持则跳过 DirectStreamUrl，强制走 TranscodingUrl（Emby 将音频转码为 AAC）
+          bool hasUnsupportedAudio = false;
+          if (Platform.isAndroid) {
+            final streams = mediaSource['MediaStreams'] as List?;
+            if (streams != null) {
+              final selectedAudioIdx = _selectedAudioStreamIndex;
+              final audioStream = streams.firstWhere(
+                (s) => s['Type'] == 'Audio' && (selectedAudioIdx == null || s['Index'] == selectedAudioIdx),
+                orElse: () => streams.firstWhere((s) => s['Type'] == 'Audio', orElse: () => null),
+              );
+              if (audioStream != null) {
+                final codec = (audioStream['Codec'] ?? '').toString().toLowerCase();
+                hasUnsupportedAudio = codec.contains('truehd') ||
+                    codec.contains('dts') ||
+                    codec.contains('pcm_s24');
+                if (hasUnsupportedAudio) {
+                  print('[EmbyPage] Android: 检测到不支持的音频编码 "$codec"，跳过 DirectStream，强制转码');
+                }
+              }
+            }
+          }
+
+          // 优先使用 API 返回的 DirectStreamUrl（仅当音频编码受支持时）
+          if (!hasUnsupportedAudio && mediaSource['DirectStreamUrl'] != null && mediaSource['DirectStreamUrl'].toString().isNotEmpty) {
             final directStreamUrl = mediaSource['DirectStreamUrl'].toString();
             final extAudio = _selectedAudioStreamIndex != null ? '&AudioStreamIndex=$_selectedAudioStreamIndex' : '';
             playbackUrl = directStreamUrl.startsWith('http') ? directStreamUrl : '$baseUrl$directStreamUrl';
