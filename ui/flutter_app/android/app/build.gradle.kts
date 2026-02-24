@@ -24,7 +24,7 @@ android {
         applicationId = "com.example.bova_player_flutter"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = flutter.minSdkVersion  // mpv-android-lib 支持 API 21+
         targetSdk = 36
         versionCode = 1
         versionName = "1.0.0"
@@ -68,8 +68,8 @@ dependencies {
     // SMB 支持所需依赖
     implementation("eu.agno3.jcifs:jcifs-ng:2.1.10")
     
-    // MPV Android 播放器（包含完整的 FFmpeg）
-    implementation("is.xyz.mpv:libmpv:latest.release")
+    // MPV Android 播放器（来自 mpvKt 项目）
+    implementation("io.github.abdallahmehiz:mpv-android-lib:0.1.9")
 
     // 强制使用统一版本的依赖，避免冲突
     constraints {
