@@ -68,23 +68,9 @@ class UnifiedPlayerPage extends StatelessWidget {
   Widget build(BuildContext context) {
     // Android 智能选择策略
     if (Platform.isAndroid) {
-      // 1. 简单格式优先使用 ExoPlayer（省电、性能好）
-      if (_isSimpleFormat(url)) {
-        print('[UnifiedPlayer] Android 使用 ExoPlayer 播放简单格式');
-        return BetterPlayerPage(
-          url: url,
-          title: title,
-          httpHeaders: httpHeaders,
-          subtitles: subtitles,
-          itemId: itemId,
-          serverUrl: serverUrl,
-          accessToken: accessToken,
-          userId: userId,
-        );
-      }
-      
-      // 2. 复杂格式使用 mpv-android（完整 FFmpeg 支持）
-      print('[UnifiedPlayer] Android 使用 mpv-android 播放复杂格式');
+      // Android 统一使用 mpv-android（完整 FFmpeg 支持，兼容所有格式）
+      // BetterPlayer 有 media3 兼容性问题，暂时禁用
+      print('[UnifiedPlayer] Android 使用 mpv-android 播放');
       return MpvAndroidPlayerPage(
         url: url,
         title: title,

@@ -1,5 +1,6 @@
 package com.example.bova_player_flutter
 
+import android.content.pm.ActivityInfo
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 
@@ -9,5 +10,11 @@ class MainActivity : FlutterActivity() {
         
         // 注册 MPV 播放器插件
         flutterEngine.plugins.add(MpvPlayerPlugin())
+    }
+    
+    override fun onResume() {
+        super.onResume()
+        // 强制竖屏
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
     }
 }

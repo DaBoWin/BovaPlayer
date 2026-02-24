@@ -1,19 +1,26 @@
 package com.example.bova_player_flutter
 
 import android.app.Activity
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.PorterDuff
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.media.AudioManager
+import android.os.BatteryManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.util.AttributeSet
 import android.util.Log
 import android.util.Xml
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -25,8 +32,12 @@ import android.widget.TextView
 import `is`.xyz.mpv.BaseMPVView
 import `is`.xyz.mpv.MPVLib
 import `is`.xyz.mpv.MPVNode
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.Timer
 import java.util.TimerTask
+import kotlin.math.abs
 
 /**
  * 全屏原生 MPV 播放器 Activity
@@ -55,23 +66,49 @@ class MpvPlayerActivity : Activity(), MPVLib.EventObserver {
     private var currentSpeed = 1.0
     private var lastBufferPos = 0.0
     private var lastSpeedCheck = System.currentTimeMillis()
-    private var networkSpeed = "-- KB/s"
+    private var networkSpeed = "加载中..."
     private var fileLoaded = false
+    private var batteryReceiver: BroadcastReceiver? = null
+
+    // 手势控制
+    private var gestureStartX = 0f
+    private var gestureStartY = 0f
+    private var gestureType = GestureType.NONE
+    private var isGestureMoved = false
+    private var initialBrightness = 0f
+    private var initialVolume = 0
+    private var initialPosition = 0.0
+    private lateinit var audioManager: AudioManager
+    private var maxVolume = 0
+
+    enum class GestureType {
+        NONE, BRIGHTNESS, VOLUME, SEEK
+    }
 
     // UI 组件
     private lateinit var rootLayout: FrameLayout
     private lateinit var controlsOverlay: FrameLayout
+    private lateinit var gestureIndicator: FrameLayout
+    private lateinit var gestureIcon: ImageButton
+    private lateinit var gestureText: TextView
+    private lateinit var gestureProgress: View
     private lateinit var titleInfoText: TextView
-    private lateinit var networkSpeedInfo: TextView
+    private lateinit var networkSpeedText: TextView
+    private lateinit var currentTimeText: TextView
+    private lateinit var batteryText: TextView
+    private lateinit var batteryFillView: View
     private lateinit var positionText: TextView
     private lateinit var durationText: TextView
     private lateinit var seekBar: SeekBar
     private lateinit var playPauseBtn: ImageButton
     private lateinit var speedBtn: TextView
-    private lateinit var subtitleBtn: ImageButton
+    private lateinit var subtitleBtn: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // 强制横屏
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
 
         // 全屏沉浸模式
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -84,6 +121,18 @@ class MpvPlayerActivity : Activity(), MPVLib.EventObserver {
             View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
             View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         )
+
+        // 注册电池状态监听
+        batteryReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                updateTopRightInfo()
+            }
+        }
+        registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+
+        // 初始化音频管理器
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
 
         val url = intent.getStringExtra(EXTRA_URL) ?: run {
             Log.e("ActivityMPVView", "No URL provided")
@@ -120,19 +169,52 @@ class MpvPlayerActivity : Activity(), MPVLib.EventObserver {
 
         buildControls(title)
 
-        // 点击切换控制器
-        rootLayout.setOnClickListener { toggleControls() }
+        // 构建手势指示器
+        buildGestureIndicator()
+
+        // 设置触摸监听器处理手势
+        rootLayout.setOnTouchListener { _, event ->
+            handleTouchEvent(event)
+        }
 
         setContentView(rootLayout)
 
         // 初始化 MPV
         try {
-            try { MPVLib.destroy() } catch (_: Exception) {}
+            Log.d(TAG, "Starting MPV initialization...")
+            Log.d(TAG, "filesDir: ${filesDir.path}")
+            Log.d(TAG, "cacheDir: ${cacheDir.path}")
+            
+            // 清理旧实例
+            try { 
+                MPVLib.destroy() 
+                Log.d(TAG, "Old MPV instance destroyed")
+            } catch (e: Exception) {
+                Log.w(TAG, "No old MPV instance to destroy: ${e.message}")
+            }
+            
+            // 初始化 MPV
             mpvView.initialize(filesDir.path, cacheDir.path)
+            Log.d(TAG, "MPV view initialized")
+            
+            // 添加观察者
             MPVLib.addObserver(this)
-            Log.d("ActivityMPVView", "MPV initialized")
+            Log.d(TAG, "MPV observer added")
+            
+            // 测试 MPV 是否正常工作
+            val version = MPVLib.getPropertyString("mpv-version")
+            Log.d(TAG, "MPV version: $version")
+            Log.d(TAG, "MPV initialized successfully")
+            
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "MPV native library not found", e)
+            android.widget.Toast.makeText(this, "MPV 库加载失败: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+            finish()
+            return
         } catch (e: Exception) {
-            Log.e("ActivityMPVView", "MPV init failed: ${e.message}", e)
+            Log.e(TAG, "MPV init failed: ${e.message}", e)
+            e.printStackTrace()
+            android.widget.Toast.makeText(this, "MPV 初始化失败: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
             finish()
             return
         }
@@ -142,15 +224,27 @@ class MpvPlayerActivity : Activity(), MPVLib.EventObserver {
         val headers = intent.getSerializableExtra(EXTRA_HEADERS) as? HashMap<String, String>
         if (headers != null && headers.isNotEmpty()) {
             val headerString = headers.entries.joinToString(",") { "${it.key}: ${it.value}" }
-            MPVLib.setPropertyString("http-header-fields", headerString)
+            try {
+                MPVLib.setPropertyString("http-header-fields", headerString)
+                Log.d(TAG, "HTTP headers set: $headerString")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to set HTTP headers: ${e.message}")
+            }
         }
 
         // 加载并播放
-        MPVLib.command("loadfile", url)
-        MPVLib.setPropertyBoolean("pause", false)
-        isPlaying = true
-
-        Log.d("ActivityMPVView", "Video loading: $url")
+        try {
+            Log.d(TAG, "Loading video: $url")
+            MPVLib.command("loadfile", url)
+            MPVLib.setPropertyBoolean("pause", false)
+            isPlaying = true
+            Log.d(TAG, "Video load command sent")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load video: ${e.message}", e)
+            android.widget.Toast.makeText(this, "视频加载失败: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
 
         startPositionTimer()
         scheduleHideControls()
@@ -168,7 +262,8 @@ class MpvPlayerActivity : Activity(), MPVLib.EventObserver {
     override fun event(eventId: Int) {
         // MPV_EVENT_FILE_LOADED = 8
         if (eventId == MPVLib.mpvEventId.MPV_EVENT_FILE_LOADED) {
-            handler.post { onFileLoaded() }
+            // 直接调用，不使用 handler.post
+            onFileLoaded()
         }
         // MPV_EVENT_END_FILE = 7
         if (eventId == MPVLib.mpvEventId.MPV_EVENT_END_FILE) {
@@ -179,81 +274,95 @@ class MpvPlayerActivity : Activity(), MPVLib.EventObserver {
     private fun onFileLoaded() {
         if (fileLoaded) return
         fileLoaded = true
-        Log.d("ActivityMPVView", "=== File Loaded Event: starting subtitle selection ===")
+        Log.d(TAG, "=== File Loaded Event ===")
 
-        try {
-            MPVLib.setPropertyString("sub-visibility", "yes")
-            val trackCount = MPVLib.getPropertyInt("track-list/count") ?: 0
-            Log.d("ActivityMPVView", "Total tracks: $trackCount")
+        // 必须在主线程中调用 MPVLib 方法，避免崩溃
+        runOnUiThread {
+            try {
+                // 启用字幕显示
+                MPVLib.setPropertyString("sub-visibility", "yes")
+                
+                // 获取当前选中的字幕
+                val currentSid = MPVLib.getPropertyInt("sid") ?: 0
+                if (currentSid > 0) {
+                    currentSubtitleIndex = currentSid
+                    Log.d(TAG, "✓ Subtitle auto-selected: id=$currentSid")
+                    
+                    // 详细检测字幕信息
+                    handler.postDelayed({
+                        try {
+                            val trackCount = MPVLib.getPropertyInt("track-list/count") ?: 0
+                            for (i in 0 until trackCount) {
+                                val trackType = MPVLib.getPropertyString("track-list/$i/type")
+                                if (trackType == "sub") {
+                                    val trackId = MPVLib.getPropertyInt("track-list/$i/id") ?: continue
+                                    if (trackId == currentSid) {
+                                        val codec = MPVLib.getPropertyString("track-list/$i/codec") ?: "unknown"
+                                        val lang = MPVLib.getPropertyString("track-list/$i/lang") ?: "unknown"
+                                        val title = MPVLib.getPropertyString("track-list/$i/title") ?: ""
+                                        val isExternal = MPVLib.getPropertyString("track-list/$i/external-filename") != null
+                                        
+                                        Log.d(TAG, "📄 Selected Subtitle Info:")
+                                        Log.d(TAG, "  - Track ID: $trackId")
+                                        Log.d(TAG, "  - Codec: $codec")
+                                        Log.d(TAG, "  - Language: $lang")
+                                        Log.d(TAG, "  - Title: $title")
+                                        Log.d(TAG, "  - External: $isExternal")
+                                        
+                                        // 获取当前使用的编码
+                                        val currentCodepage = MPVLib.getPropertyString("sub-codepage") ?: "unknown"
+                                        Log.d(TAG, "  - Current Codepage: $currentCodepage")
+                                        
+                                        // 获取字幕文本样本（前50个字符）
+                                        handler.postDelayed({
+                                            try {
+                                                val subText = MPVLib.getPropertyString("sub-text") ?: ""
+                                                if (subText.isNotEmpty()) {
+                                                    Log.d(TAG, "  - Subtitle Sample: ${subText.take(50)}")
+                                                    
+                                                    // 检测是否乱码（包含大量问号或特殊字符）
+                                                    val questionMarkCount = subText.count { it == '?' || it == '�' }
+                                                    if (questionMarkCount > subText.length * 0.3) {
+                                                        Log.w(TAG, "⚠️ Subtitle may be garbled! Question marks: $questionMarkCount/${subText.length}")
+                                                        Log.w(TAG, "💡 Try switching encoding in subtitle menu")
+                                                    }
+                                                } else {
+                                                    Log.d(TAG, "  - No subtitle text yet")
+                                                }
+                                            } catch (e: Exception) {
+                                                Log.e(TAG, "Failed to get subtitle text: ${e.message}")
+                                            }
+                                        }, 1000)
+                                        
+                                        break
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to detect subtitle info: ${e.message}")
+                        }
+                    }, 500)
+                } else {
+                    Log.d(TAG, "No subtitle selected")
+                }
 
-            var subtitleFound = false
-
-            // 优先选择中文字幕
-            for (i in 0 until trackCount) {
-                val trackType = MPVLib.getPropertyString("track-list/$i/type")
-                if (trackType == "sub") {
-                    val trackId = MPVLib.getPropertyInt("track-list/$i/id") ?: continue
-                    val trackLang = MPVLib.getPropertyString("track-list/$i/lang") ?: ""
-                    val trackTitle = MPVLib.getPropertyString("track-list/$i/title") ?: ""
-
-                    Log.d("ActivityMPVView", "Subtitle track #$i: id=$trackId, lang=$trackLang, title=$trackTitle")
-
-                    if (trackLang.contains("zh") || trackLang.contains("chi") ||
-                        trackTitle.contains("中文", ignoreCase = true) ||
-                        trackTitle.contains("简体", ignoreCase = true) ||
-                        trackTitle.contains("繁体", ignoreCase = true) ||
-                        trackTitle.contains("Chinese", ignoreCase = true) ||
-                        trackTitle.contains("Simplified", ignoreCase = true) ||
-                        trackTitle.contains("Traditional", ignoreCase = true)) {
-
-                        MPVLib.setPropertyInt("sid", trackId)
-                        MPVLib.setPropertyString("sub-visibility", "yes")
-                        currentSubtitleIndex = trackId
-                        subtitleFound = true
-                        Log.d("ActivityMPVView", "✓ Chinese subtitle selected: id=$trackId")
-                        break
+                // 加载外部字幕
+                if (!subtitles.isNullOrEmpty()) {
+                    subtitles!!.forEachIndexed { idx, sub ->
+                        val subUrl = sub["url"] ?: return@forEachIndexed
+                        val subTitle = sub["title"] ?: "外部字幕 ${idx + 1}"
+                        try {
+                            MPVLib.command("sub-add", subUrl, "auto", subTitle)
+                            Log.d(TAG, "External subtitle added: $subTitle")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to add external subtitle: ${e.message}")
+                        }
                     }
                 }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "onFileLoaded failed: ${e.message}", e)
             }
-
-            // 没有中文字幕，选第一个字幕轨道
-            if (!subtitleFound) {
-                for (i in 0 until trackCount) {
-                    val trackType = MPVLib.getPropertyString("track-list/$i/type")
-                    if (trackType == "sub") {
-                        val trackId = MPVLib.getPropertyInt("track-list/$i/id") ?: continue
-                        MPVLib.setPropertyInt("sid", trackId)
-                        MPVLib.setPropertyString("sub-visibility", "yes")
-                        currentSubtitleIndex = trackId
-                        subtitleFound = true
-                        Log.d("ActivityMPVView", "✓ First subtitle selected: id=$trackId")
-                        break
-                    }
-                }
-            }
-
-            // 加载外部字幕
-            if (!subtitles.isNullOrEmpty()) {
-                // 如果已有内嵌字幕，外部字幕以 auto 模式添加（不覆盖已选）
-                val mode = if (subtitleFound) "auto" else "select"
-                subtitles!!.forEachIndexed { idx, sub ->
-                    val subUrl = sub["url"] ?: return@forEachIndexed
-                    val subTitle = sub["title"] ?: "外部字幕 ${idx + 1}"
-                    try {
-                        MPVLib.command("sub-add", subUrl, mode, subTitle)
-                        Log.d("ActivityMPVView", "External subtitle added: $subTitle ($subUrl)")
-                    } catch (e: Exception) {
-                        Log.e("ActivityMPVView", "Failed to add external subtitle: ${e.message}")
-                    }
-                }
-            }
-
-            val finalSid = MPVLib.getPropertyInt("sid") ?: 0
-            val finalVis = MPVLib.getPropertyString("sub-visibility") ?: "no"
-            Log.d("ActivityMPVView", "Final subtitle state: sid=$finalSid, visibility=$finalVis")
-
-        } catch (e: Exception) {
-            Log.e("ActivityMPVView", "Subtitle selection failed: ${e.message}", e)
         }
     }
 
@@ -305,11 +414,129 @@ class MpvPlayerActivity : Activity(), MPVLib.EventObserver {
         val closeBtn = makeCircleButton(
             dp = dp,
             sizeDp = 36,
-            iconRes = android.R.drawable.ic_menu_close_clear_cancel,
+            iconRes = R.drawable.ic_close,
             iconColor = 0xFFFFFFFF.toInt(),
             bgColor = 0x55000000.toInt()
         ) { finishWithResult() }
         topBar.addView(closeBtn)
+
+        // 占位符，让右侧信息靠右
+        val spacer = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, 1, 1f)
+        }
+        topBar.addView(spacer)
+
+        // 右上角信息容器
+        val topRightContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        // 网速（绿色）
+        networkSpeedText = TextView(this).apply {
+            text = "加载中..."
+            setTextColor(0xFF4ADE80.toInt()) // 绿色
+            textSize = 12f
+            typeface = Typeface.MONOSPACE
+        }
+        topRightContainer.addView(networkSpeedText)
+
+        // 间隔
+        val spacer1 = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams((12 * dp).toInt(), 1)
+        }
+        topRightContainer.addView(spacer1)
+
+        // 当前时间（白色）
+        currentTimeText = TextView(this).apply {
+            text = "00:00"
+            setTextColor(0xFFFFFFFF.toInt())
+            textSize = 12f
+            typeface = Typeface.MONOSPACE
+        }
+        topRightContainer.addView(currentTimeText)
+
+        // 间隔
+        val spacer2 = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams((12 * dp).toInt(), 1)
+        }
+        topRightContainer.addView(spacer2)
+
+        // 电池图标容器（进度条样式）
+        val batteryContainer = FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                (36 * dp).toInt(),
+                (16 * dp).toInt()
+            )
+        }
+
+        // 电池外框（白色边框，黑色背景）
+        val batteryOutline = View(this).apply {
+            val outlineBg = GradientDrawable()
+            outlineBg.setColor(0xDD000000.toInt()) // 深色背景
+            outlineBg.setStroke((1.2 * dp).toInt(), 0xCCFFFFFF.toInt()) // 白色边框
+            outlineBg.cornerRadius = 2 * dp
+            background = outlineBg
+            layoutParams = FrameLayout.LayoutParams(
+                (32 * dp).toInt(),
+                (14 * dp).toInt()
+            ).apply {
+                gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            }
+        }
+        batteryContainer.addView(batteryOutline)
+
+        // 电池正极（小凸起）
+        val batteryTip = View(this).apply {
+            val tipBg = GradientDrawable()
+            tipBg.setColor(0xCCFFFFFF.toInt())
+            tipBg.cornerRadius = 1 * dp
+            background = tipBg
+            layoutParams = FrameLayout.LayoutParams(
+                (2 * dp).toInt(),
+                (6 * dp).toInt()
+            ).apply {
+                gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                leftMargin = (32 * dp).toInt()
+            }
+        }
+        batteryContainer.addView(batteryTip)
+
+        // 电池填充进度（根据电量百分比填充）
+        batteryFillView = View(this).apply {
+            val fillBg = GradientDrawable()
+            fillBg.setColor(0xFF4ADE80.toInt()) // 默认绿色
+            fillBg.cornerRadius = 1.5f * dp
+            background = fillBg
+            layoutParams = FrameLayout.LayoutParams(
+                (28 * dp).toInt(), // 初始宽度，会动态更新
+                (10 * dp).toInt()
+            ).apply {
+                gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                leftMargin = (2 * dp).toInt()
+            }
+        }
+        batteryContainer.addView(batteryFillView)
+
+        // 电池百分比文字（显示在电池图标上方）
+        batteryText = TextView(this).apply {
+            text = "100"
+            setTextColor(0xFFFFFFFF.toInt())
+            textSize = 8f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setShadowLayer(2f, 0f, 0f, 0xFF000000.toInt()) // 添加阴影增强可读性
+            layoutParams = FrameLayout.LayoutParams(
+                (32 * dp).toInt(),
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            }
+        }
+        batteryContainer.addView(batteryText)
+
+        topRightContainer.addView(batteryContainer)
+        topBar.addView(topRightContainer)
 
         controlsOverlay.addView(topBar)
 
@@ -370,12 +597,7 @@ class MpvPlayerActivity : Activity(), MPVLib.EventObserver {
             ).apply { bottomMargin = (8 * dp).toInt() }
         }
 
-        // 左侧：标题 + 网速
-        val leftInfo = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        }
-
+        // 左侧：标题
         titleInfoText = TextView(this).apply {
             text = title
             setTextColor(0xFFFFFFFF.toInt())
@@ -383,16 +605,9 @@ class MpvPlayerActivity : Activity(), MPVLib.EventObserver {
             typeface = Typeface.DEFAULT_BOLD
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
-        leftInfo.addView(titleInfoText)
-
-        networkSpeedInfo = TextView(this).apply {
-            text = networkSpeed
-            setTextColor(0xAAFFFFFF.toInt())
-            textSize = 12f
-        }
-        leftInfo.addView(networkSpeedInfo)
-        infoAndActionsRow.addView(leftInfo)
+        infoAndActionsRow.addView(titleInfoText)
 
         // 右侧：功能按钮组
         val actionBtns = LinearLayout(this).apply {
@@ -419,19 +634,23 @@ class MpvPlayerActivity : Activity(), MPVLib.EventObserver {
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { leftMargin = (10 * dp).toInt() }
 
-        // 字幕按钮 - 单击选择字幕，长按选择编码
-        subtitleBtn = makeCircleButton(
-            dp = dp,
-            sizeDp = 34,
-            iconRes = android.R.drawable.ic_menu_sort_by_size,
-            iconColor = 0xFFFFFFFF.toInt(),
-            bgColor = 0x44FFFFFF.toInt()
-        ) { showSubtitleMenu() }
-        subtitleBtn.layoutParams = btnMarginLP
-        subtitleBtn.setOnLongClickListener {
-            showEncodingMenu()
-            true
+        // 字幕按钮 - 文字样式，与倍速按钮一致
+        subtitleBtn = TextView(this).apply {
+            text = "字幕"
+            setTextColor(0xFFFFFFFF.toInt())
+            textSize = 12f
+            val bg = GradientDrawable()
+            bg.setColor(0x44FFFFFF.toInt())
+            bg.cornerRadius = 20 * dp
+            background = bg
+            setPadding((10 * dp).toInt(), (4 * dp).toInt(), (10 * dp).toInt(), (4 * dp).toInt())
+            setOnClickListener { showSubtitleMenu() }
+            setOnLongClickListener {
+                showEncodingMenu()
+                true
+            }
         }
+        subtitleBtn.layoutParams = btnMarginLP
         actionBtns.addView(subtitleBtn)
 
         infoAndActionsRow.addView(actionBtns)
@@ -464,6 +683,263 @@ class MpvPlayerActivity : Activity(), MPVLib.EventObserver {
 
         bottomContainer.addView(progressRow)
         controlsOverlay.addView(bottomContainer)
+    }
+
+    // ===== 手势指示器 =====
+
+    private fun buildGestureIndicator() {
+        val dp = resources.displayMetrics.density
+
+        gestureIndicator = FrameLayout(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { gravity = Gravity.CENTER }
+            visibility = View.GONE
+        }
+
+        val indicatorContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            val bg = GradientDrawable()
+            bg.setColor(0xEE1C1C1E.toInt()) // 深色背景，与菜单一致
+            bg.cornerRadius = 16 * dp
+            background = bg
+            setPadding((24 * dp).toInt(), (20 * dp).toInt(), (24 * dp).toInt(), (20 * dp).toInt())
+        }
+
+        // 图标容器（圆形背景）
+        val iconContainer = FrameLayout(this).apply {
+            val bg = GradientDrawable()
+            bg.shape = GradientDrawable.OVAL
+            bg.setColor(0x44FFFFFF.toInt()) // 半透明白色背景
+            background = bg
+            val sizePx = (56 * dp).toInt()
+            layoutParams = LinearLayout.LayoutParams(sizePx, sizePx)
+        }
+
+        gestureIcon = ImageButton(this).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            setColorFilter(0xFFFFFFFF.toInt(), PorterDuff.Mode.SRC_IN)
+            scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            setPadding((12 * dp).toInt(), (12 * dp).toInt(), (12 * dp).toInt(), (12 * dp).toInt())
+        }
+        iconContainer.addView(gestureIcon)
+        indicatorContainer.addView(iconContainer)
+
+        val spacer = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                (12 * dp).toInt()
+            )
+        }
+        indicatorContainer.addView(spacer)
+
+        gestureText = TextView(this).apply {
+            textSize = 18f
+            setTextColor(0xFFFFFFFF.toInt())
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+        }
+        indicatorContainer.addView(gestureText)
+
+        val progressContainer = FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                (140 * dp).toInt(),
+                (3 * dp).toInt()
+            ).apply { topMargin = (10 * dp).toInt() }
+            val bg = GradientDrawable()
+            bg.setColor(0x33FFFFFF.toInt())
+            bg.cornerRadius = 1.5f * dp
+            background = bg
+        }
+
+        gestureProgress = View(this).apply {
+            val progressBg = GradientDrawable()
+            progressBg.setColor(0xFF4ADE80.toInt()) // 绿色进度条
+            progressBg.cornerRadius = 1.5f * dp
+            background = progressBg
+            layoutParams = FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT)
+        }
+        progressContainer.addView(gestureProgress)
+        indicatorContainer.addView(progressContainer)
+
+        gestureIndicator.addView(indicatorContainer)
+        rootLayout.addView(gestureIndicator)
+    }
+
+    // ===== 手势处理 =====
+
+    private fun handleTouchEvent(event: MotionEvent): Boolean {
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                gestureStartX = event.x
+                gestureStartY = event.y
+                gestureType = GestureType.NONE
+                isGestureMoved = false
+                
+                // 记录初始状态
+                try {
+                    initialBrightness = Settings.System.getInt(
+                        contentResolver,
+                        Settings.System.SCREEN_BRIGHTNESS
+                    ) / 255f
+                } catch (e: Exception) {
+                    initialBrightness = 0.5f
+                }
+                initialVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                initialPosition = MPVLib.getPropertyDouble("time-pos") ?: 0.0
+                
+                return true
+            }
+            
+            MotionEvent.ACTION_MOVE -> {
+                val deltaX = event.x - gestureStartX
+                val deltaY = event.y - gestureStartY
+                
+                // 判断手势类型
+                if (gestureType == GestureType.NONE && (abs(deltaX) > 20 || abs(deltaY) > 20)) {
+                    isGestureMoved = true
+                    gestureType = if (abs(deltaX) > abs(deltaY)) {
+                        GestureType.SEEK
+                    } else {
+                        if (gestureStartX < resources.displayMetrics.widthPixels / 2) {
+                            GestureType.BRIGHTNESS
+                        } else {
+                            GestureType.VOLUME
+                        }
+                    }
+                }
+                
+                when (gestureType) {
+                    GestureType.BRIGHTNESS -> handleBrightnessGesture(deltaY)
+                    GestureType.VOLUME -> handleVolumeGesture(deltaY)
+                    GestureType.SEEK -> handleSeekGesture(deltaX)
+                    else -> {}
+                }
+                
+                return true
+            }
+            
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                // 如果没有移动，视为点击
+                if (!isGestureMoved) {
+                    toggleControls()
+                } else {
+                    // 执行手势结束操作
+                    if (gestureType == GestureType.SEEK) {
+                        try {
+                            MPVLib.command("seek", initialPosition.toString(), "absolute")
+                        } catch (_: Exception) {}
+                    }
+                    
+                    // 隐藏指示器
+                    handler.postDelayed({
+                        gestureIndicator.visibility = View.GONE
+                    }, 500)
+                }
+                
+                gestureType = GestureType.NONE
+                isGestureMoved = false
+                return true
+            }
+        }
+        
+        return false
+    }
+
+    private fun handleBrightnessGesture(deltaY: Float) {
+        val change = -deltaY / 500f
+        val newBrightness = (initialBrightness + change).coerceIn(0f, 1f)
+        
+        // 设置屏幕亮度
+        val layoutParams = window.attributes
+        layoutParams.screenBrightness = newBrightness
+        window.attributes = layoutParams
+        
+        // 更新指示器
+        gestureIcon.setImageResource(R.drawable.ic_brightness)
+        gestureText.text = "${(newBrightness * 100).toInt()}%"
+        
+        // 更新进度条
+        val progressParams = gestureProgress.layoutParams as FrameLayout.LayoutParams
+        progressParams.width = (140 * resources.displayMetrics.density * newBrightness).toInt()
+        gestureProgress.layoutParams = progressParams
+        
+        // 根据亮度改变进度条颜色
+        val progressBg = gestureProgress.background as GradientDrawable
+        progressBg.setColor(0xFFFBBF24.toInt()) // 黄色（亮度）
+        
+        gestureIndicator.visibility = View.VISIBLE
+    }
+
+    private fun handleVolumeGesture(deltaY: Float) {
+        val change = (-deltaY / 500f * maxVolume).toInt()
+        val newVolume = (initialVolume + change).coerceIn(0, maxVolume)
+        
+        // 设置音量
+        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVolume, 0)
+        
+        // 更新指示器
+        val volumePercent = (newVolume.toFloat() / maxVolume * 100).toInt()
+        gestureIcon.setImageResource(
+            when {
+                newVolume == 0 -> R.drawable.ic_volume_mute
+                volumePercent < 50 -> R.drawable.ic_volume_low
+                else -> R.drawable.ic_volume_high
+            }
+        )
+        gestureText.text = "$volumePercent%"
+        
+        // 更新进度条
+        val progressParams = gestureProgress.layoutParams as FrameLayout.LayoutParams
+        progressParams.width = (140 * resources.displayMetrics.density * newVolume / maxVolume).toInt()
+        gestureProgress.layoutParams = progressParams
+        
+        // 根据音量改变进度条颜色
+        val progressBg = gestureProgress.background as GradientDrawable
+        progressBg.setColor(
+            if (newVolume == 0) 0xFFEF4444.toInt() // 红色（静音）
+            else 0xFF4ADE80.toInt() // 绿色（有声音）
+        )
+        
+        gestureIndicator.visibility = View.VISIBLE
+    }
+
+    private fun handleSeekGesture(deltaX: Float) {
+        try {
+            val duration = MPVLib.getPropertyDouble("duration") ?: 0.0
+            if (duration <= 0) return
+            
+            // 全屏宽度 = 180秒
+            val seekChange = (deltaX / resources.displayMetrics.widthPixels) * 180
+            val newPosition = (initialPosition + seekChange).coerceIn(0.0, duration)
+            initialPosition = newPosition
+            
+            // 更新指示器
+            gestureIcon.setImageResource(
+                if (seekChange > 0) R.drawable.ic_forward
+                else R.drawable.ic_rewind
+            )
+            val minutes = (newPosition / 60).toInt()
+            val seconds = (newPosition % 60).toInt()
+            gestureText.text = String.format("%02d:%02d", minutes, seconds)
+            
+            // 更新进度条
+            val progressParams = gestureProgress.layoutParams as FrameLayout.LayoutParams
+            progressParams.width = (140 * resources.displayMetrics.density * newPosition / duration).toInt()
+            gestureProgress.layoutParams = progressParams
+            
+            // 进度条颜色
+            val progressBg = gestureProgress.background as GradientDrawable
+            progressBg.setColor(0xFF4ADE80.toInt()) // 绿色
+            
+            gestureIndicator.visibility = View.VISIBLE
+        } catch (_: Exception) {}
     }
 
     /** 圆形背景按钮 */
@@ -506,7 +982,7 @@ class MpvPlayerActivity : Activity(), MPVLib.EventObserver {
             setOnClickListener { onClick() }
         }
 
-        val iconRes = if (isForward) android.R.drawable.ic_media_ff else android.R.drawable.ic_media_rew
+        val iconRes = if (isForward) R.drawable.ic_forward else R.drawable.ic_rewind
         val icon = android.widget.ImageView(this).apply {
             setImageResource(iconRes)
             setColorFilter(0xFFFFFFFF.toInt(), PorterDuff.Mode.SRC_IN)
@@ -547,7 +1023,7 @@ class MpvPlayerActivity : Activity(), MPVLib.EventObserver {
         }
 
         playPauseBtn = ImageButton(this).apply {
-            setImageResource(android.R.drawable.ic_media_pause)
+            setImageResource(R.drawable.ic_pause)
             setColorFilter(0xFFFFFFFF.toInt(), PorterDuff.Mode.SRC_IN)
             setBackgroundColor(Color.TRANSPARENT)
             layoutParams = FrameLayout.LayoutParams(
@@ -632,8 +1108,8 @@ class MpvPlayerActivity : Activity(), MPVLib.EventObserver {
             isPlaying = !isPlaying
             MPVLib.setPropertyBoolean("pause", !isPlaying)
             playPauseBtn.setImageResource(
-                if (isPlaying) android.R.drawable.ic_media_pause
-                else android.R.drawable.ic_media_play
+                if (isPlaying) R.drawable.ic_pause
+                else R.drawable.ic_play
             )
             scheduleHideControls()
         } catch (_: Exception) {}
@@ -685,15 +1161,68 @@ class MpvPlayerActivity : Activity(), MPVLib.EventObserver {
                         positionText.text = formatTime(pos)
                         durationText.text = formatTime(dur)
                         if (dur > 0) seekBar.progress = ((pos / dur) * 1000).toInt()
-                        networkSpeedInfo.text = networkSpeed
+                        updateTopRightInfo()
                     }
                 } catch (_: Exception) {}
             }
         }, 0, 500)
     }
 
+    private fun updateTopRightInfo() {
+        try {
+            val dp = resources.displayMetrics.density
+            
+            // 更新网速（绿色）
+            networkSpeedText.text = networkSpeed
+            
+            // 更新当前时间（白色）
+            val currentTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+            currentTimeText.text = currentTime
+            
+            // 更新电池电量
+            val batteryStatus = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            val level = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale = batteryStatus?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+            val batteryPct = if (level >= 0 && scale > 0) {
+                ((level / scale.toFloat()) * 100).toInt()
+            } else {
+                100
+            }
+            
+            // 更新电池百分比文字
+            batteryText.text = batteryPct.toString()
+            
+            // 根据电量改变填充颜色和宽度
+            val batteryColor = when {
+                batteryPct <= 20 -> 0xFFEF4444.toInt() // 红色
+                batteryPct <= 50 -> 0xFFFBBF24.toInt() // 黄色
+                else -> 0xFF4ADE80.toInt() // 绿色
+            }
+            
+            // 更新填充条的颜色
+            val fillBg = batteryFillView.background as GradientDrawable
+            fillBg.setColor(batteryColor)
+            
+            // 更新填充条的宽度（根据电量百分比）
+            val maxFillWidth = (28 * dp).toInt() // 最大填充宽度
+            val fillWidth = (maxFillWidth * batteryPct / 100f).toInt().coerceAtLeast((2 * dp).toInt())
+            val fillParams = batteryFillView.layoutParams as FrameLayout.LayoutParams
+            fillParams.width = fillWidth
+            batteryFillView.layoutParams = fillParams
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to update top right info: ${e.message}")
+        }
+    }
+
     private fun updateNetworkSpeed(currentPos: Double) {
         try {
+            // 如果视频还没开始播放，显示"加载中..."
+            if (currentPos < 0.1 && !fileLoaded) {
+                networkSpeed = "加载中..."
+                return
+            }
+            
             val now = System.currentTimeMillis()
             val timeDiff = (now - lastSpeedCheck) / 1000.0
             if (timeDiff >= 1.0) {
@@ -995,6 +1524,16 @@ class MpvPlayerActivity : Activity(), MPVLib.EventObserver {
         positionTimer?.cancel()
         positionTimer = null
         hideControlsRunnable?.let { handler.removeCallbacks(it) }
+        
+        // 注销电池监听
+        batteryReceiver?.let {
+            try {
+                unregisterReceiver(it)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to unregister battery receiver: ${e.message}")
+            }
+        }
+        
         try {
             MPVLib.removeObserver(this)
             MPVLib.setPropertyBoolean("pause", true)
@@ -1034,12 +1573,13 @@ class ActivityMPVView(context: Context, attributes: AttributeSet) : BaseMPVView(
         MPVLib.setOptionString("sub-visibility", "yes")
         MPVLib.setOptionString("sub-auto", "all")
         
-        // 字符编码 - 使用自动检测，优先中文
-        MPVLib.setOptionString("sub-codepage", "auto")
+        // 字符编码 - 优先中文编码检测
+        MPVLib.setOptionString("sub-codepage", "enca:zh:utf8")
         MPVLib.setOptionString("sub-fallback", "utf8")
         
-        // 字幕样式 - 使用Roboto字体
-        MPVLib.setOptionString("sub-font", "Roboto")
+        // 字幕样式 - 使用 Android 系统中文字体
+        // Noto Sans CJK 是 Android 系统自带的中文字体
+        MPVLib.setOptionString("sub-font", "Noto Sans CJK SC")
         MPVLib.setOptionString("sub-fonts-dir", "/system/fonts")
         MPVLib.setOptionString("sub-font-size", "52")
         MPVLib.setOptionString("sub-color", "#FFFFFFFF")
@@ -1052,8 +1592,7 @@ class ActivityMPVView(context: Context, attributes: AttributeSet) : BaseMPVView(
 
         // SRT/SUBRIP 字幕特殊配置
         MPVLib.setOptionString("sub-ass", "yes")
-        MPVLib.setOptionString("sub-ass-override", "force")  // 强制使用自定义样式
-        MPVLib.setOptionString("sub-ass-force-style", "FontName=Roboto,FontSize=48,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2.5,Shadow=1")
+        MPVLib.setOptionString("sub-ass-override", "scale")
         MPVLib.setOptionString("sub-fix-timing", "yes")
         MPVLib.setOptionString("sub-forced-only", "no")
         MPVLib.setOptionString("embeddedfonts", "no")
