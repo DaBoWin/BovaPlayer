@@ -88,7 +88,20 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
     ]);
     
     // Config FVP/MDK options globally before first initialization
-    registerWith();
+    registerWith(options: {
+      // 硬件解码优先
+      'video.decoders': 'MediaCodec:copy=0,FFmpeg',  // Android 硬件解码
+      // 缓冲配置 - 针对高码率优化
+      'buffer': '50000+1000000',  // 最小50MB，最大1GB缓冲
+      'buffer.ranges': '8',  // 缓冲范围数量
+      // 网络配置
+      'demux.buffer.ranges': '8',
+      'demux.buffer.protocols': 'http,https,rtmp,rtsp',
+      // 线程配置
+      'threads': '4',  // 解码线程数
+      // 日志级别
+      'logLevel': 'Info',
+    });
 
     _loadSavedPosition();
     _initializePlayer();
@@ -105,6 +118,12 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
       _controller = VideoPlayerController.networkUrl(
         Uri.parse(widget.url),
         httpHeaders: widget.httpHeaders ?? {},
+        videoPlayerOptions: VideoPlayerOptions(
+          // 允许后台播放
+          allowBackgroundPlayback: false,
+          // 混音模式
+          mixWithOthers: false,
+        ),
       );
       
       // Use FVP to inject MDK backend to video_player

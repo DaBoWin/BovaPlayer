@@ -54,8 +54,10 @@ class UnifiedPlayerPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if ((Platform.isIOS || Platform.isAndroid) && _isNativeSupportedFormat(url)) {
-      print('[UnifiedPlayer] 检测到原生兼容格式，分配给 BetterPlayer (${Platform.operatingSystem})');
+    // Android 优先使用 BetterPlayer (ExoPlayer) - 省电且性能好
+    // 如果播放失败，会在 BetterPlayerPage 内部处理错误并提示用户切换
+    if (Platform.isAndroid) {
+      print('[UnifiedPlayer] Android 优先使用 BetterPlayer (ExoPlayer)');
       return BetterPlayerPage(
         url: url,
         title: title,
@@ -68,10 +70,24 @@ class UnifiedPlayerPage extends StatelessWidget {
       );
     }
     
-    // 对于复杂格式（或桌面端），优先尝试 MDK (fvp)，它对性能和格式支持达到最优平衡
-    // 您也可以根据特定条件回退至 media_kit，比如某类流媒体 HLS 测试下来 media_kit 比较好时。这里默认以 MDK 为主。
-    if (Platform.isMacOS || Platform.isWindows || Platform.isAndroid || Platform.isIOS || Platform.isLinux) {
-      print('[UnifiedPlayer] 分配给 MDK 引擎解码复杂/高画质格式 (${Platform.operatingSystem})');
+    // iOS 对于简单格式使用原生 AVPlayer
+    if (Platform.isIOS && _isNativeSupportedFormat(url)) {
+      print('[UnifiedPlayer] iOS 使用 BetterPlayer (AVPlayer) 播放简单格式');
+      return BetterPlayerPage(
+        url: url,
+        title: title,
+        httpHeaders: httpHeaders,
+        subtitles: subtitles,
+        itemId: itemId,
+        serverUrl: serverUrl,
+        accessToken: accessToken,
+        userId: userId,
+      );
+    }
+    
+    // 桌面端和复杂格式使用 MDK
+    if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
+      print('[UnifiedPlayer] 桌面端使用 MDK 引擎 (${Platform.operatingSystem})');
       return MdkPlayerPage(
         url: url,
         title: title,
@@ -84,8 +100,23 @@ class UnifiedPlayerPage extends StatelessWidget {
       );
     }
 
-    // 后备：强大的跨平台桌面内核方案 mpv (media_kit)
-    print('[UnifiedPlayer] 使用 fallback media_kit 解码万能格式 (${Platform.operatingSystem})');
+    // iOS 复杂格式使用 Media Kit (MPV)
+    if (Platform.isIOS) {
+      print('[UnifiedPlayer] iOS 使用 media_kit (MPV) 播放复杂格式');
+      return MediaKitPlayerPage(
+        url: url,
+        title: title,
+        httpHeaders: httpHeaders,
+        subtitles: subtitles,
+        itemId: itemId,
+        serverUrl: serverUrl,
+        accessToken: accessToken,
+        userId: userId,
+      );
+    }
+
+    // 后备方案
+    print('[UnifiedPlayer] 使用 fallback media_kit (${Platform.operatingSystem})');
     return MediaKitPlayerPage(
       url: url,
       title: title,

@@ -21,9 +21,9 @@ dependencies:
   media_kit_video: ^1.2.6
   media_kit_libs_video: ^1.0.7
   # ExoPlayer / AVPlayer 原生支持
-  better_player_plus: ^1.0.8
+  better_player_plus: ^1.1.5
   # video_player: ^2.8.2
-  package_info_plus: ^8.0.0
+  package_info_plus: ^9.0.0
   media_kit_libs_macos_video: ^1.1.4
   fvp: ^0.35.2
   window_manager: ^0.4.3

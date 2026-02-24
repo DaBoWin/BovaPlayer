@@ -317,6 +317,12 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       await (nativePlayer as dynamic).setProperty('ad-lavc-threads', '2'); // 音频解码线程数
       await (nativePlayer as dynamic).setProperty('demuxer-thread', 'yes'); // 启用解复用线程
       
+      // 音频解码器回退策略 - 关键：TrueHD 不支持时自动切换音轨
+      await (nativePlayer as dynamic).setProperty('audio-fallback-to-null', 'yes'); // 音频失败时不中断播放
+      await (nativePlayer as dynamic).setProperty('ad-lavc-downmix', 'yes'); // 自动降混音
+      await (nativePlayer as dynamic).setProperty('audio-channels', 'stereo'); // 强制立体声输出
+      await (nativePlayer as dynamic).setProperty('alang', 'jpn,eng,chi,zh,zho'); // 音轨语言优先级
+      
       // 缓冲配置 - 优化快速启动 + 并行加载
       await (nativePlayer as dynamic).setProperty('demuxer-max-bytes', '50000000'); // 50MB
       await (nativePlayer as dynamic).setProperty('demuxer-max-back-bytes', '25000000'); // 25MB

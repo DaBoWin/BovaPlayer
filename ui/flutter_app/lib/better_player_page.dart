@@ -8,6 +8,7 @@ import 'package:better_player_plus/better_player_plus.dart';
 import 'player/player_utils.dart';
 import 'player/emby_reporter.dart';
 import 'player/player_gestures.dart';
+import 'media_kit_player_page.dart';  // 用于错误时切换
 
 class BetterPlayerPage extends StatefulWidget {
   final String url;
@@ -42,6 +43,8 @@ class _BetterPlayerPageState extends State<BetterPlayerPage> with PlayerGestures
   
   bool _showControls = true;
   bool _isLocked = false;
+  bool _hasError = false;
+  String? _errorMessage;
   Timer? _hideTimer;
   Timer? _clockTimer;
   Timer? _savePositionTimer;
@@ -167,6 +170,14 @@ class _BetterPlayerPageState extends State<BetterPlayerPage> with PlayerGestures
             if (_savedPosition != null && _savedPosition!.inSeconds > 5) {
               _showResumeDialog();
             }
+          } else if (event.betterPlayerEventType == BetterPlayerEventType.exception) {
+            print('[BetterPlayer] 播放错误: ${event.parameters}');
+            if (mounted) {
+              setState(() {
+                _hasError = true;
+                _errorMessage = 'ExoPlayer 播放失败';
+              });
+            }
           }
         },
       );
@@ -184,6 +195,12 @@ class _BetterPlayerPageState extends State<BetterPlayerPage> with PlayerGestures
       }
     } catch (e) {
       print('[BetterPlayer] 初始化失败: $e');
+      if (mounted) {
+        setState(() {
+          _hasError = true;
+          _errorMessage = 'ExoPlayer 初始化失败: $e';
+        });
+      }
     }
   }
 
@@ -388,6 +405,71 @@ class _BetterPlayerPageState extends State<BetterPlayerPage> with PlayerGestures
                   buildBrightnessIndicator(),
                   buildVolumeIndicator(),
                   buildSeekIndicator(),
+
+                  // 错误提示和切换按钮
+                  if (_hasError)
+                    Positioned.fill(
+                      child: Container(
+                        color: Colors.black.withOpacity(0.8),
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.error_outline, color: Colors.red, size: 64),
+                              const SizedBox(height: 24),
+                              const Text(
+                                'ExoPlayer 播放失败',
+                                style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 12),
+                              if (_errorMessage != null)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                                  child: Text(
+                                    _errorMessage!,
+                                    style: const TextStyle(color: Colors.white70, fontSize: 14),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              const SizedBox(height: 32),
+                              ElevatedButton.icon(
+                                onPressed: () {
+                                  // 切换到 Media Kit (MPV)
+                                  Navigator.pushReplacement(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => MediaKitPlayerPage(
+                                        url: widget.url,
+                                        title: widget.title,
+                                        httpHeaders: widget.httpHeaders,
+                                        subtitles: widget.subtitles,
+                                        itemId: widget.itemId,
+                                        serverUrl: widget.serverUrl,
+                                        accessToken: widget.accessToken,
+                                        userId: widget.userId,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(Icons.swap_horiz),
+                                label: const Text('切换到 MPV 播放器'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.deepPurple,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                                  textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('返回', style: TextStyle(color: Colors.white70)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
 
                   // 锁屏按钮
                   if (_showControls && !_isLocked) 
