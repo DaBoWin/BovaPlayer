@@ -16,9 +16,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'features/danmaku/controllers/danmaku_controller.dart';
 import 'features/danmaku/widgets/danmaku_view.dart';
 import 'features/danmaku/widgets/danmaku_settings_panel.dart';
-
-
-class MdkPlayerPage extends StatefulWidget {
+import 'package:provider/provider.dart';
+import 'features/auth/presentation/providers/auth_provider.dart';class MdkPlayerPage extends StatefulWidget {
   final String url;
   final String title;
   final Map<String, String>? httpHeaders;
@@ -330,22 +329,10 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
   Future<void> _loadDanmaku() async {
     try {
       // 检查用户是否为 Pro 用户
-      final prefs = await SharedPreferences.getInstance();
-      final userJson = prefs.getString('user');
-      bool isPro = false;
-      
-      if (userJson != null) {
-        try {
-          final userData = jsonDecode(userJson);
-          final accountType = userData['account_type'] as String?;
-          isPro = accountType == 'pro' || accountType == 'lifetime';
-          print('[播放器] 用户类型: $accountType, isPro: $isPro');
-        } catch (e) {
-          print('[播放器] 解析用户信息失败: $e');
-        }
-      } else {
-        print('[播放器] 未找到用户信息，弹幕功能需要 Pro 用户');
-      }
+      if (!mounted) return;
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final isPro = authProvider.user?.isPro ?? false;
+      print('[播放器] isPro: $isPro');
       
       if (!isPro) {
         print('[播放器] 弹幕功能仅限 Pro 用户使用');

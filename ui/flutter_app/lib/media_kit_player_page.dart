@@ -9,9 +9,11 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
 import 'features/danmaku/controllers/danmaku_controller.dart';
 import 'features/danmaku/widgets/danmaku_view.dart';
 import 'features/danmaku/widgets/danmaku_settings_panel.dart';
+import 'features/auth/presentation/providers/auth_provider.dart';
 
 class MediaKitPlayerPage extends StatefulWidget {
   final String url;
@@ -104,9 +106,17 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
     
     // 初始化弹幕控制器
     _danmakuController = DanmakuController();
-    _danmakuController.loadDanmakuByFileName(
-      widget.title,
-    );
+    
+    // 异步加载弹幕，检查 Pro 状态
+    Future.microtask(() {
+      if (!mounted) return;
+      final isPro = Provider.of<AuthProvider>(context, listen: false).user?.isPro ?? false;
+      if (isPro) {
+        _danmakuController.loadDanmakuByFileName(widget.title);
+      } else {
+        _danmakuController.updateConfig(_danmakuController.config.copyWith(enabled: false));
+      }
+    });
     
     // 延迟初始化 VideoController，避免在 initState 中访问 context
     WidgetsBinding.instance.addPostFrameCallback((_) {
