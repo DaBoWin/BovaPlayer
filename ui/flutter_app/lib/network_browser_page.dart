@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
-import 'network/network_protocol.dart';
-import 'network/network_manager.dart';
+import 'models/network_connection.dart';
+import 'models/network_file.dart';
+import 'services/connection_manager.dart';
+import 'services/ftp_service.dart';
+import 'services/smb_service.dart';
+import 'services/local_proxy_server.dart';
 import 'unified_player_page.dart';
 
 class NetworkBrowserPage extends StatefulWidget {
@@ -11,91 +15,88 @@ class NetworkBrowserPage extends StatefulWidget {
 }
 
 class _NetworkBrowserPageState extends State<NetworkBrowserPage> {
-  final _networkManager = NetworkManager();
+  final ConnectionManager _connectionManager = ConnectionManager();
+  final FTPService _ftpService = FTPService();
+  final SMBService _smbService = SMBService();
+  final LocalProxyServer _proxyServer = LocalProxyServer();
   
-  NetworkProtocol _selectedProtocol = NetworkProtocol.ftp;
-  String _currentPath = '/';
+  List<NetworkConnection> _connections = [];
+  NetworkConnection? _currentConnection;
   List<NetworkFile> _files = [];
+  String _currentPath = '/';
   bool _isLoading = false;
   String? _errorMessage;
-  
-  // FTP 配置
-  final _hostController = TextEditingController();
-  final _portController = TextEditingController(text: '21');
-  final _usernameController = TextEditingController(text: 'anonymous');
-  final _passwordController = TextEditingController();
-  bool _passiveMode = true;
-  
-  // SMB 配置
-  final _shareNameController = TextEditingController();
-  final _workgroupController = TextEditingController();
-  
-  List<NetworkConnection> _connectionHistory = [];
 
   @override
   void initState() {
     super.initState();
-    _loadConnectionHistory();
+    _loadConnections();
+    _startProxyServer();
   }
 
   @override
   void dispose() {
-    _hostController.dispose();
-    _portController.dispose();
-    _usernameController.dispose();
-    _passwordController.dispose();
-    _shareNameController.dispose();
-    _workgroupController.dispose();
+    _ftpService.disconnect();
+    _smbService.disconnect();
+    _proxyServer.stop();
     super.dispose();
   }
 
-  Future<void> _loadConnectionHistory() async {
-    final history = await _networkManager.getConnectionHistory();
-    setState(() {
-      _connectionHistory = history;
-    });
+  Future<void> _startProxyServer() async {
+    try {
+      await _proxyServer.start();
+    } catch (e) {
+      print('[NetworkBrowser] 启动代理服务器失败: $e');
+    }
   }
 
-  Future<void> _connect() async {
-    if (_hostController.text.isEmpty) {
-      _showError('请输入服务器地址');
-      return;
+  Future<void> _loadConnections() async {
+    setState(() => _isLoading = true);
+    try {
+      final connections = await _connectionManager.getConnections();
+      setState(() {
+        _connections = connections;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = '加载连接失败: $e';
+        _isLoading = false;
+      });
     }
+  }
 
+  Future<void> _connectToServer(NetworkConnection connection) async {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
     try {
-      final connection = NetworkConnection(
-        protocol: _selectedProtocol,
-        host: _hostController.text.trim(),
-        port: int.tryParse(_portController.text) ?? 
-              (_selectedProtocol == NetworkProtocol.smb ? 445 : 21),
-        username: _usernameController.text.trim(),
-        password: _passwordController.text,
-        passive: _passiveMode,
-        shareName: _selectedProtocol == NetworkProtocol.smb 
-            ? _shareNameController.text.trim() 
-            : null,
-        workgroup: _selectedProtocol == NetworkProtocol.smb 
-            ? _workgroupController.text.trim() 
-            : null,
-      );
-
-      final success = await _networkManager.connect(connection);
+      bool success = false;
       
+      if (connection.protocol == NetworkProtocol.ftp) {
+        success = await _ftpService.connect(connection);
+      } else if (connection.protocol == NetworkProtocol.smb) {
+        success = await _smbService.connect(connection);
+      }
+
       if (success) {
+        await _connectionManager.updateLastConnected(connection.id);
+        setState(() {
+          _currentConnection = connection;
+          _currentPath = '/';
+        });
         await _loadDirectory('/');
-        await _loadConnectionHistory();
       } else {
-        _showError('连接失败');
+        setState(() {
+          _errorMessage = '连接失败';
+          _isLoading = false;
+        });
       }
     } catch (e) {
-      _showError('连接错误: $e');
-    } finally {
       setState(() {
+        _errorMessage = '连接失败: $e';
         _isLoading = false;
       });
     }
@@ -108,498 +109,343 @@ class _NetworkBrowserPageState extends State<NetworkBrowserPage> {
     });
 
     try {
-      final files = await _networkManager.listDirectory(path);
+      List<NetworkFile> files = [];
+      
+      if (_currentConnection?.protocol == NetworkProtocol.ftp) {
+        files = await _ftpService.listDirectory(path);
+      } else if (_currentConnection?.protocol == NetworkProtocol.smb) {
+        files = await _smbService.listDirectory(path);
+      }
+
       setState(() {
-        _currentPath = path;
         _files = files;
+        _currentPath = path;
         _isLoading = false;
       });
     } catch (e) {
       setState(() {
+        _errorMessage = '加载目录失败: $e';
         _isLoading = false;
       });
-      _showError('加载目录失败: $e');
     }
   }
 
-  void _showError(String message) {
-    setState(() {
-      _errorMessage = message;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
+  void _onFileSelected(NetworkFile file) {
+    if (file.isDirectory) {
+      _loadDirectory(file.path);
+    } else if (file.isVideo) {
+      _playVideo(file);
+    }
+  }
+
+  Future<void> _playVideo(NetworkFile file) async {
+    if (_currentConnection == null) return;
+
+    try {
+      // 生成代理 URL
+      final proxyUrl = _proxyServer.createProxyUrl(_currentConnection!, file.path);
+      
+      print('[NetworkBrowser] 播放视频: ${file.name}');
+      print('[NetworkBrowser] 代理 URL: $proxyUrl');
+
+      // 打开播放器
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => UnifiedPlayerPage(
+              url: proxyUrl,
+              title: file.name,
+              httpHeaders: const {},
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('播放失败: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showAddConnectionDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => _AddConnectionDialog(
+        onSave: (connection) async {
+          await _connectionManager.saveConnection(connection);
+          await _loadConnections();
+        },
       ),
     );
-  }
-
-  Future<void> _playFile(NetworkFile file) async {
-    try {
-      setState(() {
-        _isLoading = true;
-      });
-
-      final url = await _networkManager.getPlayableUrl(file.path);
-      
-      if (!mounted) return;
-      
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => UnifiedPlayerPage(
-            url: url,
-            title: file.name,
-          ),
-        ),
-      );
-    } catch (e) {
-      _showError('播放失败: $e');
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  void _goBack() {
-    if (_currentPath == '/' || _currentPath.isEmpty) return;
-    
-    final parts = _currentPath.split('/');
-    parts.removeLast();
-    final parentPath = parts.isEmpty ? '/' : parts.join('/');
-    _loadDirectory(parentPath);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
-        title: const Text(
-          '网络播放',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF1F2937),
-          ),
-        ),
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF1F2937),
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Color(0xFF1F2937)),
+        title: Text(_currentConnection == null 
+          ? '网络浏览器' 
+          : '${_currentConnection!.displayName} - $_currentPath'),
         actions: [
-          if (_networkManager.isConnected)
+          if (_currentConnection != null)
             IconButton(
               icon: const Icon(Icons.close),
-              onPressed: () async {
-                await _networkManager.disconnect();
+              onPressed: () {
+                _ftpService.disconnect();
                 setState(() {
+                  _currentConnection = null;
                   _files = [];
                   _currentPath = '/';
                 });
               },
-              tooltip: '断开连接',
             ),
         ],
       ),
-      body: _networkManager.isConnected
-          ? _buildFileBrowser()
-          : _buildConnectionForm(),
+      body: _buildBody(),
+      floatingActionButton: _currentConnection == null
+        ? FloatingActionButton(
+            onPressed: _showAddConnectionDialog,
+            child: const Icon(Icons.add),
+          )
+        : null,
     );
   }
 
-  Widget _buildConnectionForm() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // 协议选择
-          Card(
-            color: Colors.white,
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: Colors.grey.shade200),
+  Widget _buildBody() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_errorMessage != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 48, color: Colors.red),
+            const SizedBox(height: 16),
+            Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _currentConnection == null ? _loadConnections : () => _loadDirectory(_currentPath),
+              child: const Text('重试'),
             ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '选择协议',
-                    style: TextStyle(
-                      color: Color(0xFF1F2937),
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      _buildProtocolChip(NetworkProtocol.ftp, 'FTP'),
-                      _buildProtocolChip(NetworkProtocol.smb, 'SMB'),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          
-          const SizedBox(height: 20),
-          
-          // 连接配置
-          Card(
-            color: Colors.white,
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: Colors.grey.shade200),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '连接配置',
-                    style: TextStyle(
-                      color: Color(0xFF1F2937),
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  _buildTextField(
-                    controller: _hostController,
-                    label: '服务器地址',
-                    hint: '例如: 192.168.1.100',
-                    icon: Icons.dns,
-                  ),
-                  
-                  const SizedBox(height: 12),
-                  
-                  _buildTextField(
-                    controller: _portController,
-                    label: '端口',
-                    hint: '21',
-                    icon: Icons.settings_ethernet,
-                    keyboardType: TextInputType.number,
-                  ),
-                  
-                  const SizedBox(height: 12),
-                  
-                  _buildTextField(
-                    controller: _usernameController,
-                    label: '用户名',
-                    hint: 'anonymous',
-                    icon: Icons.person,
-                  ),
-                  
-                  const SizedBox(height: 12),
-                  
-                  _buildTextField(
-                    controller: _passwordController,
-                    label: '密码',
-                    hint: '可选',
-                    icon: Icons.lock,
-                    obscureText: true,
-                  ),
-                  
-                  if (_selectedProtocol == NetworkProtocol.smb) ...[
-                    const SizedBox(height: 12),
-                    _buildTextField(
-                      controller: _shareNameController,
-                      label: '共享名称',
-                      hint: '例如: share',
-                      icon: Icons.folder_shared,
-                    ),
-                    const SizedBox(height: 12),
-                    _buildTextField(
-                      controller: _workgroupController,
-                      label: '工作组',
-                      hint: '可选，例如: WORKGROUP',
-                      icon: Icons.workspaces,
-                    ),
-                  ],
-                  
-                  if (_selectedProtocol == NetworkProtocol.ftp) ...[
-                    const SizedBox(height: 12),
-                    SwitchListTile(
-                      title: const Text(
-                        '被动模式',
-                        style: TextStyle(color: Color(0xFF1F2937)),
-                      ),
-                      subtitle: const Text(
-                        '推荐开启',
-                        style: TextStyle(color: Color(0xFF6B7280), fontSize: 12),
-                      ),
-                      value: _passiveMode,
-                      onChanged: (value) {
-                        setState(() {
-                          _passiveMode = value;
-                        });
-                      },
-                      activeColor: const Color(0xFF1F2937),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-          
-          const SizedBox(height: 20),
-          
-          // 连接按钮
-          ElevatedButton(
-            onPressed: _isLoading ? null : _connect,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF1F2937),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: _isLoading
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                  )
-                : const Text(
-                    '连接',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-          ),
-          
-          // 连接历史
-          if (_connectionHistory.isNotEmpty) ...[
-            const SizedBox(height: 30),
-            const Text(
-              '最近连接',
-              style: TextStyle(
-                color: Color(0xFF1F2937),
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
-            ..._connectionHistory.map((conn) => _buildHistoryItem(conn)),
           ],
-        ],
-      ),
-    );
+        ),
+      );
+    }
+
+    if (_currentConnection == null) {
+      return _buildConnectionList();
+    }
+
+    return _buildFileList();
   }
 
-  Widget _buildProtocolChip(NetworkProtocol protocol, String label) {
-    final isSelected = _selectedProtocol == protocol;
-    
-    return FilterChip(
-      label: Text(label),
-      selected: isSelected,
-      onSelected: (selected) {
-        if (selected) {
-          setState(() {
-            _selectedProtocol = protocol;
-            // 更新默认端口
-            if (protocol == NetworkProtocol.ftp) {
-              _portController.text = '21';
-            } else if (protocol == NetworkProtocol.smb) {
-              _portController.text = '445';
-            }
-          });
-        }
-      },
-      backgroundColor: const Color(0xFFF3F4F6),
-      selectedColor: const Color(0xFF1F2937),
-      labelStyle: TextStyle(
-        color: isSelected ? Colors.white : const Color(0xFF6B7280),
-      ),
-      checkmarkColor: Colors.white,
-    );
-  }
+  Widget _buildConnectionList() {
+    if (_connections.isEmpty) {
+      return const Center(
+        child: Text('暂无连接\n点击右下角 + 添加'),
+      );
+    }
 
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String label,
-    required String hint,
-    required IconData icon,
-    bool obscureText = false,
-    TextInputType? keyboardType,
-  }) {
-    return TextField(
-      controller: controller,
-      obscureText: obscureText,
-      keyboardType: keyboardType,
-      style: const TextStyle(color: Color(0xFF1F2937)),
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        labelStyle: const TextStyle(color: Color(0xFF6B7280)),
-        hintStyle: const TextStyle(color: Color(0xFF9CA3AF)),
-        prefixIcon: Icon(icon, color: Color(0xFF6B7280)),
-        filled: true,
-        fillColor: const Color(0xFFF9FAFB),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xFF1F2937), width: 2),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHistoryItem(NetworkConnection conn) {
-    return Card(
-      color: Colors.white,
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.shade200),
-      ),
-      child: ListTile(
-        leading: Icon(
-          conn.protocol == NetworkProtocol.ftp ? Icons.cloud : Icons.folder_shared,
-          color: const Color(0xFF1F2937),
-        ),
-        title: Text(
-          conn.displayName,
-          style: const TextStyle(color: Color(0xFF1F2937)),
-        ),
-        subtitle: Text(
-          conn.username ?? 'anonymous',
-          style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12),
-        ),
-        trailing: const Icon(Icons.arrow_forward_ios, color: Color(0xFF9CA3AF), size: 16),
-        onTap: () {
-          _hostController.text = conn.host;
-          _portController.text = conn.port.toString();
-          _usernameController.text = conn.username ?? '';
-          setState(() {
-            _selectedProtocol = conn.protocol;
-            _passiveMode = conn.passive;
-          });
-        },
-      ),
-    );
-  }
-
-  Widget _buildFileBrowser() {
-    return Column(
-      children: [
-        // 面包屑导航
-        Container(
-          padding: const EdgeInsets.all(12),
-          color: Colors.white,
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(color: Colors.grey.shade200),
-            ),
+    return ListView.builder(
+      itemCount: _connections.length,
+      itemBuilder: (context, index) {
+        final connection = _connections[index];
+        return ListTile(
+          leading: Icon(
+            connection.protocol == NetworkProtocol.ftp 
+              ? Icons.folder_shared 
+              : Icons.storage,
           ),
-          child: Row(
+          title: Text(connection.displayName),
+          subtitle: Text('${connection.protocolName} - ${connection.host}:${connection.port}'),
+          trailing: IconButton(
+            icon: const Icon(Icons.delete),
+            onPressed: () async {
+              await _connectionManager.deleteConnection(connection.id);
+              await _loadConnections();
+            },
+          ),
+          onTap: () => _connectToServer(connection),
+        );
+      },
+    );
+  }
+
+  Widget _buildFileList() {
+    if (_files.isEmpty) {
+      return const Center(child: Text('目录为空'));
+    }
+
+    return ListView.builder(
+      itemCount: _files.length,
+      itemBuilder: (context, index) {
+        final file = _files[index];
+        return ListTile(
+          leading: Icon(
+            file.isDirectory 
+              ? Icons.folder 
+              : (file.isVideo ? Icons.movie : Icons.insert_drive_file),
+          ),
+          title: Text(file.name),
+          subtitle: file.isDirectory ? null : Text(file.sizeFormatted),
+          onTap: () => _onFileSelected(file),
+        );
+      },
+    );
+  }
+}
+
+class _AddConnectionDialog extends StatefulWidget {
+  final Function(NetworkConnection) onSave;
+
+  const _AddConnectionDialog({required this.onSave});
+
+  @override
+  State<_AddConnectionDialog> createState() => _AddConnectionDialogState();
+}
+
+class _AddConnectionDialogState extends State<_AddConnectionDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _hostController = TextEditingController();
+  final _portController = TextEditingController(text: '21');
+  final _usernameController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _shareNameController = TextEditingController();
+  final _workgroupController = TextEditingController(text: 'WORKGROUP');
+  
+  NetworkProtocol _protocol = NetworkProtocol.ftp;
+  bool _savePassword = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // 监听协议变化，更新默认端口
+    _updateDefaultPort();
+  }
+
+  void _updateDefaultPort() {
+    if (_protocol == NetworkProtocol.ftp) {
+      _portController.text = '21';
+    } else if (_protocol == NetworkProtocol.smb) {
+      _portController.text = '445';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('添加连接'),
+      content: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              if (_currentPath != '/')
-                IconButton(
-                  icon: const Icon(Icons.arrow_back, color: Color(0xFF1F2937)),
-                  onPressed: _goBack,
-                ),
-              Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Text(
-                    _currentPath.isEmpty ? '/' : _currentPath,
-                    style: const TextStyle(color: Color(0xFF1F2937), fontSize: 14),
-                  ),
-                ),
+              DropdownButtonFormField<NetworkProtocol>(
+                value: _protocol,
+                decoration: const InputDecoration(labelText: '协议'),
+                items: const [
+                  DropdownMenuItem(value: NetworkProtocol.ftp, child: Text('FTP')),
+                  DropdownMenuItem(value: NetworkProtocol.smb, child: Text('SMB')),
+                ],
+                onChanged: (value) {
+                  setState(() {
+                    _protocol = value!;
+                    _updateDefaultPort();
+                  });
+                },
               ),
-              if (_isLoading)
-                const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1F2937)),
+              TextFormField(
+                controller: _nameController,
+                decoration: const InputDecoration(labelText: '名称'),
+                validator: (v) => v?.isEmpty ?? true ? '请输入名称' : null,
+              ),
+              TextFormField(
+                controller: _hostController,
+                decoration: const InputDecoration(labelText: '主机'),
+                validator: (v) => v?.isEmpty ?? true ? '请输入主机' : null,
+              ),
+              TextFormField(
+                controller: _portController,
+                decoration: const InputDecoration(labelText: '端口'),
+                keyboardType: TextInputType.number,
+                validator: (v) => v?.isEmpty ?? true ? '请输入端口' : null,
+              ),
+              TextFormField(
+                controller: _usernameController,
+                decoration: const InputDecoration(labelText: '用户名'),
+              ),
+              TextFormField(
+                controller: _passwordController,
+                decoration: const InputDecoration(labelText: '密码'),
+                obscureText: true,
+              ),
+              if (_protocol == NetworkProtocol.smb) ...[
+                TextFormField(
+                  controller: _shareNameController,
+                  decoration: const InputDecoration(
+                    labelText: '共享名',
+                    hintText: '例如: share, movies',
+                  ),
+                  validator: (v) => v?.isEmpty ?? true ? '请输入共享名' : null,
+                ),
+                TextFormField(
+                  controller: _workgroupController,
+                  decoration: const InputDecoration(
+                    labelText: '工作组',
+                    hintText: '默认: WORKGROUP',
                   ),
                 ),
+              ],
+              CheckboxListTile(
+                title: const Text('保存密码'),
+                value: _savePassword,
+                onChanged: (v) => setState(() => _savePassword = v!),
+              ),
             ],
           ),
         ),
-        
-        // 文件列表
-        Expanded(
-          child: _files.isEmpty
-              ? Center(
-                  child: Text(
-                    _isLoading ? '加载中...' : '目录为空',
-                    style: const TextStyle(color: Color(0xFF6B7280)),
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: _files.length,
-                  itemBuilder: (context, index) {
-                    final file = _files[index];
-                    return _buildFileItem(file);
-                  },
-                ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+        ElevatedButton(
+          onPressed: _save,
+          child: const Text('保存'),
         ),
       ],
     );
   }
 
-  Widget _buildFileItem(NetworkFile file) {
-    return Card(
-      color: Colors.white,
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey.shade200),
-      ),
-      child: ListTile(
-        leading: Icon(
-          file.isDirectory ? Icons.folder : Icons.video_file,
-          color: file.isDirectory ? const Color(0xFFF59E0B) : const Color(0xFF1F2937),
-          size: 32,
-        ),
-        title: Text(
-          file.name,
-          style: const TextStyle(color: Color(0xFF1F2937)),
-        ),
-        subtitle: file.isDirectory
-            ? null
-            : Text(
-                file.displaySize,
-                style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12),
-              ),
-        trailing: const Icon(Icons.arrow_forward_ios, color: Color(0xFF9CA3AF), size: 16),
-        onTap: () {
-          if (file.isDirectory) {
-            _loadDirectory(file.path);
-          } else if (file.isVideoFile) {
-            _playFile(file);
-          } else {
-            _showError('不支持的文件类型');
-          }
-        },
-      ),
-    );
+  void _save() {
+    if (_formKey.currentState!.validate()) {
+      final connection = NetworkConnection(
+        id: ConnectionManager().generateId(),
+        protocol: _protocol,
+        name: _nameController.text,
+        host: _hostController.text,
+        port: int.parse(_portController.text),
+        username: _usernameController.text,
+        password: _passwordController.text,
+        shareName: _protocol == NetworkProtocol.smb ? _shareNameController.text : null,
+        workgroup: _protocol == NetworkProtocol.smb ? _workgroupController.text : null,
+        lastConnected: DateTime.now(),
+        savePassword: _savePassword,
+      );
+      
+      widget.onSave(connection);
+      Navigator.pop(context);
+    }
   }
 }

@@ -29,6 +29,15 @@ jobs:
           channel: 'beta'
           cache: true
 
+      - name: 创建 .env 文件
+        run: |
+          cd ui/flutter_app
+          cat > .env << EOF
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_DEBUG=false
+          EOF
+
       - name: Build Windows (Flutter)
         run: |
           cd ui/flutter_app
@@ -65,6 +74,15 @@ jobs:
         with:
           channel: 'beta'
           cache: true
+
+      - name: 创建 .env 文件
+        run: |
+          cd ui/flutter_app
+          cat > .env << EOF
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_DEBUG=false
+          EOF
 
       - name: Build macOS (Flutter)
         run: |
@@ -130,6 +148,15 @@ jobs:
           key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
           restore-keys: |
             ${{ runner.os }}-pub-
+
+      - name: 创建 .env 文件
+        run: |
+          cd ui/flutter_app
+          cat > .env << EOF
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_DEBUG=false
+          EOF
 
       - name: Flutter 依赖安装
         run: |

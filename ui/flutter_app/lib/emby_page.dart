@@ -78,7 +78,8 @@ enum EmbyViewMode { serverList, dashboard, browser, itemDetail }
 // ============== Emby 主页面 ==============
 
 class EmbyPage extends StatefulWidget {
-  const EmbyPage({super.key});
+  final EmbyServer? initialServer; // 可选的初始服务器
+  const EmbyPage({super.key, this.initialServer});
   @override
   State<EmbyPage> createState() => _EmbyPageState();
 }
@@ -95,14 +96,18 @@ class _EmbyPageState extends State<EmbyPage> {
     required Widget title,
     List<Widget>? actions,
     bool showBackButton = false,
+    bool transparent = false,
   }) {
     final bool isDesktop = !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
+
+    final bgColor = transparent ? Colors.transparent : AppTheme.cardBackground;
+    final fgColor = transparent ? Colors.white : AppTheme.textPrimary;
 
     if (!isDesktop) {
       return AppBar(
         title: title,
-        backgroundColor: AppTheme.cardBackground,
-        foregroundColor: AppTheme.textPrimary,
+        backgroundColor: bgColor,
+        foregroundColor: fgColor,
         elevation: 0,
         actions: actions,
       );
@@ -112,20 +117,20 @@ class _EmbyPageState extends State<EmbyPage> {
       preferredSize: const Size.fromHeight(42.0),
       child: DragToMoveArea(
         child: AppBar(
-          backgroundColor: AppTheme.cardBackground,
-          foregroundColor: AppTheme.textPrimary,
+          backgroundColor: bgColor,
+          foregroundColor: fgColor,
           elevation: 0,
           toolbarHeight: 42.0,
           centerTitle: true,
           // Reserve space on macOS for traffic lights if no back button
           leading: showBackButton 
-            ? BackButton(color: AppTheme.textPrimary) 
+            ? BackButton(color: fgColor) 
             : (Platform.isMacOS ? const SizedBox(width: 80) : null),
           leadingWidth: showBackButton ? 56 : (Platform.isMacOS ? 80 : 56),
           title: Padding(
             padding: EdgeInsets.only(top: Platform.isMacOS ? 4.0 : 0.0), // Bump title down slightly
             child: DefaultTextStyle(
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, letterSpacing: 0.5, color: AppTheme.textPrimary),
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, letterSpacing: 0.5, color: fgColor),
               child: title,
             ),
           ),
@@ -139,7 +144,7 @@ class _EmbyPageState extends State<EmbyPage> {
   }
 
   // 视图模式
-  EmbyViewMode _viewMode = EmbyViewMode.serverList;
+  late EmbyViewMode _viewMode;
 
   // 仪表板
   List<Map<String, dynamic>> _libraries = [];
@@ -166,15 +171,67 @@ class _EmbyPageState extends State<EmbyPage> {
   String? _selectedMediaSourceId;
   int? _selectedAudioStreamIndex;
   
+  // 详情页 - 动态头部文字颜色
+  Color _heroTextColor = Colors.black87;
+  Color _heroTextSecondary = Colors.black54;
+
+  void _updateHeroTextColor(String imageUrl) async {
+    try {
+      final scheme = await ColorScheme.fromImageProvider(
+        provider: NetworkImage(imageUrl),
+      );
+      if (!mounted) return;
+      
+      final isLight = scheme.surface.computeLuminance() > 0.5;
+      setState(() {
+        if (isLight) {
+          _heroTextColor = Colors.black87;
+          _heroTextSecondary = Colors.black54;
+        } else {
+          _heroTextColor = Colors.white;
+          _heroTextSecondary = Colors.white70;
+        }
+      });
+    } catch (e) {
+      debugPrint('Error extracting color scheme for hero text: $e');
+    }
+  }
+  
+  
   final ScrollController _browserScrollController = ScrollController();
   final ScrollController _dashboardScrollController = ScrollController();
+  final PageController _carouselController = PageController(viewportFraction: 1.0);
 
   @override
   void initState() {
     super.initState();
     print('[EmbyPage] initState 开始');
+    
+    // 如果有初始服务器，直接设置为加载状态，跳过服务器列表
+    if (widget.initialServer != null) {
+      _viewMode = EmbyViewMode.dashboard; // 先设置为 dashboard，避免显示服务器列表
+      _isLoading = true;
+      print('[EmbyPage] 有初始服务器，跳过服务器列表');
+    } else {
+      _viewMode = EmbyViewMode.serverList;
+    }
+    
     _loadServers().then((_) {
       print('[EmbyPage] 服务器加载完成，共 ${_servers.length} 个服务器');
+      
+      // 如果有初始服务器，查找匹配的服务器并自动连接
+      if (widget.initialServer != null) {
+        print('[EmbyPage] 收到初始服务器: ${widget.initialServer!.name}');
+        
+        // 在已加载的服务器列表中查找匹配的服务器
+        final matchingServer = _servers.firstWhere(
+          (s) => s.name == widget.initialServer!.name && s.url == widget.initialServer!.url,
+          orElse: () => widget.initialServer!,
+        );
+        
+        print('[EmbyPage] 自动连接到服务器: ${matchingServer.name}');
+        _connectServer(matchingServer);
+      }
     }).catchError((e) {
       print('[EmbyPage] 加载服务器失败: $e');
     });
@@ -184,6 +241,7 @@ class _EmbyPageState extends State<EmbyPage> {
   void dispose() {
     _browserScrollController.dispose();
     _dashboardScrollController.dispose();
+    _carouselController.dispose();
     super.dispose();
   }
 
@@ -232,6 +290,7 @@ class _EmbyPageState extends State<EmbyPage> {
   }
 
   Future<void> _connectServer(EmbyServer server) async {
+    print('[EmbyPage] 开始连接服务器: ${server.name}, URL: ${server.url}');
     setState(() { _isLoading = true; _errorMsg = null; _activeServer = server; });
     try {
       final r = await http.post(
@@ -243,16 +302,21 @@ class _EmbyPageState extends State<EmbyPage> {
         body: jsonEncode({'Username': server.username, 'Pw': server.password}),
       ).timeout(const Duration(seconds: 10));
 
+      print('[EmbyPage] 认证响应状态码: ${r.statusCode}');
+      
       if (r.statusCode == 200) {
         final data = jsonDecode(r.body);
         server.accessToken = data['AccessToken'];
         server.userId = data['User']['Id'];
+        print('[EmbyPage] 认证成功，切换到 dashboard 模式');
         setState(() { _isLoading = false; _viewMode = EmbyViewMode.dashboard; });
         await _loadDashboard();
       } else {
+        print('[EmbyPage] 认证失败: ${r.statusCode}');
         setState(() { _isLoading = false; _errorMsg = '登录失败: 用户名或密码错误'; });
       }
     } catch (e) {
+      print('[EmbyPage] 连接异常: $e');
       setState(() { _isLoading = false; _errorMsg = '连接失败: $e'; });
     }
   }
@@ -271,12 +335,14 @@ class _EmbyPageState extends State<EmbyPage> {
     try {
       final s = _activeServer!;
       
-      // 尝试方法1: 使用 Resume 端点
+      // 尝试方法1: 使用 Resume 端点，按最近播放时间排序
       var url = '${s.url}/emby/Users/${s.userId}/Items/Resume'
           '?Limit=10'
-          '&Fields=Overview,PrimaryImageAspectRatio,ProductionYear'
+          '&Fields=Overview,PrimaryImageAspectRatio,ProductionYear,UserData'
           '&ImageTypeLimit=1'
           '&EnableImageTypes=Primary,Backdrop,Thumb'
+          '&SortBy=DatePlayed'
+          '&SortOrder=Descending'
           '&api_key=${s.accessToken}';
       
       print('[EmbyPage] 加载继续观看 (方法1): $url');
@@ -301,9 +367,11 @@ class _EmbyPageState extends State<EmbyPage> {
               '?Filters=IsResumable'
               '&Limit=10'
               '&Recursive=true'
-              '&Fields=Overview,PrimaryImageAspectRatio,ProductionYear'
+              '&Fields=Overview,PrimaryImageAspectRatio,ProductionYear,UserData'
               '&ImageTypeLimit=1'
               '&EnableImageTypes=Primary,Backdrop,Thumb'
+              '&SortBy=DatePlayed'
+              '&SortOrder=Descending'
               '&api_key=${s.accessToken}';
           
           print('[EmbyPage] 加载继续观看 (方法2): $url');
@@ -322,8 +390,23 @@ class _EmbyPageState extends State<EmbyPage> {
           }
         }
         
+        // 打印详细的继续观看信息
         if (items.isNotEmpty) {
-          print('[EmbyPage] 继续观看第一项: ${items[0]['Name']}');
+          print('[EmbyPage] === 继续观看列表详情（按最近播放排序）===');
+          for (var i = 0; i < items.length && i < 5; i++) {
+            final item = items[i];
+            final userData = item['UserData'];
+            final playbackPositionTicks = userData?['PlaybackPositionTicks'] ?? 0;
+            final playedPercentage = userData?['PlayedPercentage'] ?? 0;
+            final played = userData?['Played'] ?? false;
+            final lastPlayedDate = userData?['LastPlayedDate'];
+            print('[EmbyPage] ${i + 1}. ${item['Name']}');
+            print('   - 最后播放: $lastPlayedDate');
+            print('   - 播放位置: ${(playbackPositionTicks / 10000000).toStringAsFixed(0)}秒');
+            print('   - 播放百分比: ${playedPercentage.toStringAsFixed(1)}%');
+            print('   - 已看完: $played');
+          }
+          print('[EmbyPage] ========================');
         }
         
         setState(() {
@@ -512,8 +595,11 @@ class _EmbyPageState extends State<EmbyPage> {
           _seriesSeasons = [];
           _seasonEpisodes = {};
           _selectedSeasonIndex = 0;
+          _heroTextColor = Colors.black87;
+          _heroTextSecondary = Colors.black54;
         });
         _loadSeriesSeasons(item['Id']);
+        _updateHeroTextColor(_imageUrl(item['Id'], type: 'Backdrop', maxWidth: 400));
         break;
 
       case 'Folder':
@@ -545,8 +631,12 @@ class _EmbyPageState extends State<EmbyPage> {
           _itemMediaSources = [];
           _selectedMediaSourceId = null;
           _selectedAudioStreamIndex = null;
+          _heroTextColor = Colors.black87;
+          _heroTextSecondary = Colors.black54;
         });
         _loadItemPlaybackInfo(item['Id']);
+        final backdropItemId = (type == 'Episode' && item['SeriesId'] != null) ? item['SeriesId'] : item['Id'];
+        _updateHeroTextColor(_imageUrl(backdropItemId, type: 'Backdrop', maxWidth: 400));
         break;
     }
   }
@@ -608,9 +698,52 @@ class _EmbyPageState extends State<EmbyPage> {
 
   // ============== 播放 ==============
 
-  Future<void> _playItem(String itemId, String name) async {
+  Future<void> _playItem(String itemId, String name, {Map<String, dynamic>? item}) async {
     print('[EmbyPage] 准备播放: $name');
     print('[EmbyPage] Item ID: $itemId');
+    
+    // 构建完整标题（包含季集信息）
+    String fullTitle = name;
+    if (item != null) {
+      final type = item['Type'];
+      if (type == 'Episode') {
+        // 电视剧集：使用剧集名称（SeriesName）而不是单集标题
+        final seriesName = item['SeriesName'] ?? name;  // 剧集名称
+        final season = item['ParentIndexNumber'];
+        final episode = item['IndexNumber'];
+        
+        if (season != null && episode != null) {
+          final seasonStr = season.toString().padLeft(2, '0');
+          final episodeStr = episode.toString().padLeft(2, '0');
+          fullTitle = '$seriesName S${seasonStr}E$episodeStr';
+          print('[EmbyPage] 电视剧集，剧集名: $seriesName, 完整标题: $fullTitle');
+        }
+      } else if (type == 'Movie') {
+        // 电影：如果存在发行年份，则追加年份以提高弹幕和字幕匹配的准确率
+        final year = item['ProductionYear'];
+        if (year != null) {
+          fullTitle = '$name ($year)';
+          print('[EmbyPage] 电影，原名: $name, 增加年份后标题: $fullTitle');
+        }
+      }
+    }
+    
+    // 读取保存的播放位置
+    Duration? savedPosition;
+    int? startTimeTicks;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = 'play_position_$itemId';
+      final savedSeconds = prefs.getInt(key);
+      if (savedSeconds != null && savedSeconds > 5) {
+        savedPosition = Duration(seconds: savedSeconds);
+        // Emby 使用 Ticks (1 tick = 100 nanoseconds)
+        startTimeTicks = savedSeconds * 10000000;  // 秒 * 10,000,000 = ticks
+        print('[EmbyPage] 找到保存的播放位置: ${savedSeconds}秒 ($startTimeTicks ticks)');
+      }
+    } catch (e) {
+      print('[EmbyPage] 读取播放位置失败: $e');
+    }
     
     final server = _activeServer!;
     var baseUrl = server.url;
@@ -726,17 +859,26 @@ class _EmbyPageState extends State<EmbyPage> {
           print('[EmbyPage] TranscodingUrl: ${mediaSource['TranscodingUrl']}');
           
           // 优先使用 API 返回的 DirectStreamUrl
-          // 注意：Android 端已由 UnifiedPlayerPage 智能选择播放器
-          //   - 简单格式 → ExoPlayer（不会走到这里的 TrueHD 场景）
-          //   - 复杂格式/TrueHD → mpv-android（原生支持所有编解码器）
           if (mediaSource['DirectStreamUrl'] != null && mediaSource['DirectStreamUrl'].toString().isNotEmpty) {
             final directStreamUrl = mediaSource['DirectStreamUrl'].toString();
             final extAudio = _selectedAudioStreamIndex != null ? '&AudioStreamIndex=$_selectedAudioStreamIndex' : '';
+            final extStartTime = startTimeTicks != null ? '&StartTimeTicks=$startTimeTicks' : '';
             playbackUrl = directStreamUrl.startsWith('http') ? directStreamUrl : '$baseUrl$directStreamUrl';
+            
+            // 将 Static=true 改为 Static=false 以支持 HTTP Range 请求
+            if (playbackUrl.contains('Static=true')) {
+              playbackUrl = playbackUrl.replaceAll('Static=true', 'Static=false');
+              print('[EmbyPage] 已将 Static=true 改为 Static=false');
+            }
+            
             if (!playbackUrl.contains('AudioStreamIndex') && extAudio.isNotEmpty) {
               playbackUrl += extAudio;
             }
-            print('[EmbyPage] 使用 API 返回的 DirectStreamUrl (视频直传/音频降级): $playbackUrl');
+            if (!playbackUrl.contains('StartTimeTicks') && extStartTime.isNotEmpty) {
+              playbackUrl += extStartTime;
+              print('[EmbyPage] 添加 StartTimeTicks 参数，从 ${savedPosition!.inSeconds}秒 开始播放');
+            }
+            print('[EmbyPage] 使用 DirectStreamUrl: $playbackUrl');
           }
           // 其次才使用 API 返回的全局转码串流 URL（万一连 HEVC 也不支持，才会生成 HLS 地址）
           else if (mediaSource['SupportsTranscoding'] == true && mediaSource['TranscodingUrl'] != null && mediaSource['TranscodingUrl'].toString().isNotEmpty) {
@@ -760,21 +902,21 @@ class _EmbyPageState extends State<EmbyPage> {
           // 如果上面都没有，才尝试自己回退构建 URL
           if (playbackUrl == null || playbackUrl.isEmpty) {
             final extAudio = _selectedAudioStreamIndex != null ? '&AudioStreamIndex=$_selectedAudioStreamIndex' : '';
+            final extStartTime = startTimeTicks != null ? '&StartTimeTicks=$startTimeTicks' : '';
             if (mediaSource['SupportsDirectPlay'] == true) {
-              // 构建 DirectPlay URL (允许完整文件下载 / Static=true)
+              // 构建 DirectPlay URL - 使用 Static=false 支持 HTTP Range
               playbackUrl = '$baseUrl/Videos/$itemId/stream?'
                   'MediaSourceId=$mediaSourceId&'
-                  'Static=true&'
-                  'api_key=${server.accessToken}$extAudio';
+                  'Static=false&'
+                  'api_key=${server.accessToken}$extAudio$extStartTime';
               print('[EmbyPage] 构建手动 DirectPlay URL: $playbackUrl');
             }
             else if (mediaSource['SupportsDirectStream'] == true) {
-              // 获取容器格式 (不能传 Static=true，否则会阻断转重采机制)
               final container = mediaSource['Container'] ?? 'mkv';
               playbackUrl = '$baseUrl/Videos/$itemId/stream.'
                   '$container?'
                   'MediaSourceId=$mediaSourceId&'
-                  'api_key=${server.accessToken}$extAudio';
+                  'api_key=${server.accessToken}$extAudio$extStartTime';
               print('[EmbyPage] 构建手动 DirectStream URL: $playbackUrl');
             } 
           }
@@ -823,19 +965,25 @@ class _EmbyPageState extends State<EmbyPage> {
         MaterialPageRoute(
           builder: (_) => UnifiedPlayerPage(
             url: playbackUrl!,
-            title: name,
+            title: fullTitle,  // 使用完整标题（包含季集信息）
             httpHeaders: playbackHeaders,
             subtitles: subtitles,
             itemId: itemId,
             serverUrl: server.url,
             accessToken: server.accessToken,
             userId: server.userId,
+            startPosition: savedPosition,  // 传递起始位置用于显示和保存
+            startTimeTicks: startTimeTicks,  // 传递 ticks 用于时间轴校正
           ),
         ),
       ).then((_) {
-        // 播放器关闭后，刷新继续观看列表
-        print('[EmbyPage] 播放器关闭，刷新继续观看');
-        _loadContinueWatching();
+        // 播放器关闭后，延迟刷新继续观看列表（给服务器时间处理进度）
+        print('[EmbyPage] 播放器关闭，2秒后刷新继续观看');
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) {
+            _loadContinueWatching();
+          }
+        });
       });
     }
   }
@@ -903,6 +1051,13 @@ class _EmbyPageState extends State<EmbyPage> {
   }
 
   void _goToServerList() {
+    // 如果是从媒体库进入的（有 initialServer），直接返回上一页
+    if (widget.initialServer != null) {
+      Navigator.pop(context);
+      return;
+    }
+    
+    // 否则切换到服务器列表
     setState(() {
       _viewMode = EmbyViewMode.serverList;
       _activeServer?.accessToken = null;
@@ -973,7 +1128,14 @@ class _EmbyPageState extends State<EmbyPage> {
               return false;
               
             case EmbyViewMode.dashboard:
-              print('[EmbyPage] ✓ 从首页返回到服务器列表');
+              print('[EmbyPage] ✓ 从首页返回');
+              // 如果是从媒体库进入的，直接返回上一页
+              if (widget.initialServer != null) {
+                print('[EmbyPage] 返回到媒体库');
+                return true;
+              }
+              // 否则返回到服务器列表
+              print('[EmbyPage] 返回到服务器列表');
               _goToServerList();
               return false;
               
@@ -1385,16 +1547,24 @@ class _EmbyPageState extends State<EmbyPage> {
     final s = _activeServer!;
     return Scaffold(
       backgroundColor: AppTheme.background,
+      extendBodyBehindAppBar: true,
       appBar: _buildDesktopAppBar(
         title: const Text('BovaPlayer'),
+        transparent: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: AppTheme.textSecondary),
-            onPressed: _loadDashboard,
+            icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+            onPressed: () {
+              if (_viewMode == EmbyViewMode.dashboard) {
+                _loadDashboard();
+              } else {
+                _loadBrowserItems(_navigationStack.last[0], _navigationStack.last[1], recursive: true);
+              }
+            },
             tooltip: '刷新',
           ),
           IconButton(
-            icon: const Icon(Icons.menu_rounded, color: AppTheme.textSecondary),
+            icon: const Icon(Icons.menu_rounded, color: Colors.white),
             onPressed: _goToServerList,
             tooltip: '切换服务器',
           ),
@@ -1419,62 +1589,13 @@ class _EmbyPageState extends State<EmbyPage> {
           child: CustomScrollView(
             controller: _dashboardScrollController,
             slivers: [
-              // 服务器信息展示 (原 SliverAppBar 替代品)
-              SliverToBoxAdapter(
-                child: Container(
-                  color: AppTheme.cardBackground,
-                  padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: AppTheme.primaryLight,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.play_arrow_rounded, color: AppTheme.primary, size: 24),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              s.name,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.textPrimary,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              s.username,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: AppTheme.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+              // 1. 全出血轮播横幅 (如果有最新内容)
+              if (_latestItems.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: _buildFeaturedCarousel(),
                 ),
-              ),
-          
-          // 轮播横幅 - 显示最新/推荐内容
-          if (_latestItems.isNotEmpty) ...[
-            SliverToBoxAdapter(
-              child: Container(
-                color: AppTheme.cardBackground,
-                padding: const EdgeInsets.only(top: 16),
-                child: _buildFeaturedCarousel(),
-              ),
-            ),
-            const SliverToBoxAdapter(child: SizedBox(height: 16)),
-          ],
+
+              // 2. 服务器信息展示 (已移除)
           
           // 继续观看
           if (_continueWatching.isNotEmpty) ...[
@@ -1585,171 +1706,236 @@ class _EmbyPageState extends State<EmbyPage> {
   
   Widget _buildFeaturedCarousel() {
     return SizedBox(
-      height: 240,
-      child: PageView.builder(
-        itemCount: _latestItems.take(5).length,
-        controller: PageController(viewportFraction: 0.92),
-        itemBuilder: (_, i) {
-          final item = _latestItems[i];
-          final name = item['Name'] ?? '';
-          final itemId = item['Id'] ?? '';
-          final type = item['Type'] ?? '';
-          final overview = item['Overview'] ?? '';
-          final year = item['ProductionYear']?.toString() ?? '';
-          final rating = item['CommunityRating']?.toString() ?? '';
-          
-          return GestureDetector(
-            onTap: () => _handleItemClick(item),
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 8),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
+      height: 480, // 增加高度
+      child: Stack(
+        children: [
+          PageView.builder(
+            itemCount: _latestItems.take(5).length,
+            controller: _carouselController, // 占据全屏宽度
+            itemBuilder: (_, i) {
+              final item = _latestItems[i];
+              final name = item['Name'] ?? '';
+              final itemId = item['Id'] ?? '';
+              final type = item['Type'] ?? '';
+              final overview = item['Overview'] ?? '';
+              final year = item['ProductionYear']?.toString() ?? '';
+              final rating = item['CommunityRating']?.toString() ?? '';
+              
+              return GestureDetector(
+                onTap: () => _handleItemClick(item),
+                child: Container(
+                  // 移除 margin 和 borderRadius 实现真正的 full-bleed
+                  decoration: BoxDecoration(
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    // 背景图
-                    Image.network(
-                      _imageUrl(itemId, type: 'Backdrop', maxWidth: 800),
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: AppTheme.primaryLight,
-                        child: Icon(
-                          _itemIcon(type),
-                          color: AppTheme.textTertiary,
-                          size: 60,
-                        ),
-                      ),
-                    ),
-                    // 渐变遮罩
-                    Positioned.fill(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              Colors.black.withOpacity(0.9),
-                            ],
-                            stops: const [0.3, 1.0],
-                          ),
-                        ),
-                      ),
-                    ),
-                    // 内容信息
-                    Positioned(
-                      left: 20,
-                      right: 20,
-                      bottom: 20,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // 标题
-                          Text(
-                            name,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
+                  child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        // 背景图
+                        Image.network(
+                          _imageUrl(itemId, type: 'Backdrop', maxWidth: 800),
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            color: AppTheme.primaryLight,
+                            child: Icon(
+                              _itemIcon(type),
+                              color: AppTheme.textTertiary,
+                              size: 60,
                             ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(height: 8),
-                          // 元数据
-                          Row(
-                            children: [
-                              if (year.isNotEmpty) ...[
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.2),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    year,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                              ],
-                              if (rating.isNotEmpty) ...[
-                                const Icon(Icons.star_rounded, color: Colors.amber, size: 16),
-                                const SizedBox(width: 4),
-                                Text(
-                                  rating,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          // 播放按钮
-                          ElevatedButton.icon(
-                            onPressed: () => _handleItemClick(item),
-                            icon: const Icon(Icons.play_arrow_rounded, size: 20),
-                            label: const Text('播放'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.primary,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+                        ),
+                        // 渐变遮罩
+                        Positioned.fill(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.transparent,
+                                  Colors.black.withOpacity(0.9),
+                                ],
+                                stops: const [0.3, 1.0],
                               ),
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                        // 内容信息
+                        Positioned(
+                          left: 48,
+                          right: 48,
+                          bottom: 20,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // 标题
+                              Text(
+                                name,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 8),
+                              // 元数据
+                              Row(
+                                children: [
+                                  if (year.isNotEmpty) ...[
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withOpacity(0.2),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        year,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                  ],
+                                  if (rating.isNotEmpty) ...[
+                                    const Icon(Icons.star_rounded, color: Colors.amber, size: 16),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      rating,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              // 播放按钮
+                              ElevatedButton.icon(
+                                onPressed: () => _handleItemClick(item),
+                                icon: const Icon(Icons.play_arrow_rounded, size: 20),
+                                label: const Text('播放'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.primary,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
+                );
+              },
+          ),
+          // 左侧导航按钮
+          Positioned(
+            left: 16,
+            top: 0,
+            bottom: 0,
+            child: Center(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.3),
+                  shape: BoxShape.circle,
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.chevron_left_rounded, color: Colors.white, size: 32),
+                  onPressed: () {
+                    if (_carouselController.page != null && _carouselController.page! > 0) {
+                      _carouselController.previousPage(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      );
+                    }
+                  },
                 ),
               ),
             ),
-          );
-        },
+          ),
+          // 右侧导航按钮
+          Positioned(
+            right: 16,
+            top: 0,
+            bottom: 0,
+            child: Center(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.3),
+                  shape: BoxShape.circle,
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 32),
+                  onPressed: () {
+                    if (_carouselController.page != null && _carouselController.page! < _latestItems.take(5).length - 1) {
+                      _carouselController.nextPage(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      );
+                    }
+                  },
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildContinueWatchingRow() {
     return SizedBox(
-      height: 180,
+      height: 240,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         itemCount: _continueWatching.length,
         itemBuilder: (_, i) {
           final item = _continueWatching[i];
-          final name = item['Name'] ?? '';
-          final itemId = item['Id'] ?? '';
           final type = item['Type'] ?? '';
+          final itemId = item['Id'] ?? '';
+          final seriesName = item['SeriesName'];
+          final parentIndex = item['ParentIndexNumber'];
+          final indexNumber = item['IndexNumber'];
           final userData = item['UserData'] as Map<String, dynamic>?;
           final playedPercentage = userData?['PlayedPercentage'] ?? 0.0;
           
+          String displayName = item['Name'] ?? '';
+          String imageId = itemId;
+          
+          if (type == 'Episode' && seriesName != null) {
+            displayName = seriesName;
+            if (parentIndex != null && indexNumber != null) {
+              displayName += ' s${parentIndex.toString().padLeft(2, '0')}-e${indexNumber.toString().padLeft(2, '0')}';
+            }
+            if (item['SeriesId'] != null) {
+              imageId = item['SeriesId'];
+            }
+          }
+
           return GestureDetector(
             onTap: () => _handleItemClick(item),
             child: Container(
-              width: 280,
-              margin: const EdgeInsets.only(right: 12),
+              width: 160,
+              margin: const EdgeInsets.only(right: 8),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
                 boxShadow: AppTheme.cardShadow,
@@ -1761,7 +1947,7 @@ class _EmbyPageState extends State<EmbyPage> {
                   children: [
                     // 背景图
                     Image.network(
-                      _imageUrl(itemId, type: 'Backdrop', maxWidth: 600),
+                      _imageUrl(imageId, type: 'Primary', maxWidth: 400),
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => Container(
                         color: AppTheme.primaryLight,
@@ -1803,27 +1989,27 @@ class _EmbyPageState extends State<EmbyPage> {
                       ),
                     // 标题和播放按钮
                     Positioned(
-                      left: 16,
-                      right: 16,
-                      bottom: 16,
+                      left: 12,
+                      right: 12,
+                      bottom: 12,
                       child: Row(
                         children: [
                           Expanded(
                             child: Text(
-                              name,
+                              displayName,
                               style: const TextStyle(
                                 color: Colors.white,
-                                fontSize: 16,
+                                fontSize: 13,
                                 fontWeight: FontWeight.w600,
                               ),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 8),
                           Container(
-                            width: 40,
-                            height: 40,
+                            width: 32,
+                            height: 32,
                             decoration: BoxDecoration(
                               color: AppTheme.primary,
                               shape: BoxShape.circle,
@@ -1831,7 +2017,7 @@ class _EmbyPageState extends State<EmbyPage> {
                             child: const Icon(
                               Icons.play_arrow_rounded,
                               color: Colors.white,
-                              size: 24,
+                              size: 18,
                             ),
                           ),
                         ],
@@ -1851,7 +2037,7 @@ class _EmbyPageState extends State<EmbyPage> {
     final items = _viewItems[viewId];
     if (items == null) {
       return SizedBox(
-        height: 210,
+        height: 280,
         child: ListView.builder(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1867,7 +2053,7 @@ class _EmbyPageState extends State<EmbyPage> {
       );
     }
     return SizedBox(
-      height: 210,
+      height: 280,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1889,8 +2075,8 @@ class _EmbyPageState extends State<EmbyPage> {
     return GestureDetector(
       onTap: () => _handleItemClick(item),
       child: Container(
-        width: 140,
-        margin: const EdgeInsets.only(right: 12),
+        width: 160,
+        margin: const EdgeInsets.only(right: 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1910,7 +2096,7 @@ class _EmbyPageState extends State<EmbyPage> {
                       Container(
                         color: AppTheme.primaryLight,
                         child: Image.network(
-                          _imageUrl(itemId),
+                          _imageUrl(itemId, maxWidth: 400),
                           fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) => Center(
                             child: Icon(
@@ -2013,8 +2199,8 @@ class _EmbyPageState extends State<EmbyPage> {
   // 骨架屏加载卡片
   Widget _buildSkeletonCard() {
     return Container(
-      width: 140,
-      margin: const EdgeInsets.only(right: 12),
+      width: 160,
+      margin: const EdgeInsets.only(right: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2089,13 +2275,6 @@ class _EmbyPageState extends State<EmbyPage> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: _goBack,
-        ),
-        title: Text(
-          _navigationStack.isNotEmpty ? _navigationStack.last[1] : '浏览',
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
         ),
         actions: [
           // 排序按钮
@@ -2425,60 +2604,6 @@ class _EmbyPageState extends State<EmbyPage> {
     );
   }
 
-  void _sortBrowseItems() {
-    print('[EmbyPage] 开始排序，方式: $_sortBy, 项目数: ${_browseItems.length}');
-    
-    // 创建新列表以确保触发重建
-    final sortedItems = List<Map<String, dynamic>>.from(_browseItems);
-    
-    switch (_sortBy) {
-      case 'SortName':
-        sortedItems.sort((a, b) {
-          final nameA = (a['Name'] ?? '').toString().toLowerCase();
-          final nameB = (b['Name'] ?? '').toString().toLowerCase();
-          return nameA.compareTo(nameB);
-        });
-        print('[EmbyPage] 按名称排序完成');
-        break;
-        
-      case 'ProductionYear':
-        sortedItems.sort((a, b) {
-          final yearA = a['ProductionYear'] ?? 0;
-          final yearB = b['ProductionYear'] ?? 0;
-          return yearB.compareTo(yearA); // 降序
-        });
-        print('[EmbyPage] 按年份排序完成');
-        break;
-        
-      case 'CommunityRating':
-        sortedItems.sort((a, b) {
-          final ratingA = (a['CommunityRating'] ?? 0.0) as num;
-          final ratingB = (b['CommunityRating'] ?? 0.0) as num;
-          return ratingB.compareTo(ratingA); // 降序
-        });
-        print('[EmbyPage] 按评分排序完成');
-        break;
-        
-      case 'DateCreated':
-      default:
-        sortedItems.sort((a, b) {
-          final dateA = a['DateCreated'] ?? '';
-          final dateB = b['DateCreated'] ?? '';
-          final result = dateB.toString().compareTo(dateA.toString());
-          return result;
-        });
-        print('[EmbyPage] 按日期排序完成');
-        // 打印前3个项目的日期用于调试
-        for (int i = 0; i < sortedItems.length && i < 3; i++) {
-          print('[EmbyPage] 项目 $i: ${sortedItems[i]['Name']}, 日期: ${sortedItems[i]['DateCreated']}');
-        }
-        break;
-    }
-    
-    _browseItems = sortedItems;
-    print('[EmbyPage] 排序完成，列表已更新');
-  }
-
   // ===================================
   //  4) 详情页 (Hero + 海报 + 元数据 + 播放 + 剧集)
   // ===================================
@@ -2503,153 +2628,329 @@ class _EmbyPageState extends State<EmbyPage> {
       runtimeStr = hours > 0 ? '${hours}小时${m}分钟' : '${m}分钟';
     }
 
+    final screenHeight = MediaQuery.of(context).size.height;
+    final topPadding = MediaQuery.of(context).padding.top;
+
+    // 如果是单集，尝试使用剧集ID来获取背景图（单集通常没有独立的 Backdrop）
+    final backdropItemId = (type == 'Episode' && item['SeriesId'] != null) ? item['SeriesId'] : itemId;
+
+    final bgColor = const Color(0xFFF5F5F5); // 浅白色，同海报墙底色
+    final textColor = Colors.black87;
+    final textSecondary = Colors.black54;
+
     return Scaffold(
-      backgroundColor: AppTheme.background,
-      body: CustomScrollView(
-        slivers: [
-          // 顶部导航
-          SliverAppBar(
-            floating: true,
-            backgroundColor: AppTheme.cardBackground,
-            foregroundColor: AppTheme.textPrimary,
-            elevation: 0,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back_rounded),
-              onPressed: _goBack,
+      backgroundColor: bgColor,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // 1. 底层：全屏铺开的背景图（结合顶部对齐避免核心内容被裁切）
+          Positioned.fill(
+            child: Image.network(
+              _imageUrl(backdropItemId, type: 'Backdrop', maxWidth: 3840), // 强制获取真4K原图，拒绝服务端压缩
+              fit: BoxFit.cover,
+              alignment: Alignment.topCenter, // 让海报靠上对齐，展示更多人物头部
+              filterQuality: FilterQuality.high, // Flutter 高质量渲染插值
+              errorBuilder: (_, __, ___) {
+                if (type == 'Episode') {
+                  // 单集如果没有Backdrop，退回到它的Primary缩略图
+                  return Image.network(
+                    _imageUrl(itemId, type: 'Primary', maxWidth: 1920),
+                    fit: BoxFit.cover,
+                    alignment: Alignment.topCenter,
+                    filterQuality: FilterQuality.high,
+                    errorBuilder: (____, _____, ______) => Container(color: bgColor),
+                  );
+                }
+                return Container(color: bgColor);
+              },
             ),
-            title: Text(
-              name,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+          ),
+          
+          // 2. 覆盖层：背景渐变融合
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.20), // 顶部边缘微暗即可
+                    Colors.black.withOpacity(0.0),  // 顶部到中间全透视海报
+                    bgColor.withOpacity(0.0),       // 即使到了中部也只留少量透视点，而且必须用bgColor的0透明度避免变黑
+                    bgColor,                        // 缓缓延伸，到底部才会真正完全变成乳白色背景
+                    bgColor,                        // 最底部纯白
+                  ],
+                  stops: const [0.0, 0.15, 0.45, 0.95, 1.0], // 从 45% 开始向下缓慢渐变泛白，到 95% 才会完全融合
+                ),
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: _goToDashboard,
-                child: const Text(
-                  '首页',
-                  style: TextStyle(color: AppTheme.textSecondary),
+          ),
+
+          // 3. 滚动内容层
+          CustomScrollView(
+            physics: const BouncingScrollPhysics(),
+            slivers: [
+              // 留出上半部分的空白区域(往下挪到接近中间位置)
+              SliverToBoxAdapter(
+                child: SizedBox(height: screenHeight * 0.45),
+              ),
+              
+              // Hero 区域 (左右结构)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                  child: Builder(
+                    builder: (context) {
+                      final bool hasPlayButtons = (type == 'Movie' || type == 'Episode' || type == 'Video');
+
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (hasPlayButtons)
+                            // 左侧：信息和按钮区域 (定宽，带右侧内边距)
+                            Container(
+                              width: 200,
+                              padding: const EdgeInsets.only(right: 32),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (year != null)
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 12),
+                                      child: Text(
+                                        year,
+                                        style: TextStyle(
+                                          color: _heroTextSecondary,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: ElevatedButton.icon(
+                                      icon: const Icon(Icons.play_arrow_rounded, size: 22),
+                                      label: const Text(
+                                        '播放',
+                                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.white.withOpacity(0.85),
+                                        foregroundColor: textColor,
+                                        padding: const EdgeInsets.symmetric(vertical: 16),
+                                        elevation: 0,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                      onPressed: () => _playItem(itemId, name, item: item),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: ElevatedButton.icon(
+                                      icon: const Icon(Icons.favorite_border_rounded, size: 20),
+                                      label: const Text(
+                                        '收藏',
+                                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.white.withOpacity(0.6),
+                                        foregroundColor: textColor,
+                                        padding: const EdgeInsets.symmetric(vertical: 16),
+                                        elevation: 0,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                      onPressed: () {},
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            
+                          // 右侧：标题、简介、元信息 (自适应占满剩余宽度)
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  name,
+                                  style: TextStyle(
+                                    color: _heroTextColor,
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.w900,
+                                    height: 1.1,
+                                    letterSpacing: -0.5,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 16),
+                                if (overview != null && overview.isNotEmpty)
+                                  Text(
+                                    overview,
+                                    style: TextStyle(
+                                      color: _heroTextSecondary,
+                                      fontSize: 15,
+                                      height: 1.6,
+                                    ),
+                                    maxLines: 6,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                const SizedBox(height: 16),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    if (officialRating != null) 
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          border: Border.all(color: _heroTextSecondary.withOpacity(0.5)),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          officialRating,
+                                          style: TextStyle(
+                                            color: _heroTextSecondary,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    if (rating != null)
+                                      Text(
+                                        '★ ${(rating as num).toStringAsFixed(1)}',
+                                        style: TextStyle(color: _heroTextSecondary, fontSize: 13, fontWeight: FontWeight.bold),
+                                      ),
+                                    if (runtimeStr != null) 
+                                      Text(
+                                        runtimeStr,
+                                        style: TextStyle(color: _heroTextSecondary, fontSize: 13),
+                                      ),
+                                    if (!hasPlayButtons && year != null)
+                                      Text(
+                                        year,
+                                        style: TextStyle(color: _heroTextSecondary, fontSize: 13, fontWeight: FontWeight.bold),
+                                      ),
+                                  ],
+                                )
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
                 ),
+              ),
+
+              // 多版本选项与音轨选择 
+              if (type == 'Movie' || type == 'Episode' || type == 'Video')
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildMediaSourceSelectors(),
+                        const SizedBox(height: 16),
+                        _buildStreamInfoCards(),
+                      ],
+                    ),
+                  ),
+                ),
+
+
+
+              // Series: 季 + 剧集选择器
+              if (type == 'Series') ...[
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 32, 24, 0),
+                    child: _buildSeasonSelector(),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 16, 4, 0),
+                    child: _buildEpisodeList(),
+                  ),
+                ),
+              ],
+
+              // 详细信息
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 40, 24, 40),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '详细信息',
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _detailRow('类型', type),
+                      if (year != null) _detailRow('年份', year),
+                      if (officialRating != null) _detailRow('分级', officialRating),
+                      if (runtimeStr != null) _detailRow('时长', runtimeStr),
+                      if (rating != null) _detailRow('评分', '★ ${(rating as num).toStringAsFixed(1)}/10'),
+                      if (item['OriginalTitle'] != null) _detailRow('原始标题', item['OriginalTitle']),
+                    ],
+                  ),
+                ),
+              ),
+              
+              // 底部留白
+              SliverToBoxAdapter(
+                child: SizedBox(height: MediaQuery.of(context).padding.bottom + 40),
               ),
             ],
           ),
 
-          // Hero Section: 背景图 + 覆盖信息
-          SliverToBoxAdapter(child: _buildHeroSection(item)),
-
-          // 播放按钮 (Movie 和 Episode 可播放)
-          if (type == 'Movie' || type == 'Episode' || type == 'Video')
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-                child: ElevatedButton.icon(
-                  icon: const Icon(Icons.play_arrow_rounded, size: 24),
-                  label: const Text(
-                    '立即播放',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-                    ),
-                  ),
-                  onPressed: () => _playItem(itemId, name),
-                ),
+          // 4. 浮动导航按钮 (固定在屏幕上方)
+          Positioned(
+            top: topPadding + 16,
+            left: 16,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.6),
+                borderRadius: BorderRadius.circular(8),
               ),
-            ),
-            
-          // 多版本选项与音轨选择 (Movie/Episode/Video)
-          if (type == 'Movie' || type == 'Episode' || type == 'Video')
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildMediaSourceSelectors(),
-                    const SizedBox(height: 24),
-                    _buildStreamInfoCards(),
-                  ],
-                ),
-              ),
-            ),
-
-          // 简介
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '简介',
-                    style: TextStyle(
-                      color: AppTheme.textPrimary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    overview ?? '暂无简介',
-                    style: TextStyle(
-                      color: overview != null ? AppTheme.textSecondary : AppTheme.textTertiary,
-                      fontSize: 14,
-                      height: 1.6,
-                    ),
-                  ),
-                ],
+              child: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black87, size: 18),
+                onPressed: _goBack,
+                padding: const EdgeInsets.all(12),
+                constraints: const BoxConstraints(),
               ),
             ),
           ),
-
-          // Series: 季 + 剧集选择器
-          if (type == 'Series') ...[
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-                child: _buildSeasonSelector(),
+          Positioned(
+            top: topPadding + 16,
+            right: 16,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.6),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: IconButton(
+                icon: const Icon(Icons.more_horiz_rounded, color: Colors.black87, size: 24),
+                onPressed: _goToDashboard,
+                padding: const EdgeInsets.all(12),
+                constraints: const BoxConstraints(),
               ),
             ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(0, 12, 0, 0),
-                child: _buildEpisodeList(),
-              ),
-            ),
-          ],
-
-          // 详细信息
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '详细信息',
-                    style: TextStyle(
-                      color: AppTheme.textPrimary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _detailRow('类型', type),
-                  if (year != null) _detailRow('年份', year),
-                  if (officialRating != null) _detailRow('分级', officialRating),
-                  if (runtimeStr != null) _detailRow('时长', runtimeStr),
-              if (rating != null) _detailRow('评分', '★ ${(rating as num).toStringAsFixed(1)}/10'),
-              if (item['OriginalTitle'] != null) _detailRow('原始标题', item['OriginalTitle']),
-            ]),
-          )),
-
-          const SliverToBoxAdapter(child: SizedBox(height: 40)),
+          ),
         ],
       ),
     );
@@ -2684,16 +2985,16 @@ class _EmbyPageState extends State<EmbyPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: AppTheme.cardBackground,
-        borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-        border: Border.all(color: AppTheme.textTertiary.withOpacity(0.2)),
+        color: Colors.white.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
             '播放选项',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.black87),
           ),
           const SizedBox(height: 12),
           Row(
@@ -2788,13 +3089,13 @@ class _EmbyPageState extends State<EmbyPage> {
         children: [
           Row(
             children: [
-              Icon(icon, size: 14, color: AppTheme.textTertiary),
+              Icon(icon, size: 14, color: Colors.black54),
               const SizedBox(width: 4),
-              Text(label, style: const TextStyle(fontSize: 12, color: AppTheme.textTertiary)),
+              Text(label, style: const TextStyle(fontSize: 12, color: Colors.black54)),
             ],
           ),
           const SizedBox(height: 4),
-          Text(text, style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text(text, style: const TextStyle(fontSize: 13, color: Colors.black87, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
         ],
       );
     }
@@ -2804,9 +3105,9 @@ class _EmbyPageState extends State<EmbyPage> {
       children: [
         Row(
           children: [
-            Icon(icon, size: 14, color: AppTheme.textTertiary),
+            Icon(icon, size: 14, color: Colors.black54),
             const SizedBox(width: 4),
-            Text(label, style: const TextStyle(fontSize: 12, color: AppTheme.textTertiary)),
+            Text(label, style: const TextStyle(fontSize: 12, color: Colors.black54)),
           ],
         ),
         const SizedBox(height: 4),
@@ -2814,16 +3115,16 @@ class _EmbyPageState extends State<EmbyPage> {
           height: 36,
           padding: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
-            color: AppTheme.primaryLight.withOpacity(0.5),
+            color: Colors.white.withOpacity(0.5),
             borderRadius: BorderRadius.circular(6),
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<dynamic>(
               value: value,
               isExpanded: true,
-              dropdownColor: AppTheme.cardBackground,
-              icon: const Icon(Icons.keyboard_arrow_down, size: 18),
-              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+              dropdownColor: const Color(0xFFF5F5F5), // 浅白色弹窗背景
+              icon: const Icon(Icons.keyboard_arrow_down, size: 18, color: Colors.black54),
+              style: const TextStyle(color: Colors.black87, fontSize: 13),
               items: items.map((item) {
                 return DropdownMenuItem<dynamic>(
                   value: item[valueKey],
@@ -2874,7 +3175,7 @@ class _EmbyPageState extends State<EmbyPage> {
       children: [
         const Text(
           '音视频字幕信息',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.black87),
         ),
         const SizedBox(height: 12),
         SingleChildScrollView(
@@ -2955,19 +3256,20 @@ class _EmbyPageState extends State<EmbyPage> {
       margin: const EdgeInsets.only(right: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.primaryLight.withOpacity(0.4),
-        borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+        color: Colors.white.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, size: 18, color: AppTheme.textPrimary),
+              Icon(icon, size: 18, color: Colors.black87),
               const SizedBox(width: 8),
               Text(
                 title,
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black87),
               ),
             ],
           ),
@@ -2981,13 +3283,13 @@ class _EmbyPageState extends State<EmbyPage> {
                   width: 70,
                   child: Text(
                     '${e.key}:',
-                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                    style: const TextStyle(color: Colors.black54, fontSize: 13),
                   ),
                 ),
                 Expanded(
                   child: Text(
                     e.value,
-                    style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+                    style: const TextStyle(color: Colors.black87, fontSize: 13),
                   ),
                 ),
               ],
@@ -2998,187 +3300,38 @@ class _EmbyPageState extends State<EmbyPage> {
     );
   }
 
-  Widget _buildHeroSection(Map<String, dynamic> item) {
-    final itemId = item['Id'] ?? '';
-    return Container(
-      height: 300,
-      margin: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
-        boxShadow: AppTheme.cardShadow,
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // 背景图 (Backdrop)
-            Image.network(
-              _imageUrl(itemId, type: 'Backdrop', maxWidth: 1200),
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(
-                color: AppTheme.primaryLight,
-              ),
-            ),
-            // 渐变遮罩
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.topCenter,
-                  colors: [
-                    Colors.black.withOpacity(0.8),
-                    Colors.black.withOpacity(0.4),
-                    Colors.transparent,
-                  ],
-                  stops: const [0.0, 0.5, 1.0],
-                ),
-              ),
-            ),
-            // 内容: 海报 + 标题
-            Positioned(
-              left: 20,
-              bottom: 20,
-              right: 20,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  // 海报
-                  Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
-                      child: SizedBox(
-                        width: 100,
-                        height: 150,
-                        child: Image.network(
-                          _imageUrl(itemId),
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
-                            color: AppTheme.primaryLight,
-                            child: Icon(
-                              _itemIcon(item['Type'] ?? ''),
-                              color: AppTheme.textTertiary,
-                              size: 40,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  // 标题 + 元信息
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          item['Name'] ?? '',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            shadows: [
-                              Shadow(
-                                color: Colors.black45,
-                                blurRadius: 4,
-                              ),
-                            ],
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 12,
-                          runSpacing: 4,
-                          children: [
-                            if (item['ProductionYear'] != null)
-                              _buildMetaChip('${item['ProductionYear']}'),
-                            if (item['OfficialRating'] != null)
-                              _buildMetaChip('${item['OfficialRating']}'),
-                            if (item['CommunityRating'] != null)
-                              _buildMetaChip(
-                                '★ ${(item['CommunityRating'] as num).toStringAsFixed(1)}',
-                                color: Colors.amber,
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
-  Widget _buildMetaChip(String text, {Color? color}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          color: color ?? Colors.white,
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-          shadows: const [
-            Shadow(
-              color: Colors.black45,
-              blurRadius: 2,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _detailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 80,
-            child: Text(
-              '$label:',
-              style: const TextStyle(
-                color: AppTheme.textSecondary,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 80,
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Colors.black54,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
             ),
           ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                color: AppTheme.textPrimary,
-                fontSize: 14,
-              ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(
+              color: Colors.black87,
+              fontSize: 14,
             ),
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
+}
 
   // ============== Series: Seasons + Episodes ==============
 
@@ -3203,7 +3356,7 @@ class _EmbyPageState extends State<EmbyPage> {
             const Text(
               '季',
               style: TextStyle(
-                color: AppTheme.textPrimary,
+                color: Colors.black87,
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
               ),
@@ -3213,17 +3366,19 @@ class _EmbyPageState extends State<EmbyPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(
-                color: AppTheme.cardBackground,
-                borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
-                border: Border.all(color: AppTheme.textTertiary.withOpacity(0.2)),
+                color: Colors.white.withOpacity(0.4),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.white.withOpacity(0.2)),
               ),
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<int>(
                   value: _selectedSeasonIndex < _seriesSeasons.length ? _selectedSeasonIndex : 0,
-                  dropdownColor: AppTheme.cardBackground,
+                  dropdownColor: const Color(0xFFF5F5F5), // 浅白弹窗背景
+                  iconEnabledColor: Colors.black54,
                   style: const TextStyle(
-                    color: AppTheme.textPrimary,
+                    color: Colors.black87,
                     fontSize: 14,
+                    fontWeight: FontWeight.w500,
                   ),
                   items: List.generate(
                     _seriesSeasons.length,
@@ -3286,12 +3441,18 @@ class _EmbyPageState extends State<EmbyPage> {
               width: 240,
               margin: const EdgeInsets.only(right: 12),
               decoration: BoxDecoration(
-                color: AppTheme.cardBackground,
-                borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-                boxShadow: AppTheme.cardShadow,
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+                borderRadius: BorderRadius.circular(12),
                 child: Stack(
                   fit: StackFit.expand,
                   children: [

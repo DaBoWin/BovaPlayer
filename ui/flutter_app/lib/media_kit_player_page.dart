@@ -7,8 +7,11 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'features/danmaku/controllers/danmaku_controller.dart';
+import 'features/danmaku/widgets/danmaku_view.dart';
+import 'features/danmaku/widgets/danmaku_settings_panel.dart';
 
 class MediaKitPlayerPage extends StatefulWidget {
   final String url;
@@ -77,6 +80,9 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
   
   // 播放会话 ID
   String? _playSessionId;
+  
+  late DanmakuController _danmakuController;
+  Timer? _danmakuSyncTimer;
 
   @override
   void initState() {
@@ -95,6 +101,12 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
     
     // 加载保存的播放位置
     _loadSavedPosition();
+    
+    // 初始化弹幕控制器
+    _danmakuController = DanmakuController();
+    _danmakuController.loadDanmakuByFileName(
+      widget.title,
+    );
     
     // 延迟初始化 VideoController，避免在 initState 中访问 context
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -158,6 +170,13 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
     _updateClock();
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) => _updateClock());
     _speedTimer = Timer.periodic(const Duration(seconds: 1), (_) => _updateNetworkSpeed());
+    
+    // 定期同步主播放器的时间给弹幕
+    _danmakuSyncTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
   }
 
   void _initVideoController(bool enableHwAccel) {
@@ -323,22 +342,22 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       await (nativePlayer as dynamic).setProperty('audio-channels', 'stereo'); // 强制立体声输出
       await (nativePlayer as dynamic).setProperty('alang', 'jpn,eng,chi,zh,zho'); // 音轨语言优先级
       
-      // 缓冲配置 - 优化快速启动 + 并行加载
-      await (nativePlayer as dynamic).setProperty('demuxer-max-bytes', '50000000'); // 50MB
-      await (nativePlayer as dynamic).setProperty('demuxer-max-back-bytes', '25000000'); // 25MB
-      await (nativePlayer as dynamic).setProperty('demuxer-readahead-secs', '3'); // 预读3秒
+      // 缓冲配置 - 针对杜比视界等超高码率视频优化
+      await (nativePlayer as dynamic).setProperty('demuxer-max-bytes', '150000000'); // 150MB（杜比视界需要更大缓冲）
+      await (nativePlayer as dynamic).setProperty('demuxer-max-back-bytes', '75000000'); // 75MB
+      await (nativePlayer as dynamic).setProperty('demuxer-readahead-secs', '10'); // 预读10秒（增加稳定性）
       
-      // 快速启动播放 - 关键优化
-      await (nativePlayer as dynamic).setProperty('cache-pause-initial', 'yes'); // 等待初始缓存（大文件需要）
-      await (nativePlayer as dynamic).setProperty('cache-pause-wait', '2'); // 等待2秒缓存
-      await (nativePlayer as dynamic).setProperty('cache-secs', '10'); // 缓存10秒（增加稳定性）
+      // 快速启动播放 - 针对高码率优化
+      await (nativePlayer as dynamic).setProperty('cache-pause-initial', 'yes'); // 等待初始缓存
+      await (nativePlayer as dynamic).setProperty('cache-pause-wait', '5'); // 等待5秒缓存（高码率需要更多时间）
+      await (nativePlayer as dynamic).setProperty('cache-secs', '20'); // 缓存20秒（杜比视界需要更多缓冲）
       
       // 预读优化 - 启用快速预读
       await (nativePlayer as dynamic).setProperty('cache-on-disk', 'no'); // 内存缓存更快
       await (nativePlayer as dynamic).setProperty('demuxer-donate-buffer', 'yes'); // 捐赠缓冲区给解码器
       
       // HTTP 范围请求优化（支持多线程下载）
-      await (nativePlayer as dynamic).setProperty('stream-buffer-size', '4096'); // 4KB 流缓冲（小缓冲快速响应）
+      await (nativePlayer as dynamic).setProperty('stream-buffer-size', '8192'); // 8KB 流缓冲（增加吞吐量）
       
       // 启用 seekable
       await (nativePlayer as dynamic).setProperty('force-seekable', 'yes');
@@ -349,15 +368,16 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       
       // 错误恢复配置
       await (nativePlayer as dynamic).setProperty('load-unsafe-playlists', 'yes');
-      // demuxer-lavf-analyzeduration 单位是秒 - 大幅减少分析时间以加快启动
-      await (nativePlayer as dynamic).setProperty('demuxer-lavf-analyzeduration', '1'); // 1秒分析时间（减少）
-      await (nativePlayer as dynamic).setProperty('demuxer-lavf-probesize', '1000000'); // 1MB 探测大小
-      await (nativePlayer as dynamic).setProperty('demuxer-lavf-probe-info', 'nostreams'); // 减少探测
+      // demuxer-lavf-analyzeduration 单位是秒 - 给高码率视频更多分析时间
+      await (nativePlayer as dynamic).setProperty('demuxer-lavf-analyzeduration', '5'); // 5秒分析时间（杜比视界需要更多）
+      await (nativePlayer as dynamic).setProperty('demuxer-lavf-probesize', '50000000'); // 50MB 探测大小（超高码率）
+      await (nativePlayer as dynamic).setProperty('demuxer-lavf-probe-info', 'auto'); // 自动探测
       
       // 启用 MPV 详细日志以查看多线程状态
       await (nativePlayer as dynamic).setProperty('msg-level', 'all=info,ffmpeg=debug');
       
-      print('[MediaKitPlayer] 网络配置完成 - 多线程加载 + 快速启动');
+      print('[MediaKitPlayer] 网络配置完成 - 杜比视界优化模式');
+
       
       // 4. 硬件解码配置 - 根据设备类型和平台
       if (isAndroid) {
@@ -1101,12 +1121,30 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
     return Container(
       color: Colors.black,
       child: _videoController != null
-          ? Video(
-              controller: _videoController!,
-              controls: NoVideoControls,
-              fit: BoxFit.contain,
-              // 添加 wakelock 保持屏幕常亮
-              wakelock: true,
+          ? Stack(
+              fit: StackFit.expand,
+              children: [
+                Video(
+                  controller: _videoController!,
+                  controls: NoVideoControls,
+                  fit: BoxFit.contain,
+                  // 添加 wakelock 保持屏幕常亮
+                  wakelock: true,
+                ),
+                IgnorePointer(
+                  child: ListenableBuilder(
+                    listenable: _danmakuController,
+                    builder: (context, _) {
+                      return DanmakuView(
+                        danmakuList: _danmakuController.danmakuList,
+                        currentPosition: _player.state.position,
+                        isPlaying: _player.state.playing,
+                        config: _danmakuController.config,
+                      );
+                    },
+                  ),
+                ),
+              ],
             )
           : const Center(
               child: CircularProgressIndicator(color: Colors.white),
@@ -1413,6 +1451,17 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
         mainAxisSize: MainAxisSize.min,
         children: [
           _buildToolIconButton(Icons.subtitles_outlined, _showSubtitleMenu),
+          const SizedBox(height: 16),
+          _buildToolIconButton(Icons.closed_caption, () {
+            showDialog(
+              context: context,
+              builder: (context) => Dialog(
+                backgroundColor: Colors.transparent,
+                insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+                child: DanmakuSettingsPanel(controller: _danmakuController),
+              ),
+            );
+          }),
           const SizedBox(height: 16),
           _buildToolIconButton(Icons.crop_free, _showAspectRatioMenu),
         ],

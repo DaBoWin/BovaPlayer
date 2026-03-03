@@ -88,20 +88,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1A2E),
-      appBar: AppBar(
-        title: const Text('本地播放', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: const Color(0xFF16213E),
-        foregroundColor: Colors.white,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.folder_open),
-            onPressed: _isLoading ? null : _pickAndPlayFile,
-            tooltip: '选择视频文件',
-          ),
-        ],
-      ),
+      backgroundColor: const Color(0xFFF5F5F5),
+      appBar: null, // 使用 MainNavigation 的统一 AppBar
       body: _buildBody(),
     );
   }

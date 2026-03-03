@@ -9,6 +9,9 @@ import 'player/player_utils.dart';
 import 'player/emby_reporter.dart';
 import 'player/player_gestures.dart';
 import 'mpv_android_player_page.dart';  // 用于错误时切换到 mpv-android
+import 'features/danmaku/controllers/danmaku_controller.dart';
+import 'features/danmaku/widgets/danmaku_view.dart';
+import 'features/danmaku/widgets/danmaku_settings_panel.dart';
 
 class BetterPlayerPage extends StatefulWidget {
   final String url;
@@ -58,6 +61,9 @@ class _BetterPlayerPageState extends State<BetterPlayerPage> with PlayerGestures
   double _dragProgressPosition = 0;
   
   Duration? _savedPosition;
+  
+  late DanmakuController _danmakuController;
+  Timer? _danmakuSyncTimer;
 
   @override
   bool get isLocked => _isLocked;
@@ -98,10 +104,24 @@ class _BetterPlayerPageState extends State<BetterPlayerPage> with PlayerGestures
       userId: widget.userId,
     );
     
+    // 初始化弹幕控制器
+    _danmakuController = DanmakuController();
+    _danmakuController.loadDanmakuByFileName(
+      widget.title,
+    );
+    
     _loadAndInitialize();
     _updateClock();
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) => _updateClock());
     _speedTimer = Timer.periodic(const Duration(seconds: 1), (_) => _updateNetworkSpeed());
+    
+    // 定期同步主播放器的时间给弹幕
+    _danmakuSyncTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+      if (mounted) {
+        // 触发重绘以更新弹幕位置
+        setState(() {});
+      }
+    });
   }
 
   Future<void> _loadAndInitialize() async {
@@ -277,6 +297,9 @@ class _BetterPlayerPageState extends State<BetterPlayerPage> with PlayerGestures
     }
     _embyReporter.dispose();
     
+    _danmakuSyncTimer?.cancel();
+    _danmakuController.dispose();
+    
     // 恢复 macOS 红绿灯
     if (Platform.isMacOS) {
       _trafficLightsChannel.invokeMethod('show');
@@ -424,11 +447,30 @@ class _BetterPlayerPageState extends State<BetterPlayerPage> with PlayerGestures
               onHorizontalDragEnd: handleHorizontalDragEnd,
               child: Stack(
                 children: [
-                  // 视频播放器
+                  // 视频播放器与弹幕
                   Center(
                     child: AspectRatio(
                       aspectRatio: _betterPlayerController!.getAspectRatio() ?? 16 / 9,
-                      child: BetterPlayer(controller: _betterPlayerController!),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          BetterPlayer(controller: _betterPlayerController!),
+                          // 弹幕层，忽略触摸事件
+                          IgnorePointer(
+                            child: ListenableBuilder(
+                              listenable: _danmakuController,
+                              builder: (context, _) {
+                                return DanmakuView(
+                                  danmakuList: _danmakuController.danmakuList,
+                                  currentPosition: _betterPlayerController?.videoPlayerController?.value.position ?? Duration.zero,
+                                  isPlaying: _betterPlayerController?.isPlaying() ?? false,
+                                  config: _danmakuController.config,
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
 
@@ -640,6 +682,17 @@ class _BetterPlayerPageState extends State<BetterPlayerPage> with PlayerGestures
         mainAxisSize: MainAxisSize.min,
         children: [
           _buildToolIconButton(Icons.subtitles_outlined, _showSubtitleMenu),
+          const SizedBox(height: 16),
+          _buildToolIconButton(Icons.closed_caption, () {
+            showDialog(
+              context: context,
+              builder: (context) => Dialog(
+                backgroundColor: Colors.transparent,
+                insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+                child: DanmakuSettingsPanel(controller: _danmakuController),
+              ),
+            );
+          }),
           const SizedBox(height: 16),
           _buildToolIconButton(Icons.crop_free, () {
             ScaffoldMessenger.of(context).showSnackBar(

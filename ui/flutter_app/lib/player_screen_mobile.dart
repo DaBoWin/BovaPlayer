@@ -1,8 +1,12 @@
 import 'dart:async';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:window_manager/window_manager.dart';
+import 'widgets/custom_app_bar.dart';
 
 class PlayerScreen extends StatefulWidget {
   const PlayerScreen({super.key});
@@ -381,32 +385,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 检测是否横屏
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    // 检测是否横屏（仅移动端）
+    final bool isMobile = Theme.of(context).platform == TargetPlatform.iOS ||
+        Theme.of(context).platform == TargetPlatform.android;
+    final isLandscape = isMobile && MediaQuery.of(context).orientation == Orientation.landscape;
     
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5), // 高级白色背景
-      // 横屏时隐藏 AppBar
-      appBar: isLandscape ? null : AppBar(
-        title: const Text(
-          '本地播放',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF1F2937),
-          ),
-        ),
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF1F2937),
-        elevation: 0,
-        actions: [
-          // 文件夹图标
-          IconButton(
-            icon: const Icon(Icons.folder_open_rounded),
-            onPressed: _isLoading ? null : _pickAndPlayFile,
-            tooltip: '选择视频文件',
-          ),
-        ],
-      ),
+      backgroundColor: const Color(0xFFF5F5F5),
+      // 使用 MainNavigation 的统一 AppBar，横屏时隐藏
+      appBar: isLandscape ? null : null,
       body: _buildBody(),
     );
   }

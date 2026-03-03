@@ -668,25 +668,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('BovaPlayer'),
-        actions: [
-          Switch(
-            value: _hwAccelEnabled,
-            onChanged: (value) async {
-              setState(() {
-                _hwAccelEnabled = value;
-              });
-              final result = await NativeBridge.setHardwareAccel(value);
-              print('硬件加速设置结果: $result');
-            },
-          ),
-          const Padding(
-            padding: EdgeInsets.only(right: 8.0),
-            child: Text('硬件加速'),
-          ),
-        ],
-      ),
+      appBar: null, // 使用 MainNavigation 的统一 AppBar
       body: Column(
         children: [
           Expanded(

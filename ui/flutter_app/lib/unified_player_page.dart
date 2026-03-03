@@ -22,6 +22,8 @@ class UnifiedPlayerPage extends StatelessWidget {
   final String? serverUrl;
   final String? accessToken;
   final String? userId;
+  final Duration? startPosition;  // 添加起始播放位置参数
+  final int? startTimeTicks;  // 添加 StartTimeTicks 参数
   
   const UnifiedPlayerPage({
     super.key,
@@ -33,6 +35,8 @@ class UnifiedPlayerPage extends StatelessWidget {
     this.serverUrl,
     this.accessToken,
     this.userId,
+    this.startPosition,  // 添加到构造函数
+    this.startTimeTicks,  // 添加到构造函数
   });
   
   /// 判断是否是简单格式（ExoPlayer 可以高效处理）
@@ -110,6 +114,8 @@ class UnifiedPlayerPage extends StatelessWidget {
         serverUrl: serverUrl,
         accessToken: accessToken,
         userId: userId,
+        startPosition: startPosition,
+        startTimeTicks: startTimeTicks,
       );
     }
 

@@ -28,6 +28,22 @@ dependencies:
   fvp: ^0.35.2
   window_manager: ^0.4.3
   desktop_multi_window: ^0.3.0
+  
+  # SMB/FTP 网络协议支持
+  ftpconnect: ^2.0.3
+  shelf: ^1.4.1
+  shelf_router: ^1.1.4
+  flutter_secure_storage: ^9.0.0
+  mime: ^1.0.5
+  
+  # 云同步功能
+  supabase_flutter: ^2.5.0
+  uuid: ^4.3.3
+  provider: ^6.1.2
+  flutter_dotenv: ^5.1.0
+  device_info_plus: ^10.1.0
+  url_launcher: ^6.2.5
+  image_picker: ^1.2.1
 
 dev_dependencies:
   flutter_test:
@@ -42,13 +58,23 @@ dependency_overrides:
 flutter_launcher_icons:
   android: true
   ios: false
-  macos: true
-  windows: true
   image_path: "assets/icon.png"  # 主图标路径（1096x1096）
   adaptive_icon_background: "#1F2937"  # 背景色（高级黑）
   adaptive_icon_foreground: "assets/icon.png"  # 前景图使用同一图标
+  
+  # macOS 图标配置
+  macos:
+    generate: true
+    image_path: "assets/icon.png"
+  
+  # Windows 图标配置
+  windows:
+    generate: true
+    image_path: "assets/icon.png"
+    icon_size: 256
 
 flutter:
   uses-material-design: true
   assets:
     - assets/
+    - .env
