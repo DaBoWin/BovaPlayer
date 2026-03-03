@@ -344,8 +344,7 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
           print('[播放器] 解析用户信息失败: $e');
         }
       } else {
-        print('[播放器] 未找到用户信息，允许使用弹幕（兼容旧版本）');
-        isPro = true; // 兼容旧版本，默认允许
+        print('[播放器] 未找到用户信息，弹幕功能需要 Pro 用户');
       }
       
       if (!isPro) {
