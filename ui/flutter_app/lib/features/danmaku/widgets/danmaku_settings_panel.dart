@@ -376,8 +376,8 @@ class _DanmakuSettingsPanelState extends State<DanmakuSettingsPanel> {
               ),
             ),
           ],
-        const SizedBox(height: 8),
-        Material(
+          const SizedBox(height: 8),
+          Material(
           color: Colors.transparent,
           child: SliderTheme(
             data: SliderThemeData(
