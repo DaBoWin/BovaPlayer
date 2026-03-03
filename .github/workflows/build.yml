@@ -30,13 +30,14 @@ jobs:
           cache: true
 
       - name: 创建 .env 文件
+        shell: pwsh
         run: |
           cd ui/flutter_app
-          cat > .env << EOF
+          @"
           SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_DEBUG=false
-          EOF
+          "@ | Out-File -FilePath .env -Encoding utf8
 
       - name: Build Windows (Flutter)
         run: |
