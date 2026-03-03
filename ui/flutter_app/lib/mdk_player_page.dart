@@ -339,9 +339,13 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
           final userData = jsonDecode(userJson);
           final accountType = userData['account_type'] as String?;
           isPro = accountType == 'pro' || accountType == 'lifetime';
+          print('[播放器] 用户类型: $accountType, isPro: $isPro');
         } catch (e) {
           print('[播放器] 解析用户信息失败: $e');
         }
+      } else {
+        print('[播放器] 未找到用户信息，允许使用弹幕（兼容旧版本）');
+        isPro = true; // 兼容旧版本，默认允许
       }
       
       if (!isPro) {
@@ -351,7 +355,9 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
         return;
       }
       
+      print('[播放器] 开始加载弹幕: ${widget.title}');
       final success = await _danmakuController.loadDanmakuByFileName(widget.title);
+      print('[播放器] 弹幕加载结果: $success');
       if (!success && mounted) {
         // 如果加载失败，可以选择显示提示（可选）
         // ScaffoldMessenger.of(context).showSnackBar(
