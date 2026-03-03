@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
+import 'package:provider/provider.dart';
 import '../controllers/danmaku_controller.dart';
-import '../widgets/danmaku_view.dart';
+import '../../auth/presentation/providers/auth_provider.dart';
 import '../../auth/presentation/pages/pricing_page.dart';
 
 /// 弹幕设置面板
@@ -27,21 +26,14 @@ class _DanmakuSettingsPanelState extends State<DanmakuSettingsPanel> {
     _checkProStatus();
   }
   
-  Future<void> _checkProStatus() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userJson = prefs.getString('user');
-    
-    if (userJson != null) {
-      try {
-        final userData = jsonDecode(userJson);
-        final accountType = userData['account_type'] as String?;
-        setState(() {
-          _isPro = accountType == 'pro' || accountType == 'lifetime';
-        });
-      } catch (e) {
-        print('[弹幕设置] 解析用户信息失败: $e');
-      }
-    }
+  void _checkProStatus() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      setState(() {
+        _isPro = authProvider.user?.isPro ?? false;
+      });
+    });
   }
   
   void _showUpgradeDialog() {
