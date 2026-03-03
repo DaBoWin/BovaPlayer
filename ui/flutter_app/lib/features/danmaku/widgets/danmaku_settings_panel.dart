@@ -373,9 +373,9 @@ class _DanmakuSettingsPanelState extends State<DanmakuSettingsPanel> {
                   color: Colors.white.withOpacity(0.7),
                   fontSize: 14,
                 ),
-              ),
             ),
           ],
+        ),
           const SizedBox(height: 8),
           Material(
           color: Colors.transparent,
@@ -396,6 +396,7 @@ class _DanmakuSettingsPanelState extends State<DanmakuSettingsPanel> {
           ),
         ),
       ],
+    ),
     );
   }
 }
