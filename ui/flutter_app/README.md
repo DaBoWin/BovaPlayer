@@ -1,16 +1,17 @@
-# bova_player_flutter
+# Flutter App Module
 
-A new Flutter project.
+这里是当前 BovaPlayer 的主应用模块。
 
-## Getting Started
+优先阅读：
 
-This project is a starting point for a Flutter application.
+- [`README.md`](../../README.md)
+- [`docs/development.md`](../../docs/development.md)
+- [`docs/design-system.md`](../../docs/design-system.md)
 
-A few resources to get you started if this is your first Flutter project:
+常用命令：
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```bash
+flutter pub get
+flutter run -d macos
+flutter analyze
+```
