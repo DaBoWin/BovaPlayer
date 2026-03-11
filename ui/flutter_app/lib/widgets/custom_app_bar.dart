@@ -1,7 +1,10 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:window_manager/window_manager.dart';
 import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart';
+import 'package:window_manager/window_manager.dart';
+
+import '../core/theme/design_system.dart';
 
 class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   final List<Widget>? actions;
@@ -10,6 +13,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   final Widget? titleWidget;
   final bool showBackButton;
   final VoidCallback? onBackPressed;
+  final bool centerTitle;
 
   const CustomAppBar({
     super.key,
@@ -19,101 +23,155 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.titleWidget,
     this.showBackButton = false,
     this.onBackPressed,
+    this.centerTitle = true,
   });
 
   @override
-  Size get preferredSize => const Size.fromHeight(52);
+  Size get preferredSize => const Size.fromHeight(56);
 
   @override
   Widget build(BuildContext context) {
-    final bool isDesktop = !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
+    final isDesktop =
+        !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
+    final resolvedTitle = titleWidget ??
+        Text(
+          title ?? 'BovaPlayer',
+          style: const TextStyle(
+            color: DesignSystem.neutral900,
+            fontSize: DesignSystem.textLg,
+            fontWeight: DesignSystem.weightSemibold,
+            letterSpacing: -0.3,
+          ),
+        );
 
-    if (isDesktop) {
-      return PreferredSize(
-        preferredSize: preferredSize,
-        child: Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(
-              bottom: BorderSide(
-                color: Color(0xFFE5E7EB),
-                width: 1,
-              ),
+    return PreferredSize(
+      preferredSize: preferredSize,
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(
+            bottom: BorderSide(
+              color: DesignSystem.neutral200,
+              width: 1,
             ),
           ),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  // macOS 红黄绿按钮占位
-                  if (Platform.isMacOS) const SizedBox(width: 68),
-                  
-                  // 返回按钮（在红绿灯旁边）
-                  if (showBackButton)
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Color(0xFF1F2937), size: 20),
-                      onPressed: onBackPressed ?? () => Navigator.of(context).pop(),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  
-                  // 左侧自定义按钮
-                  if (leading != null) ...[
-                    leading!,
-                    const SizedBox(width: 12),
-                  ],
-                  
-                  // 标题居中 - 可拖动区域
-                  Expanded(
-                    child: GestureDetector(
-                      onPanStart: (_) async {
-                        await windowManager.startDragging();
-                      },
-                      child: Center(
-                        child: titleWidget ?? Text(
-                          title ?? 'BovaPlayer',
-                          style: const TextStyle(
-                            color: Color(0xFF1F2937),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
+        ),
+        child: SafeArea(
+          bottom: false,
+          child: SizedBox(
+            height: 56,
+            child: centerTitle
+                ? Stack(
+                    children: [
+                      if (isDesktop)
+                        Positioned.fill(
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.translucent,
+                            onPanStart: (_) async {
+                              await windowManager.startDragging();
+                            },
+                            child: const SizedBox.expand(),
+                          ),
+                        ),
+                      Positioned.fill(
+                        child: Align(
+                          alignment: Alignment.center,
+                          child: Padding(
+                            padding: EdgeInsets.only(
+                              left: isDesktop ? 140 : 88,
+                              right: isDesktop ? 140 : 88,
+                            ),
+                            child: IgnorePointer(
+                              child: DefaultTextStyle.merge(
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                                child: resolvedTitle,
+                              ),
+                            ),
                           ),
                         ),
                       ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Row(
+                          children: [
+                            _LeadingCluster(
+                              leading: leading,
+                              showBackButton: showBackButton,
+                              onBackPressed: onBackPressed,
+                            ),
+                            const Spacer(),
+                            if (actions != null) ...actions!,
+                          ],
+                        ),
+                      ),
+                    ],
+                  )
+                : Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Row(
+                      children: [
+                        _LeadingCluster(
+                          leading: leading,
+                          showBackButton: showBackButton,
+                          onBackPressed: onBackPressed,
+                        ),
+                        if (leading != null || showBackButton)
+                          const SizedBox(width: 8),
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: DefaultTextStyle.merge(
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                              child: resolvedTitle,
+                            ),
+                          ),
+                        ),
+                        if (actions != null) ...actions!,
+                      ],
                     ),
                   ),
-                  
-                  // 右侧按钮
-                  if (actions != null) ...actions!,
-                ],
-              ),
-            ),
           ),
         ),
-      );
-    }
-
-    // 移动端
-    return AppBar(
-      leading: showBackButton
-          ? IconButton(
-              icon: const Icon(Icons.arrow_back, color: Color(0xFF1F2937)),
-              onPressed: onBackPressed ?? () => Navigator.of(context).pop(),
-            )
-          : leading,
-      title: titleWidget ?? Text(
-        title ?? 'BovaPlayer',
-        style: const TextStyle(
-          fontWeight: FontWeight.w500,
-          fontSize: 14,
-          color: Color(0xFF1F2937),
-        ),
       ),
-      centerTitle: true,
-      backgroundColor: Colors.white,
-      foregroundColor: const Color(0xFF1F2937),
-      elevation: 0,
-      actions: actions,
+    );
+  }
+}
+
+class _LeadingCluster extends StatelessWidget {
+  final Widget? leading;
+  final bool showBackButton;
+  final VoidCallback? onBackPressed;
+
+  const _LeadingCluster({
+    required this.leading,
+    required this.showBackButton,
+    required this.onBackPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDesktop =
+        !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (isDesktop && Platform.isMacOS) const SizedBox(width: 68),
+        if (showBackButton)
+          IconButton(
+            icon: const Icon(
+              Icons.arrow_back,
+              color: DesignSystem.neutral900,
+              size: 20,
+            ),
+            onPressed: onBackPressed ?? () => Navigator.of(context).pop(),
+            tooltip: '返回',
+          )
+        else if (leading != null)
+          leading!,
+      ],
     );
   }
 }

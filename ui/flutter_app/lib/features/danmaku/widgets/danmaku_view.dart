@@ -1,5 +1,5 @@
-import 'dart:async';
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models/danmaku.dart';
 
@@ -23,6 +23,12 @@ class DanmakuView extends StatefulWidget {
 }
 
 class _DanmakuViewState extends State<DanmakuView> with SingleTickerProviderStateMixin {
+  void _log(String message) {
+    if (kDebugMode) {
+      debugPrint(message);
+    }
+  }
+
   late AnimationController _controller;
   final List<_DanmakuItem> _activeItems = [];
   final List<_DanmakuTrack> _scrollTracks = [];
@@ -39,11 +45,11 @@ class _DanmakuViewState extends State<DanmakuView> with SingleTickerProviderStat
       duration: const Duration(milliseconds: 16), // 60fps
     )..addListener(_onTick);
     
-    print('[弹幕渲染] 🎬 初始化: 弹幕总数=${widget.danmakuList.length}, 开关=${widget.config.enabled}, 透明度=${widget.config.opacity}');
+    _log('[弹幕渲染] 🎬 初始化: 弹幕总数=${widget.danmakuList.length}, 开关=${widget.config.enabled}, 透明度=${widget.config.opacity}');
     
     if (widget.isPlaying) {
       _controller.repeat();
-      print('[弹幕渲染] ▶️  开始渲染');
+      _log('[弹幕渲染] ▶️  开始渲染');
     }
   }
   
@@ -88,9 +94,9 @@ class _DanmakuViewState extends State<DanmakuView> with SingleTickerProviderStat
     // 每10秒打印一次状态
     if (currentTime.toInt() % 10 == 0 && currentTime.toInt() != _lastLogTime) {
       _lastLogTime = currentTime.toInt();
-      print('[弹幕渲染] ⏱️  当前时间: ${currentTime.toStringAsFixed(1)}s, 弹幕总数: ${widget.danmakuList.length}, 已处理: $_lastProcessedIndex, 活跃: ${_activeItems.length}');
+      _log('[弹幕渲染] ⏱️  当前时间: ${currentTime.toStringAsFixed(1)}s, 弹幕总数: ${widget.danmakuList.length}, 已处理: $_lastProcessedIndex, 活跃: ${_activeItems.length}');
       if (widget.danmakuList.isNotEmpty) {
-        print('[弹幕渲染] 📍 第一条弹幕时间: ${widget.danmakuList.first.time}s, 最后一条: ${widget.danmakuList.last.time}s');
+        _log('[弹幕渲染] 📍 第一条弹幕时间: ${widget.danmakuList.first.time}s, 最后一条: ${widget.danmakuList.last.time}s');
       }
     }
     
@@ -123,7 +129,7 @@ class _DanmakuViewState extends State<DanmakuView> with SingleTickerProviderStat
       }
       
       // 添加弹幕
-      print('[弹幕渲染] 🎯 添加弹幕: ${danmaku.content} @ ${danmaku.time}s');
+      _log('[弹幕渲染] 🎯 添加弹幕: ${danmaku.content} @ ${danmaku.time}s');
       _addDanmakuItem(danmaku);
       _lastProcessedIndex = i + 1;
     }
@@ -294,7 +300,6 @@ class _DanmakuViewState extends State<DanmakuView> with SingleTickerProviderStat
   @override
   Widget build(BuildContext context) {
     if (!widget.config.enabled) {
-      print('[弹幕渲染] ⚠️  弹幕开关已关闭');
       return const SizedBox.shrink();
     }
     

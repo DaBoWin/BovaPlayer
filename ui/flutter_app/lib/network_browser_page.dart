@@ -5,7 +5,7 @@ import 'services/connection_manager.dart';
 import 'services/ftp_service.dart';
 import 'services/smb_service.dart';
 import 'services/local_proxy_server.dart';
-import 'unified_player_page.dart';
+import 'player_window/desktop_player_window.dart';
 
 class NetworkBrowserPage extends StatefulWidget {
   const NetworkBrowserPage({super.key});
@@ -19,7 +19,7 @@ class _NetworkBrowserPageState extends State<NetworkBrowserPage> {
   final FTPService _ftpService = FTPService();
   final SMBService _smbService = SMBService();
   final LocalProxyServer _proxyServer = LocalProxyServer();
-  
+
   List<NetworkConnection> _connections = [];
   NetworkConnection? _currentConnection;
   List<NetworkFile> _files = [];
@@ -74,7 +74,7 @@ class _NetworkBrowserPageState extends State<NetworkBrowserPage> {
 
     try {
       bool success = false;
-      
+
       if (connection.protocol == NetworkProtocol.ftp) {
         success = await _ftpService.connect(connection);
       } else if (connection.protocol == NetworkProtocol.smb) {
@@ -110,7 +110,7 @@ class _NetworkBrowserPageState extends State<NetworkBrowserPage> {
 
     try {
       List<NetworkFile> files = [];
-      
+
       if (_currentConnection?.protocol == NetworkProtocol.ftp) {
         files = await _ftpService.listDirectory(path);
       } else if (_currentConnection?.protocol == NetworkProtocol.smb) {
@@ -143,22 +143,19 @@ class _NetworkBrowserPageState extends State<NetworkBrowserPage> {
 
     try {
       // 生成代理 URL
-      final proxyUrl = _proxyServer.createProxyUrl(_currentConnection!, file.path);
-      
+      final proxyUrl =
+          _proxyServer.createProxyUrl(_currentConnection!, file.path);
+
       print('[NetworkBrowser] 播放视频: ${file.name}');
       print('[NetworkBrowser] 代理 URL: $proxyUrl');
 
       // 打开播放器
       if (mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => UnifiedPlayerPage(
-              url: proxyUrl,
-              title: file.name,
-              httpHeaders: const {},
-            ),
-          ),
+        await DesktopPlayerLauncher.openPlayer(
+          context: context,
+          url: proxyUrl,
+          title: file.name,
+          httpHeaders: const {},
         );
       }
     } catch (e) {
@@ -189,9 +186,9 @@ class _NetworkBrowserPageState extends State<NetworkBrowserPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_currentConnection == null 
-          ? '网络浏览器' 
-          : '${_currentConnection!.displayName} - $_currentPath'),
+        title: Text(_currentConnection == null
+            ? '网络浏览器'
+            : '${_currentConnection!.displayName} - $_currentPath'),
         actions: [
           if (_currentConnection != null)
             IconButton(
@@ -209,11 +206,11 @@ class _NetworkBrowserPageState extends State<NetworkBrowserPage> {
       ),
       body: _buildBody(),
       floatingActionButton: _currentConnection == null
-        ? FloatingActionButton(
-            onPressed: _showAddConnectionDialog,
-            child: const Icon(Icons.add),
-          )
-        : null,
+          ? FloatingActionButton(
+              onPressed: _showAddConnectionDialog,
+              child: const Icon(Icons.add),
+            )
+          : null,
     );
   }
 
@@ -232,7 +229,9 @@ class _NetworkBrowserPageState extends State<NetworkBrowserPage> {
             Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: _currentConnection == null ? _loadConnections : () => _loadDirectory(_currentPath),
+              onPressed: _currentConnection == null
+                  ? _loadConnections
+                  : () => _loadDirectory(_currentPath),
               child: const Text('重试'),
             ),
           ],
@@ -260,12 +259,13 @@ class _NetworkBrowserPageState extends State<NetworkBrowserPage> {
         final connection = _connections[index];
         return ListTile(
           leading: Icon(
-            connection.protocol == NetworkProtocol.ftp 
-              ? Icons.folder_shared 
-              : Icons.storage,
+            connection.protocol == NetworkProtocol.ftp
+                ? Icons.folder_shared
+                : Icons.storage,
           ),
           title: Text(connection.displayName),
-          subtitle: Text('${connection.protocolName} - ${connection.host}:${connection.port}'),
+          subtitle: Text(
+              '${connection.protocolName} - ${connection.host}:${connection.port}'),
           trailing: IconButton(
             icon: const Icon(Icons.delete),
             onPressed: () async {
@@ -290,9 +290,9 @@ class _NetworkBrowserPageState extends State<NetworkBrowserPage> {
         final file = _files[index];
         return ListTile(
           leading: Icon(
-            file.isDirectory 
-              ? Icons.folder 
-              : (file.isVideo ? Icons.movie : Icons.insert_drive_file),
+            file.isDirectory
+                ? Icons.folder
+                : (file.isVideo ? Icons.movie : Icons.insert_drive_file),
           ),
           title: Text(file.name),
           subtitle: file.isDirectory ? null : Text(file.sizeFormatted),
@@ -321,7 +321,7 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
   final _passwordController = TextEditingController();
   final _shareNameController = TextEditingController();
   final _workgroupController = TextEditingController(text: 'WORKGROUP');
-  
+
   NetworkProtocol _protocol = NetworkProtocol.ftp;
   bool _savePassword = true;
 
@@ -354,8 +354,10 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
                 value: _protocol,
                 decoration: const InputDecoration(labelText: '协议'),
                 items: const [
-                  DropdownMenuItem(value: NetworkProtocol.ftp, child: Text('FTP')),
-                  DropdownMenuItem(value: NetworkProtocol.smb, child: Text('SMB')),
+                  DropdownMenuItem(
+                      value: NetworkProtocol.ftp, child: Text('FTP')),
+                  DropdownMenuItem(
+                      value: NetworkProtocol.smb, child: Text('SMB')),
                 ],
                 onChanged: (value) {
                   setState(() {
@@ -438,12 +440,14 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
         port: int.parse(_portController.text),
         username: _usernameController.text,
         password: _passwordController.text,
-        shareName: _protocol == NetworkProtocol.smb ? _shareNameController.text : null,
-        workgroup: _protocol == NetworkProtocol.smb ? _workgroupController.text : null,
+        shareName:
+            _protocol == NetworkProtocol.smb ? _shareNameController.text : null,
+        workgroup:
+            _protocol == NetworkProtocol.smb ? _workgroupController.text : null,
         lastConnected: DateTime.now(),
         savePassword: _savePassword,
       );
-      
+
       widget.onSave(connection);
       Navigator.pop(context);
     }

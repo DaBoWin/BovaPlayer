@@ -5,7 +5,7 @@ import '../models/network_file.dart';
 
 class SMBService {
   static const MethodChannel _channel = MethodChannel('com.bovaplayer/smb');
-  
+
   NetworkConnection? _currentConnection;
   String? _mountPoint; // macOS/Linux 挂载点
 
@@ -13,7 +13,7 @@ class SMBService {
   Future<bool> connect(NetworkConnection connection) async {
     try {
       print('[SMB] 连接到 ${connection.host}');
-      
+
       if (Platform.isWindows) {
         return await _connectWindows(connection);
       } else if (Platform.isMacOS || Platform.isLinux) {
@@ -21,7 +21,7 @@ class SMBService {
       } else if (Platform.isAndroid) {
         return await _connectAndroid(connection);
       }
-      
+
       return false;
     } catch (e) {
       print('[SMB] 连接失败: $e');
@@ -33,8 +33,9 @@ class SMBService {
   Future<bool> _connectWindows(NetworkConnection connection) async {
     try {
       // 构建 UNC 路径
-      final uncPath = '\\\\${connection.host}\\${connection.shareName ?? 'share'}';
-      
+      final uncPath =
+          '\\\\${connection.host}\\${connection.shareName ?? 'share'}';
+
       // 使用 net use 命令连接
       final result = await Process.run('net', [
         'use',
@@ -62,12 +63,14 @@ class SMBService {
   Future<bool> _connectUnix(NetworkConnection connection) async {
     try {
       // 创建临时挂载点
-      final mountDir = Directory('/tmp/smb_${DateTime.now().millisecondsSinceEpoch}');
+      final mountDir =
+          Directory('/tmp/smb_${DateTime.now().millisecondsSinceEpoch}');
       await mountDir.create();
-      
+
       // 构建 SMB URL
-      final smbUrl = 'smb://${connection.username}:${connection.password}@${connection.host}/${connection.shareName ?? 'share'}';
-      
+      final smbUrl =
+          'smb://${connection.username}:${connection.password}@${connection.host}/${connection.shareName ?? 'share'}';
+
       ProcessResult result;
       if (Platform.isMacOS) {
         // macOS 使用 mount_smbfs
@@ -132,7 +135,8 @@ class SMBService {
     try {
       if (Platform.isWindows && _mountPoint != null) {
         await Process.run('net', ['use', _mountPoint!, '/delete']);
-      } else if ((Platform.isMacOS || Platform.isLinux) && _mountPoint != null) {
+      } else if ((Platform.isMacOS || Platform.isLinux) &&
+          _mountPoint != null) {
         await Process.run('umount', [_mountPoint!]);
         await Directory(_mountPoint!).delete();
       } else if (Platform.isAndroid) {
@@ -141,7 +145,7 @@ class SMBService {
     } catch (e) {
       print('[SMB] 断开连接失败: $e');
     }
-    
+
     _currentConnection = null;
     _mountPoint = null;
   }
@@ -168,12 +172,12 @@ class SMBService {
   Future<List<NetworkFile>> _listDirectoryNative(String path) async {
     final fullPath = '$_mountPoint$path';
     final dir = Directory(fullPath);
-    
+
     final files = <NetworkFile>[];
     await for (final entity in dir.list()) {
       final stat = await entity.stat();
       final name = entity.path.split(Platform.pathSeparator).last;
-      
+
       files.add(NetworkFile(
         name: name,
         path: '$path/$name',
@@ -190,7 +194,7 @@ class SMBService {
   Future<List<NetworkFile>> _listDirectoryAndroid(String path) async {
     final result = await _channel.invokeMethod('listDirectory', {'path': path});
     final List<dynamic> items = result as List<dynamic>;
-    
+
     return items.map((item) {
       final map = item as Map<dynamic, dynamic>;
       return NetworkFile(
@@ -198,15 +202,24 @@ class SMBService {
         path: map['path'] as String,
         isDirectory: map['isDirectory'] as bool,
         size: map['size'] as int? ?? 0,
-        modified: map['modified'] != null 
+        modified: map['modified'] != null
             ? DateTime.fromMillisecondsSinceEpoch(map['modified'] as int)
             : null,
       );
     }).toList();
   }
 
+  bool get supportsNativeStreaming =>
+      !Platform.isAndroid && _mountPoint != null;
+
+  File? getNativeFile(String remotePath) {
+    if (!supportsNativeStreaming) return null;
+    return File('$_mountPoint$remotePath');
+  }
+
   /// 读取文件字节（支持 Range）
-  Future<Map<String, dynamic>> readFileBytes(String remotePath, {int? start, int? end}) async {
+  Future<Map<String, dynamic>> readFileBytes(String remotePath,
+      {int? start, int? end}) async {
     if (_currentConnection == null) {
       throw Exception('未连接到 SMB 服务器');
     }
@@ -224,17 +237,18 @@ class SMBService {
   }
 
   /// 原生平台读取文件
-  Future<Map<String, dynamic>> _readFileBytesNative(String remotePath, int? start, int? end) async {
+  Future<Map<String, dynamic>> _readFileBytesNative(
+      String remotePath, int? start, int? end) async {
     final fullPath = '$_mountPoint$remotePath';
     final file = File(fullPath);
-    
+
     final totalSize = await file.length();
     final fileHandle = await file.open();
-    
+
     if (start != null) {
       await fileHandle.setPosition(start);
     }
-    
+
     final length = end != null ? (end - (start ?? 0) + 1) : null;
     final data = await fileHandle.read(length ?? totalSize);
     await fileHandle.close();
@@ -246,7 +260,8 @@ class SMBService {
   }
 
   /// Android 读取文件
-  Future<Map<String, dynamic>> _readFileBytesAndroid(String remotePath, int? start, int? end) async {
+  Future<Map<String, dynamic>> _readFileBytesAndroid(
+      String remotePath, int? start, int? end) async {
     final result = await _channel.invokeMethod('readFile', {
       'path': remotePath,
       'start': start,

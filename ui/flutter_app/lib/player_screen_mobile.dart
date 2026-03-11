@@ -1,12 +1,9 @@
 import 'dart:async';
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import 'package:window_manager/window_manager.dart';
-import 'widgets/custom_app_bar.dart';
+import 'core/theme/app_theme.dart';
 
 class PlayerScreen extends StatefulWidget {
   const PlayerScreen({super.key});
@@ -23,11 +20,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _hasVideo = false;
   String _currentFile = '';
   String _videoInfo = '';
-  
+
   // 字幕相关
-  List<SubtitleTrack> _subtitleTracks = [];
   SubtitleTrack _currentSubtitle = SubtitleTrack.no();
-  
+
   // 网速监控
   Timer? _speedTimer;
   double _currentSpeed = 0.0; // KB/s
@@ -39,13 +35,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     super.initState();
     _initializePlayer();
   }
-  
+
   void _initializePlayer() {
     try {
-      print('[PlayerScreen] 初始化播放器');
+      debugPrint('[PlayerScreen] 初始化播放器');
       _player = Player();
       _videoController = VideoController(_player!);
-      
+
       // 监听播放器状态变化
       _player!.stream.duration.listen((duration) {
         if (mounted) {
@@ -54,7 +50,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           });
         }
       });
-      
+
       _player!.stream.width.listen((width) {
         if (mounted) {
           setState(() {
@@ -62,7 +58,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           });
         }
       });
-      
+
       _player!.stream.height.listen((height) {
         if (mounted) {
           setState(() {
@@ -70,16 +66,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
           });
         }
       });
-      
+
       // 监听字幕轨道变化
       _player!.stream.tracks.listen((tracks) {
         if (mounted) {
-          setState(() {
-            _subtitleTracks = tracks.subtitle;
-          });
+          setState(() {});
         }
       });
-      
+
       _player!.stream.track.listen((track) {
         if (mounted) {
           setState(() {
@@ -87,18 +81,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
           });
         }
       });
-      
+
       // 监听缓冲状态来计算网速
       _player!.stream.buffer.listen((buffer) {
         _updateNetworkSpeed(buffer.inMilliseconds);
       });
-      
+
       // 启动网速监控定时器
       _startSpeedMonitoring();
-      
-      print('[PlayerScreen] Media Kit 播放器已初始化');
+
+      debugPrint('[PlayerScreen] Media Kit 播放器已初始化');
     } catch (e) {
-      print('[PlayerScreen] 播放器初始化失败: $e');
+      debugPrint('[PlayerScreen] 播放器初始化失败: $e');
       setState(() {
         _errorMessage = '播放器初始化失败: $e';
       });
@@ -111,7 +105,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _player?.dispose();
     super.dispose();
   }
-  
+
   void _startSpeedMonitoring() {
     _speedTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted && _player != null && _player!.state.playing) {
@@ -120,11 +114,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }
     });
   }
-  
+
   void _updateNetworkSpeed(int currentBufferMs) {
     final now = DateTime.now();
     final timeDiff = now.difference(_lastSpeedCheck).inMilliseconds;
-    
+
     if (timeDiff > 0) {
       final bufferDiff = currentBufferMs - _lastBufferPosition;
       // 估算网速：缓冲增量 / 时间差
@@ -133,29 +127,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
         _currentSpeed = (bufferDiff / timeDiff) * 625; // KB/s
       }
     }
-    
+
     _lastBufferPosition = currentBufferMs;
     _lastSpeedCheck = now;
   }
-  
+
   void _updateVideoInfo() {
     if (_player == null) return;
-    
+
     final duration = _player!.state.duration;
     final width = _player!.state.width;
     final height = _player!.state.height;
-    
-    final durationStr = duration.inSeconds > 0 
+
+    final durationStr = duration.inSeconds > 0
         ? '${duration.inMinutes}:${(duration.inSeconds % 60).toString().padLeft(2, '0')}'
         : '未知';
-    
-    final resolutionStr = (width != null && height != null) 
-        ? '${width}x${height}'
-        : '未知';
-    
+
+    final resolutionStr =
+        (width != null && height != null) ? '${width}x$height' : '未知';
+
     _videoInfo = '时长: $durationStr | 分辨率: $resolutionStr';
   }
-  
+
   Widget _buildControlButton({
     required IconData icon,
     required Color color,
@@ -170,150 +163,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
       splashRadius: 28,
     );
   }
-  
+
   String _formatSpeed(double speedKBps) {
     if (speedKBps < 1024) {
       return '${speedKBps.toStringAsFixed(0)} KB/s';
     } else {
       return '${(speedKBps / 1024).toStringAsFixed(2)} MB/s';
-    }
-  }
-  
-  Future<void> _showSubtitleSelector() async {
-    if (_player == null) return;
-    
-    if (_subtitleTracks.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('当前视频没有字幕轨道'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-    
-    await showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF16213E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    const Icon(Icons.subtitles, color: Colors.white),
-                    const SizedBox(width: 12),
-                    const Text(
-                      '选择字幕',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(color: Colors.white24, height: 1),
-              // 无字幕选项
-              ListTile(
-                leading: Radio<String>(
-                  value: 'no',
-                  groupValue: _currentSubtitle.id,
-                  onChanged: (value) async {
-                    await _player?.setSubtitleTrack(SubtitleTrack.no());
-                    Navigator.pop(context);
-                  },
-                  activeColor: Colors.deepPurple.shade200,
-                ),
-                title: const Text(
-                  '无字幕',
-                  style: TextStyle(color: Colors.white),
-                ),
-                onTap: () async {
-                  await _player?.setSubtitleTrack(SubtitleTrack.no());
-                  Navigator.pop(context);
-                },
-              ),
-              // 字幕轨道列表
-              ..._subtitleTracks.map((track) {
-                return ListTile(
-                  leading: Radio<String>(
-                    value: track.id,
-                    groupValue: _currentSubtitle.id,
-                    onChanged: (value) async {
-                      await _player?.setSubtitleTrack(track);
-                      Navigator.pop(context);
-                    },
-                    activeColor: Colors.deepPurple.shade200,
-                  ),
-                  title: Text(
-                    track.title ?? track.language ?? '字幕 ${track.id}',
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                  subtitle: track.language != null
-                      ? Text(
-                          track.language!,
-                          style: const TextStyle(color: Colors.white54, fontSize: 12),
-                        )
-                      : null,
-                  onTap: () async {
-                    await _player?.setSubtitleTrack(track);
-                    Navigator.pop(context);
-                  },
-                );
-              }).toList(),
-              const SizedBox(height: 16),
-            ],
-          ),
-        );
-      },
-    );
-  }
-  
-  Future<void> _loadExternalSubtitle() async {
-    if (_player == null) return;
-    
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['srt', 'ass', 'ssa', 'vtt'],
-        allowMultiple: false,
-      );
-
-      if (result != null && result.files.isNotEmpty) {
-        final filePath = result.files.first.path;
-        if (filePath != null) {
-          await _player?.setSubtitleTrack(
-            SubtitleTrack.uri(filePath),
-          );
-          
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('已加载字幕: ${result.files.first.name}'),
-                backgroundColor: Colors.green,
-              ),
-            );
-          }
-        }
-      }
-    } catch (e) {
-      print('[PlayerScreen] 加载外部字幕失败: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('加载字幕失败: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
     }
   }
 
@@ -340,7 +195,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         });
       }
     } catch (e) {
-      print('[PlayerScreen] 文件选择错误: $e');
+      debugPrint('[PlayerScreen] 文件选择错误: $e');
       setState(() {
         _errorMessage = '文件选择失败: $e';
         _isLoading = false;
@@ -350,7 +205,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Future<void> _playFile(String filePath) async {
     if (_player == null) {
-      print('[PlayerScreen] 播放器未初始化');
+      debugPrint('[PlayerScreen] 播放器未初始化');
       setState(() {
         _errorMessage = '播放器未初始化';
         _isLoading = false;
@@ -358,9 +213,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       });
       return;
     }
-    
+
     try {
-      print('[PlayerScreen] 准备播放文件: $filePath');
+      debugPrint('[PlayerScreen] 准备播放文件: $filePath');
 
       await _player!.open(Media(filePath));
       await _player!.play();
@@ -372,9 +227,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
         _errorMessage = null;
       });
 
-      print('[PlayerScreen] 播放成功');
+      debugPrint('[PlayerScreen] 播放成功');
     } catch (e) {
-      print('[PlayerScreen] 播放失败: $e');
+      debugPrint('[PlayerScreen] 播放失败: $e');
       setState(() {
         _errorMessage = '播放失败: $e';
         _isLoading = false;
@@ -388,8 +243,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // 检测是否横屏（仅移动端）
     final bool isMobile = Theme.of(context).platform == TargetPlatform.iOS ||
         Theme.of(context).platform == TargetPlatform.android;
-    final isLandscape = isMobile && MediaQuery.of(context).orientation == Orientation.landscape;
-    
+    final isLandscape =
+        isMobile && MediaQuery.of(context).orientation == Orientation.landscape;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       // 使用 MainNavigation 的统一 AppBar，横屏时隐藏
@@ -421,13 +277,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 64),
+              const Icon(Icons.error_outline_rounded,
+                  color: Color(0xFFEF4444), size: 64),
               const SizedBox(height: 16),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 32),
                 child: Text(
                   _errorMessage!,
-                  style: const TextStyle(color: Color(0xFFEF4444), fontSize: 14),
+                  style:
+                      const TextStyle(color: Color(0xFFEF4444), fontSize: 14),
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -436,7 +294,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 icon: const Icon(Icons.refresh_rounded),
                 label: const Text('重试'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1F2937),
+                  backgroundColor: AppTheme.buttonAccent,
                   foregroundColor: Colors.white,
                 ),
                 onPressed: _pickAndPlayFile,
@@ -449,8 +307,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     if (!_hasVideo) {
       // 检测是否横屏
-      final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
-      
+      final isLandscape =
+          MediaQuery.of(context).orientation == Orientation.landscape;
+
       return Center(
         child: Padding(
           padding: EdgeInsets.only(bottom: isLandscape ? 0 : 100), // 横屏时不需要底部间距
@@ -461,14 +320,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
               Container(
                 width: isLandscape ? 80 : 120, // 横屏时缩小图标
                 height: isLandscape ? 80 : 120,
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   shape: BoxShape.circle,
-                  color: const Color(0xFFF3F4F6), // 浅灰色背景
+                  color: Color(0xFFF3F4F6), // 浅灰色背景
                 ),
                 child: Icon(
                   Icons.play_circle_outline_rounded,
                   size: isLandscape ? 40 : 56, // 横屏时缩小图标
-                  color: const Color(0xFF1F2937), // 高级黑
+                  color: AppTheme.buttonAccent,
                 ),
               ),
               SizedBox(height: isLandscape ? 16 : 32), // 横屏时减小间距
@@ -497,14 +356,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1F2937),
+                  backgroundColor: AppTheme.buttonAccent,
                   foregroundColor: Colors.white,
                   elevation: 0,
-                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(999),
                   ),
-                  shadowColor: const Color(0xFF1F2937).withOpacity(0.3),
+                  shadowColor: AppTheme.buttonAccent.withValues(alpha: 0.28),
                 ),
                 onPressed: _pickAndPlayFile,
               ),
@@ -540,13 +400,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ),
                   ),
                   // 实时网速显示
-                  if (_player != null && _player!.state.playing && _currentSpeed > 0)
+                  if (_player != null &&
+                      _player!.state.playing &&
+                      _currentSpeed > 0)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF10B981).withOpacity(0.1),
+                        color: const Color(0xFF10B981).withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: const Color(0xFF10B981).withOpacity(0.3)),
+                        border: Border.all(
+                            color:
+                                const Color(0xFF10B981).withValues(alpha: 0.3)),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -584,11 +449,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       ),
                     ),
                     // 当前字幕显示
-                    if (_currentSubtitle.id != 'no' && _currentSubtitle.id != 'auto')
+                    if (_currentSubtitle.id != 'no' &&
+                        _currentSubtitle.id != 'auto')
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1F2937).withOpacity(0.1),
+                          color: const Color(0xFF1F2937).withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Row(
@@ -601,9 +468,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              _currentSubtitle.title ?? 
-                              _currentSubtitle.language ?? 
-                              '字幕',
+                              _currentSubtitle.title ??
+                                  _currentSubtitle.language ??
+                                  '字幕',
                               style: const TextStyle(
                                 color: Color(0xFF1F2937),
                                 fontSize: 10,
@@ -633,58 +500,62 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   )
                 else
                   const Center(
-                    child: CircularProgressIndicator(color: Colors.deepPurple),
+                    child: CircularProgressIndicator(
+                      color: AppTheme.buttonAccent,
+                    ),
                   ),
                 // 缓冲时显示网速
                 if (_player != null)
                   StreamBuilder<bool>(
                     stream: _player!.stream.buffering,
                     builder: (context, snapshot) {
-                    final isBuffering = snapshot.data ?? false;
-                    if (!isBuffering) return const SizedBox.shrink();
-                    
-                    return Positioned(
-                      top: 16,
-                      right: 16,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.7),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            const Text(
-                              '缓冲中...',
-                              style: TextStyle(color: Colors.white, fontSize: 12),
-                            ),
-                            if (_currentSpeed > 0) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                _formatSpeed(_currentSpeed),
-                                style: TextStyle(
-                                  color: Colors.green.shade300,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
+                      final isBuffering = snapshot.data ?? false;
+                      if (!isBuffering) return const SizedBox.shrink();
+
+                      return Positioned(
+                        top: 16,
+                        right: 16,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
                                 ),
                               ),
+                              const SizedBox(height: 8),
+                              const Text(
+                                '缓冲中...',
+                                style: TextStyle(
+                                    color: Colors.white, fontSize: 12),
+                              ),
+                              if (_currentSpeed > 0) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  _formatSpeed(_currentSpeed),
+                                  style: TextStyle(
+                                    color: Colors.green.shade300,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
-                      ),
-                    );
-                  },
-                ),
+                      );
+                    },
+                  ),
               ],
             ),
           ),
@@ -699,7 +570,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
+                  color: Colors.black.withValues(alpha: 0.08),
                   blurRadius: 10,
                   offset: const Offset(0, 2),
                 ),
@@ -713,11 +584,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 _buildControlButton(
                   icon: Icons.replay_10_rounded,
                   color: const Color(0xFF1F2937),
-                  onPressed: _player == null ? null : () async {
-                    final currentPos = _player!.state.position;
-                    final newPos = currentPos - const Duration(seconds: 10);
-                    await _player!.seek(newPos.isNegative ? Duration.zero : newPos);
-                  },
+                  onPressed: _player == null
+                      ? null
+                      : () async {
+                          final currentPos = _player!.state.position;
+                          final newPos =
+                              currentPos - const Duration(seconds: 10);
+                          await _player!
+                              .seek(newPos.isNegative ? Duration.zero : newPos);
+                        },
                 ),
                 // 播放/暂停
                 if (_player != null)
@@ -726,7 +601,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     builder: (context, snapshot) {
                       final isPlaying = snapshot.data ?? false;
                       return _buildControlButton(
-                        icon: isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded,
+                        icon: isPlaying
+                            ? Icons.pause_circle_filled_rounded
+                            : Icons.play_circle_filled_rounded,
                         color: const Color(0xFF1F2937),
                         size: 52,
                         onPressed: () async {
@@ -746,12 +623,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 _buildControlButton(
                   icon: Icons.forward_10_rounded,
                   color: const Color(0xFF1F2937),
-                  onPressed: _player == null ? null : () async {
-                    final currentPos = _player!.state.position;
-                    final duration = _player!.state.duration;
-                    final newPos = currentPos + const Duration(seconds: 10);
-                    await _player!.seek(newPos > duration ? duration : newPos);
-                  },
+                  onPressed: _player == null
+                      ? null
+                      : () async {
+                          final currentPos = _player!.state.position;
+                          final duration = _player!.state.duration;
+                          final newPos =
+                              currentPos + const Duration(seconds: 10);
+                          await _player!
+                              .seek(newPos > duration ? duration : newPos);
+                        },
                 ),
               ],
             ),

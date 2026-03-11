@@ -3,21 +3,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../domain/entities/user.dart';
 import '../../domain/services/auth_service.dart';
 import '../../../sync/domain/services/sync_service.dart';
-import '../../../sync/domain/repositories/sync_repository.dart';
 import '../../../sync/data/repositories/sync_repository_impl.dart';
 import '../../../sync/domain/services/device_service.dart';
 
 /// 认证状态
 enum AuthState {
-  initial,      // 初始状态
-  loading,      // 加载中
-  authenticated,// 已认证
+  initial, // 初始状态
+  loading, // 加载中
+  authenticated, // 已认证
   unauthenticated, // 未认证
-  error,        // 错误
+  error, // 错误
 }
 
 /// 认证 Provider
-/// 
+///
 /// 管理认证状态和用户信息
 class AuthProvider with ChangeNotifier {
   final AuthService _authService;
@@ -36,7 +35,8 @@ class AuthProvider with ChangeNotifier {
   AuthState get state => _state;
   User? get user => _user;
   String? get errorMessage => _errorMessage;
-  bool get isAuthenticated => _state == AuthState.authenticated && _user != null;
+  bool get isAuthenticated =>
+      _state == AuthState.authenticated && _user != null;
   bool get isLoading => _state == AuthState.loading;
 
   /// 初始化
@@ -53,7 +53,7 @@ class AuthProvider with ChangeNotifier {
       if (user != null) {
         _user = user;
         _setState(AuthState.authenticated);
-        
+
         // 检查是否需要设置密码以启用同步
         _checkSyncPasswordStatus();
       } else {
@@ -74,11 +74,11 @@ class AuthProvider with ChangeNotifier {
       _setError('初始化失败：$e');
     }
   }
-  
+
   /// 检查同步密码状态
   void _checkSyncPasswordStatus() {
     if (_syncService == null) return;
-    
+
     final syncRepo = _syncService!.repository as SyncRepositoryImpl;
     if (!syncRepo.hasUserPassword) {
       debugPrint('[Auth] ⚠️  用户已登录但密码未设置，同步功能不可用');
@@ -118,11 +118,8 @@ class AuthProvider with ChangeNotifier {
       );
 
       _setState(AuthState.authenticated);
-      
-      // 注意：不再自动设置密码和同步
-      // 用户需要在账户页面手动启用云同步
-      debugPrint('[Auth] 💡 提示：如需使用云同步，请在账户页面启用');
-      
+      _bootstrapSyncAfterPasswordAuth(password);
+
       return true;
     } catch (e) {
       _setError(e.toString());
@@ -146,10 +143,7 @@ class AuthProvider with ChangeNotifier {
 
       debugPrint('[Auth] ✅ 登录成功，用户: ${_user?.email}');
       _setState(AuthState.authenticated);
-
-      // 注意：不再自动设置密码和同步
-      // 用户需要在账户页面手动启用云同步
-      debugPrint('[Auth] 💡 提示：如需使用云同步，请在账户页面启用');
+      _bootstrapSyncAfterPasswordAuth(password);
 
       return true;
     } catch (e) {
@@ -162,12 +156,12 @@ class AuthProvider with ChangeNotifier {
   /// 执行首次同步（后台执行，不阻塞 UI）
   Future<void> _performInitialSync() async {
     debugPrint('[Auth] 🔄 _performInitialSync 被调用');
-    
+
     if (_syncService == null) {
       debugPrint('[Auth] ❌ 同步服务未初始化');
       return;
     }
-    
+
     if (_deviceService == null) {
       debugPrint('[Auth] ❌ 设备服务未初始化');
       return;
@@ -178,12 +172,12 @@ class AuthProvider with ChangeNotifier {
       debugPrint('[Auth] 📱 注册设备...');
       await _deviceService!.registerCurrentDevice();
       debugPrint('[Auth] ✅ 设备注册完成');
-      
+
       // 2. 同步数据
       debugPrint('[Auth] 🔄 开始首次同步...');
       await _syncService!.performInitialSync();
       debugPrint('[Auth] ✅ 首次同步完成');
-      
+
       // 3. 同步完成后刷新用户数据（更新使用量统计）
       debugPrint('[Auth] 🔄 刷新用户数据...');
       await refreshUser();
@@ -193,6 +187,31 @@ class AuthProvider with ChangeNotifier {
       debugPrint('[Auth] 堆栈跟踪：$stackTrace');
       // 同步失败不影响登录流程
     }
+  }
+
+  void _bootstrapSyncAfterPasswordAuth(String password) {
+    if (_syncService == null) {
+      debugPrint('[Auth] ⚠️  同步服务未初始化，跳过自动同步');
+      return;
+    }
+
+    final syncRepo = _syncService!.repository as SyncRepositoryImpl;
+    syncRepo.setUserPassword(password);
+    debugPrint('[Auth] ✅ 已设置同步密码，准备后台同步媒体源');
+
+    Future<void>(() async {
+      try {
+        await _syncService!.repository.syncMediaServers();
+        debugPrint('[Auth] ✅ 媒体源同步完成');
+      } catch (e, stackTrace) {
+        debugPrint('[Auth] ❌ 媒体源同步失败：$e');
+        debugPrint('[Auth] 堆栈跟踪：$stackTrace');
+      }
+    });
+
+    Future<void>(() async {
+      await _performInitialSync();
+    });
   }
 
   /// GitHub 登录
@@ -238,7 +257,8 @@ class AuthProvider with ChangeNotifier {
 
       await _authService.sendPasswordResetEmail(email);
 
-      _setState(_user != null ? AuthState.authenticated : AuthState.unauthenticated);
+      _setState(
+          _user != null ? AuthState.authenticated : AuthState.unauthenticated);
       return true;
     } catch (e) {
       _setError(e.toString());
@@ -303,20 +323,20 @@ class AuthProvider with ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
   }
-  
+
   /// 手动触发同步（供其他页面调用）
   Future<void> triggerSync() async {
     if (_syncService == null) {
       debugPrint('[Auth] 同步服务未初始化');
       return;
     }
-    
+
     // 检查用户是否为 Pro 用户
     if (_user != null && !_user!.isPro) {
       debugPrint('[Auth] ⚠️  云同步功能仅限 Pro 用户使用');
       return;
     }
-    
+
     // 检查是否有用户密码（即同步是否已启用）
     final syncRepo = _syncService!.repository as SyncRepositoryImpl;
     if (!syncRepo.hasUserPassword) {
@@ -324,7 +344,7 @@ class AuthProvider with ChangeNotifier {
       debugPrint('[Auth] 提示：请在账户页面启用云同步功能');
       return;
     }
-    
+
     try {
       debugPrint('[Auth] 手动触发同步...');
       await _syncService!.performIncrementalSync();
@@ -334,19 +354,19 @@ class AuthProvider with ChangeNotifier {
       // 不抛出异常，避免影响 UI
     }
   }
-  
+
   /// 设置密码以启用同步（用于已登录但密码不在内存的情况）
   Future<bool> enableSyncWithPassword(String password) async {
     if (_syncService == null) {
       debugPrint('[Auth] 同步服务未初始化');
       return false;
     }
-    
+
     if (_user == null) {
       debugPrint('[Auth] 用户未登录');
       return false;
     }
-    
+
     try {
       // 验证密码是否正确（通过尝试重新登录）
       debugPrint('[Auth] 验证密码...');
@@ -354,37 +374,37 @@ class AuthProvider with ChangeNotifier {
         email: _user!.email,
         password: password,
       );
-      
+
       // 密码正确，设置到同步服务
       final syncRepo = _syncService!.repository as SyncRepositoryImpl;
       syncRepo.setUserPassword(password);
       debugPrint('[Auth] ✅ 密码已设置，同步功能已启用');
-      
+
       // 通知监听者状态已改变
       notifyListeners();
-      
+
       // 执行一次同步
       await triggerSync();
-      
+
       return true;
     } catch (e) {
       debugPrint('[Auth] ❌ 密码验证失败: $e');
       return false;
     }
   }
-  
+
   /// 兑换码兑换
   Future<Map<String, dynamic>> redeemCode(String code) async {
     try {
       debugPrint('[Auth] 🎫 兑换码兑换: $code');
       final result = await _authService.redeemCode(code);
-      
+
       if (result['success'] == true) {
         // 兑换成功，刷新用户信息
         await refreshUser();
         debugPrint('[Auth] ✅ 兑换成功: ${result['message']}');
       }
-      
+
       return result;
     } catch (e) {
       debugPrint('[Auth] ❌ 兑换失败: $e');

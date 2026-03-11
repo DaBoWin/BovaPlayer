@@ -1,7 +1,10 @@
+// ignore_for_file: depend_on_referenced_packages
+
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:video_player/video_player.dart';
+import 'core/theme/app_theme.dart';
 
 class PlayerScreen extends StatefulWidget {
   const PlayerScreen({super.key});
@@ -46,7 +49,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         });
       }
     } catch (e) {
-      print('[PlayerScreen] 文件选择错误: $e');
+      debugPrint('[PlayerScreen] 文件选择错误: $e');
       setState(() {
         _errorMessage = '文件选择失败: $e';
         _isLoading = false;
@@ -56,7 +59,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Future<void> _playFile(String filePath) async {
     try {
-      print('[PlayerScreen] 准备播放文件: $filePath');
+      debugPrint('[PlayerScreen] 准备播放文件: $filePath');
 
       // 释放旧的控制器
       await _controller?.dispose();
@@ -74,9 +77,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
         _errorMessage = null;
       });
 
-      print('[PlayerScreen] 播放成功');
+      debugPrint('[PlayerScreen] 播放成功');
     } catch (e) {
-      print('[PlayerScreen] 播放失败: $e');
+      debugPrint('[PlayerScreen] 播放失败: $e');
       setState(() {
         _errorMessage = '播放失败: $e';
         _isLoading = false;
@@ -131,7 +134,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               icon: const Icon(Icons.refresh),
               label: const Text('重试'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepPurple,
+                backgroundColor: AppTheme.buttonAccent,
                 foregroundColor: Colors.white,
               ),
               onPressed: _pickAndPlayFile,
@@ -151,12 +154,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
               height: 120,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.deepPurple.withOpacity(0.15),
+                color: AppTheme.buttonAccent.withValues(alpha: 0.14),
               ),
-              child: Icon(
+              child: const Icon(
                 Icons.video_library_outlined,
                 size: 60,
-                color: Colors.deepPurple.shade200,
+                color: Color(0xFFF9A8D4),
               ),
             ),
             const SizedBox(height: 24),
@@ -178,9 +181,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
               icon: const Icon(Icons.folder_open),
               label: const Text('选择视频文件'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepPurple,
+                backgroundColor: AppTheme.buttonAccent,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
               ),
               onPressed: _pickAndPlayFile,
             ),

@@ -17,7 +17,9 @@ import 'features/danmaku/controllers/danmaku_controller.dart';
 import 'features/danmaku/widgets/danmaku_view.dart';
 import 'features/danmaku/widgets/danmaku_settings_panel.dart';
 import 'package:provider/provider.dart';
-import 'features/auth/presentation/providers/auth_provider.dart';class MdkPlayerPage extends StatefulWidget {
+import 'features/auth/presentation/providers/auth_provider.dart';
+
+class MdkPlayerPage extends StatefulWidget {
   final String url;
   final String title;
   final Map<String, String>? httpHeaders;
@@ -27,9 +29,9 @@ import 'features/auth/presentation/providers/auth_provider.dart';class MdkPlayer
   final String? accessToken;
   final String? userId;
   final bool isSubWindow;
-  final Duration? startPosition;  // 起始播放位置（用于显示，不用于 seek）
-  final int? startTimeTicks;  // URL 中的 StartTimeTicks 值（用于时间轴校正）
-  
+  final Duration? startPosition; // 起始播放位置（用于显示，不用于 seek）
+  final int? startTimeTicks; // URL 中的 StartTimeTicks 值（用于时间轴校正）
+
   const MdkPlayerPage({
     super.key,
     required this.url,
@@ -44,20 +46,20 @@ import 'features/auth/presentation/providers/auth_provider.dart';class MdkPlayer
     this.startPosition,
     this.startTimeTicks,
   });
-  
+
   @override
   State<MdkPlayerPage> createState() => _MdkPlayerPageState();
 }
 
-class _MdkPlayerPageState extends State<MdkPlayerPage> {
+class _MdkPlayerPageState extends State<MdkPlayerPage> with WindowListener {
   VideoPlayerController? _controller;
-  static const _trafficLightsChannel = MethodChannel('com.bovaplayer/traffic_lights');
-  static const _networkSpeedChannel = MethodChannel('com.bovaplayer/network_speed');
-  static bool _mdkInitialized = false;  // 全局标记，避免重复初始化
-  
+  static const _networkSpeedChannel =
+      MethodChannel('com.bovaplayer/network_speed');
+  static bool _mdkInitialized = false; // 全局标记，避免重复初始化
+
   // 弹幕控制器
   late DanmakuController _danmakuController;
-  
+
   bool _isInitializing = true;
   String? _errorMessage;
   bool _showControls = true;
@@ -75,9 +77,9 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
   DateTime _lastSpeedCheck = DateTime.now();
   bool _isDragging = false;
   double _dragPosition = 0;
-  int _selectedTextTrack = -1; 
+  int _selectedTextTrack = -1;
   List<Map<String, dynamic>> _textTracks = [];
-  
+
   // 手势控制相关
   double _brightness = 0.5;
   double _volume = 0.5;
@@ -86,14 +88,16 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
   bool _showSeekIndicator = false;
   String _seekIndicatorText = '';
   Timer? _indicatorTimer;
-  
+
   // 缓冲指示器相关
-  bool _forceShowBuffering = false;  // 强制显示缓冲指示器（确保用户能看到）
+  bool _forceShowBuffering = false; // 强制显示缓冲指示器（确保用户能看到）
   Timer? _bufferingTimer;
-  
+
   Duration? _savedPosition;
   String? _playSessionId;
   Duration? _seekTargetPosition;
+  bool _isWindowClosing = false;
+  bool _hasShutdownPlayer = false;
 
   @override
   void initState() {
@@ -103,81 +107,88 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
-    
+
     // 初始化弹幕控制器
     _danmakuController = DanmakuController();
-    
+
     // 只初始化一次 MDK 配置（全局生效）
     if (!_mdkInitialized) {
       registerWith(options: {
         // macOS 硬件解码优先（VideoToolbox for HEVC/H264/Dolby Vision）
-        'video.decoders': ['VT', 'FFmpeg'],  // VideoToolbox 优先，FFmpeg 备用
-        
+        'video.decoders': ['VT', 'FFmpeg'], // VideoToolbox 优先，FFmpeg 备用
+
         // 缓冲配置 - 针对杜比视界等超高码率视频优化
-        'buffer': '150000+4000000',  // 最小150MB，最大4GB（更激进的缓冲）
-        'buffer.ranges': 64,  // 增加到64个缓冲范围（支持更多并发分段）
-        'buffer.drop': 0,  // 不丢弃缓冲数据
-        
+        'buffer': '150000+4000000', // 最小150MB，最大4GB（更激进的缓冲）
+        'buffer.ranges': 64, // 增加到64个缓冲范围（支持更多并发分段）
+        'buffer.drop': 0, // 不丢弃缓冲数据
+
         // 网络配置 - 多线程下载优化
-        'demux.buffer.ranges': 64,  // 增加解复用缓冲范围到64
+        'demux.buffer.ranges': 64, // 增加解复用缓冲范围到64
         'demux.buffer.protocols': 'http,https,rtmp,rtsp',
         'avio.protocol_whitelist': 'file,http,https,tcp,tls',
         'avio.reconnect': 1,
         'avio.reconnect_streamed': 1,
-        'avio.reconnect_delay_max': 1,  // 1秒重连延迟（更快恢复）
-        'avio.http_persistent': 1,  // 持久连接
-        'avio.multiple_requests': 1,  // 允许多个请求
+        'avio.reconnect_delay_max': 1, // 1秒重连延迟（更快恢复）
+        'avio.http_persistent': 1, // 持久连接
+        'avio.multiple_requests': 1, // 允许多个请求
         'avio.seekable': 1,
-        
+
         // HTTP 多线程下载配置 - 关键优化
-        'avformat.http_multiple': 4,  // 4个并发连接下载（多线程）
-        'avformat.http_seekable': 1,  // 支持 HTTP Range 请求
-        
+        'avformat.http_multiple': 4, // 4个并发连接下载（多线程）
+        'avformat.http_seekable': 1, // 支持 HTTP Range 请求
+
         // HTTP Range 请求配置 - 优化高码率流
         'avformat.fflags': '+fastseek+discardcorrupt+genpts',
         'avformat.seek2any': 1,
         'avformat.skip_initial_bytes': 0,
-        
+
         // TCP 优化 - 提升网络吞吐量
-        'avio.tcp_nodelay': 0,  // 允许 TCP 缓冲（Nagle算法），提高吞吐量
-        'avio.listen_timeout': 5000000,  // 5秒超时
-        'avio.rw_timeout': 10000000,  // 10秒读写超时
-        
+        'avio.tcp_nodelay': 0, // 允许 TCP 缓冲（Nagle算法），提高吞吐量
+        'avio.listen_timeout': 5000000, // 5秒超时
+        'avio.rw_timeout': 10000000, // 10秒读写超时
+
         // 线程配置 - 充分利用多核处理器
-        'threads': 16,  // 增加到16线程（解码+网络）
-        
+        'threads': 16, // 增加到16线程（解码+网络）
+
         // 预加载配置 - 激进预读
         'avformat.fpsprobesize': 0,
-        'avformat.analyzeduration': 5000000,  // 5秒分析
-        'avformat.probesize': 100000000,  // 100MB探测（更大的探测窗口）
+        'avformat.analyzeduration': 5000000, // 5秒分析
+        'avformat.probesize': 100000000, // 100MB探测（更大的探测窗口）
         'avformat.max_interleave_delta': 0,
-        
+
         // 禁用低延迟模式 - 高码率需要更多缓冲
         'lowLatency': 0,
-        
+
         // 预读策略 - 激进缓冲
-        'avformat.max_delay': 5000000,  // 5秒最大延迟
-        
+        'avformat.max_delay': 5000000, // 5秒最大延迟
+
         // 日志级别 - 完全关闭所有日志
         'logLevel': 'Off',
-        'MDK_LOG': '0',  // 环境变量方式关闭日志
+        'MDK_LOG': '0', // 环境变量方式关闭日志
       });
       _mdkInitialized = true;
       print('[播放器] ✅ MDK 初始化完成（日志已关闭）');
     }
 
+    if (!kIsWeb && Platform.isMacOS && widget.isSubWindow) {
+      windowManager.setPreventClose(true);
+      windowManager.addListener(this);
+    }
+
     _loadSavedPosition();
     _initializePlayer();
     _updateClock();
-    _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) => _updateClock());
-    _speedTimer = Timer.periodic(const Duration(seconds: 2), (_) => _updateNetworkSpeed());  // 改为2秒更新一次
+    _clockTimer =
+        Timer.periodic(const Duration(seconds: 1), (_) => _updateClock());
+    _speedTimer = Timer.periodic(
+        const Duration(seconds: 2), (_) => _updateNetworkSpeed()); // 改为2秒更新一次
   }
 
   Future<void> _initializePlayer() async {
     try {
       print('[播放器] 🎬 初始化播放器');
       print('[播放器] 📺 URL: ${widget.url}');
-      
+
       _controller = VideoPlayerController.networkUrl(
         Uri.parse(widget.url),
         httpHeaders: widget.httpHeaders ?? {},
@@ -186,43 +197,45 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
           mixWithOthers: false,
         ),
       );
-      
+
       // Use FVP to inject MDK backend to video_player
       await _controller!.initialize();
-      
+
       _controller!.addListener(() {
         if (mounted) {
           // 不再打印缓冲日志
           setState(() {});
         }
       });
-      
+
       print('[播放器] ✅ 初始化成功');
-      
+
       if (mounted) {
         setState(() {
           _isInitializing = false;
         });
       }
-      
+
       // 检查 URL 是否包含 StartTimeTicks
-      if (widget.url.contains('StartTimeTicks=') && widget.startTimeTicks != null) {
-        print('[播放器] 📍 URL 包含 StartTimeTicks，服务器将从 ${widget.startPosition != null ? _formatDuration(widget.startPosition!) : "指定位置"} 开始发送数据');
-        
+      if (widget.url.contains('StartTimeTicks=') &&
+          widget.startTimeTicks != null) {
+        print(
+            '[播放器] 📍 URL 包含 StartTimeTicks，服务器将从 ${widget.startPosition != null ? _formatDuration(widget.startPosition!) : "指定位置"} 开始发送数据');
+
         // 显示缓冲指示器
         setState(() => _forceShowBuffering = true);
-        
+
         // 开始播放
         await _controller!.play();
-        
+
         // 等待初始缓冲（2-3秒）
         await Future.delayed(const Duration(milliseconds: 2000));
-        
+
         // 检查是否真的在播放
         final startPos = _controller!.value.position.inSeconds;
         await Future.delayed(const Duration(milliseconds: 500));
         final endPos = _controller!.value.position.inSeconds;
-        
+
         if ((endPos - startPos).abs() > 0) {
           print('[播放器] ✅ 初始缓冲完成，开始播放');
           setState(() => _forceShowBuffering = false);
@@ -233,18 +246,18 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
       } else {
         // 显示缓冲指示器
         setState(() => _forceShowBuffering = true);
-        
+
         // 开始播放
         await _controller!.play();
-        
+
         // 等待初始缓冲（2-3秒）
         await Future.delayed(const Duration(milliseconds: 2000));
-        
+
         // 检查是否真的在播放
         final startPos = _controller!.value.position.inSeconds;
         await Future.delayed(const Duration(milliseconds: 500));
         final endPos = _controller!.value.position.inSeconds;
-        
+
         if ((endPos - startPos).abs() > 0) {
           print('[播放器] ✅ 初始缓冲完成，开始播放');
           setState(() => _forceShowBuffering = false);
@@ -252,14 +265,14 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
           // 还在缓冲，继续监控
           _startPlaybackMonitor();
         }
-        
+
         // 检查是否需要恢复播放位置（通过 seek）
         if (_savedPosition != null && _savedPosition!.inSeconds > 5) {
           // 显示对话框让用户选择
           await _showResumeDialog();
         }
       }
-      
+
       // 异步加载字幕和启动定时器（不阻塞播放）
       Future.microtask(() {
         _loadTextTracks();
@@ -282,10 +295,10 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
 
   void _loadTextTracks() {
     _textTracks.clear();
-    
+
     // 确保已初始化再调用 ext API
     if (_controller == null || !_controller!.value.isInitialized) return;
-    
+
     // 1. 获取内嵌字幕
     try {
       final mediaInfo = _controller?.getMediaInfo();
@@ -294,7 +307,9 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
           final stream = mediaInfo.subtitle![i];
           _textTracks.add({
             'index': _textTracks.length,
-            'title': stream.metadata['title'] ?? stream.metadata['language'] ?? '内置字幕 ${i + 1}',
+            'title': stream.metadata['title'] ??
+                stream.metadata['language'] ??
+                '内置字幕 ${i + 1}',
             'language': stream.metadata['language'] ?? 'und',
             'is_internal': true,
             'mdk_id': i,
@@ -309,7 +324,7 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
     if (widget.subtitles != null && widget.subtitles!.isNotEmpty) {
       for (int i = 0; i < widget.subtitles!.length; i++) {
         final subtitle = widget.subtitles![i];
-        
+
         // 查重：防止重复加载
         bool exists = _textTracks.any((t) => t['url'] == subtitle['url']);
         if (!exists) {
@@ -324,7 +339,7 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
       }
     }
   }
-  
+
   /// 加载弹幕
   Future<void> _loadDanmaku() async {
     try {
@@ -333,16 +348,18 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final isPro = authProvider.user?.isPro ?? false;
       print('[播放器] isPro: $isPro');
-      
+
       if (!isPro) {
         print('[播放器] 弹幕功能仅限 Pro 用户使用');
         // 禁用弹幕
-        _danmakuController.updateConfig(_danmakuController.config.copyWith(enabled: false));
+        _danmakuController
+            .updateConfig(_danmakuController.config.copyWith(enabled: false));
         return;
       }
-      
+
       print('[播放器] 开始加载弹幕: ${widget.title}');
-      final success = await _danmakuController.loadDanmakuByFileName(widget.title);
+      final success =
+          await _danmakuController.loadDanmakuByFileName(widget.title);
       print('[播放器] 弹幕加载结果: $success');
       if (!success && mounted) {
         // 如果加载失败，可以选择显示提示（可选）
@@ -361,7 +378,7 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
       _savedPosition = widget.startPosition;
       return;
     }
-    
+
     if (widget.itemId == null) return;
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -374,20 +391,21 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
       print('[播放器] ⚠️  加载播放位置失败: $e');
     }
   }
-  
+
   Future<void> _savePlayPosition() async {
     if (widget.itemId == null || _controller == null) return;
     try {
       final position = _controller!.value.position;
       final duration = _controller!.value.duration;
-      
-      if (duration.inSeconds > 0 && position.inSeconds / duration.inSeconds > 0.95) {
+
+      if (duration.inSeconds > 0 &&
+          position.inSeconds / duration.inSeconds > 0.95) {
         final prefs = await SharedPreferences.getInstance();
         final key = 'play_position_${widget.itemId}';
         await prefs.remove(key);
         return;
       }
-      
+
       if (position.inSeconds > 5) {
         final prefs = await SharedPreferences.getInstance();
         final key = 'play_position_${widget.itemId}';
@@ -397,7 +415,7 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
       // 静默失败
     }
   }
-  
+
   void _startSavePositionTimer() {
     _savePositionTimer?.cancel();
     _savePositionTimer = Timer.periodic(const Duration(seconds: 10), (_) {
@@ -407,7 +425,7 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
 
   Future<void> _showResumeDialog() async {
     if (!mounted || _controller == null) return;
-    
+
     final resume = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -416,18 +434,18 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('继续播放', style: TextStyle(color: Colors.white)),
         content: Text(
-          '上次播放到 ${_formatDuration(_savedPosition!)}\n\n'
-          '继续播放需要缓冲，可能需要等待一段时间。\n'
-          '建议选择"从头开始"以获得更流畅的体验。',
-          style: const TextStyle(color: Colors.white70)
-        ),
+            '上次播放到 ${_formatDuration(_savedPosition!)}\n\n'
+            '继续播放需要缓冲，可能需要等待一段时间。\n'
+            '建议选择"从头开始"以获得更流畅的体验。',
+            style: const TextStyle(color: Colors.white70)),
         actions: [
           ElevatedButton(
             onPressed: () => Navigator.pop(context, false),
             style: ElevatedButton.styleFrom(
               backgroundColor: Theme.of(context).primaryColor,
             ),
-            child: const Text('从头开始（推荐）', style: TextStyle(color: Colors.white)),
+            child:
+                const Text('从头开始（推荐）', style: TextStyle(color: Colors.white)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
@@ -436,7 +454,7 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
         ],
       ),
     );
-    
+
     if (resume == true && _savedPosition != null) {
       // 显示加载提示
       if (mounted) {
@@ -447,7 +465,7 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
           ),
         );
       }
-      
+
       // 执行 seek
       await _controller!.seekTo(_savedPosition!);
     }
@@ -457,23 +475,24 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
     // 监控播放是否卡顿
     var lastPosition = -1;
     var stuckCount = 0;
-    
+
     _bufferingTimer?.cancel();
-    _bufferingTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
+    _bufferingTimer =
+        Timer.periodic(const Duration(milliseconds: 500), (timer) {
       if (!mounted || _controller == null) {
         timer.cancel();
         _bufferingTimer = null;
         return;
       }
-      
+
       final currentPos = _controller!.value.position.inSeconds;
-      
+
       if (lastPosition == -1) {
         // 第一次检查
         lastPosition = currentPos;
         return;
       }
-      
+
       // 检查位置是否在变化
       if ((currentPos - lastPosition).abs() > 0) {
         // 正在播放
@@ -490,7 +509,7 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
           setState(() => _forceShowBuffering = true);
         }
       }
-      
+
       lastPosition = currentPos;
       // 不设置超时，一直等待直到开始播放
     });
@@ -507,7 +526,8 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
         _showSeekIndicator = false;
       });
       SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
-        statusBarBrightness: _brightness > 0.5 ? Brightness.light : Brightness.dark,
+        statusBarBrightness:
+            _brightness > 0.5 ? Brightness.light : Brightness.dark,
       ));
       _startIndicatorTimer();
     } else {
@@ -521,67 +541,71 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
       _startIndicatorTimer();
     }
   }
-  
+
   void _handleHorizontalDragUpdate(DragUpdateDetails details) {
     if (_isLocked || _controller == null) return;
     final screenWidth = MediaQuery.of(context).size.width;
     final duration = _controller!.value.duration;
-    
+
     if (duration.inSeconds > 0) {
       // 第一次拖拽时，以当前播放位置为起点
       _seekTargetPosition ??= _controller!.value.position;
-      
+
       // 根据手指滑动距离计算时间偏移（全屏宽度 = 视频总时长）
       final deltaSec = (details.delta.dx / screenWidth) * duration.inSeconds;
-      final newSeconds = (_seekTargetPosition!.inSeconds + deltaSec).round().clamp(0, duration.inSeconds);
+      final newSeconds = (_seekTargetPosition!.inSeconds + deltaSec)
+          .round()
+          .clamp(0, duration.inSeconds);
       _seekTargetPosition = Duration(seconds: newSeconds);
-      
+
       final minutes = newSeconds ~/ 60;
       final seconds = newSeconds % 60;
-      final timeStr = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-      
+      final timeStr =
+          '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+
       setState(() {
         _showSeekIndicator = true;
         _showBrightnessIndicator = false;
         _showVolumeIndicator = false;
         _seekIndicatorText = timeStr;
       });
-      
+
       _startIndicatorTimer();
     }
   }
-  
+
   void _handleHorizontalDragEnd(DragEndDetails details) {
     if (_isLocked || _seekTargetPosition == null || _controller == null) return;
-    
+
     final targetPosition = _seekTargetPosition!;
     _controller!.seekTo(targetPosition);
     _seekTargetPosition = null;
-    
+
     setState(() {
       _showSeekIndicator = false;
     });
-    
+
     // Seek 完成后，监控是否真正开始播放
     _bufferingTimer?.cancel();
     var lastPosition = -1;
     var stuckCount = 0;
-    
-    _bufferingTimer = Timer.periodic(const Duration(milliseconds: 300), (timer) {
+
+    _bufferingTimer =
+        Timer.periodic(const Duration(milliseconds: 300), (timer) {
       if (!mounted || _controller == null) {
         timer.cancel();
         _bufferingTimer = null;
         return;
       }
-      
+
       final currentPos = _controller!.value.position.inSeconds;
-      
+
       if (lastPosition == -1) {
         // 第一次检查，记录初始位置
         lastPosition = currentPos;
         return;
       }
-      
+
       // 检查位置是否在变化（视频是否在播放）
       if ((currentPos - lastPosition).abs() > 0) {
         // 位置在变化，说明正在播放
@@ -598,7 +622,7 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
           setState(() => _forceShowBuffering = true);
         }
       }
-      
+
       lastPosition = currentPos;
       // 不设置超时，一直等待直到开始播放
     });
@@ -607,16 +631,19 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
   void _startIndicatorTimer() {
     _indicatorTimer?.cancel();
     _indicatorTimer = Timer(const Duration(seconds: 2), () {
-      if (mounted) setState(() {
-        _showBrightnessIndicator = false;
-        _showVolumeIndicator = false;
-        _showSeekIndicator = false;
-      });
+      if (mounted)
+        setState(() {
+          _showBrightnessIndicator = false;
+          _showVolumeIndicator = false;
+          _showSeekIndicator = false;
+        });
     });
   }
 
   Future<void> _reportPlaybackStart() async {
-    if (widget.itemId == null || widget.serverUrl == null || widget.accessToken == null) return;
+    if (widget.itemId == null ||
+        widget.serverUrl == null ||
+        widget.accessToken == null) return;
     try {
       _playSessionId = 'bova_${DateTime.now().millisecondsSinceEpoch}';
       final url = '${widget.serverUrl}/Sessions/Playing';
@@ -630,14 +657,16 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
         'VolumeLevel': (_volume * 100).toInt(),
         'PlayMethod': 'DirectPlay',
       };
-      await http.post(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Emby-Token': widget.accessToken!,
-        },
-        body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 5));
+      await http
+          .post(
+            Uri.parse(url),
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Emby-Token': widget.accessToken!,
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 5));
     } catch (e) {
       // 静默失败
     }
@@ -645,17 +674,22 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
 
   void _startReportProgressTimer() {
     _reportProgressTimer?.cancel();
-    _reportProgressTimer = Timer.periodic(const Duration(seconds: 10), (_) => _reportPlaybackProgress());
+    _reportProgressTimer = Timer.periodic(
+        const Duration(seconds: 10), (_) => _reportPlaybackProgress());
   }
 
   Future<void> _reportPlaybackProgress() async {
-    if (widget.itemId == null || widget.serverUrl == null || widget.accessToken == null || _playSessionId == null || _controller == null) return;
+    if (widget.itemId == null ||
+        widget.serverUrl == null ||
+        widget.accessToken == null ||
+        _playSessionId == null ||
+        _controller == null) return;
     try {
       final position = _controller!.value.position;
       final duration = _controller!.value.duration;
       final isPaused = !_controller!.value.isPlaying;
       final positionTicks = position.inMicroseconds * 10;
-      
+
       final url = '${widget.serverUrl}/Sessions/Playing/Progress';
       final body = {
         'ItemId': widget.itemId,
@@ -666,68 +700,121 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
         'VolumeLevel': (_volume * 100).toInt(),
         'PlayMethod': 'DirectPlay',
       };
-      
-      await http.post(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Emby-Token': widget.accessToken!,
-        },
-        body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 5));
+
+      await http
+          .post(
+            Uri.parse(url),
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Emby-Token': widget.accessToken!,
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 5));
     } catch (e) {
       // 静默失败
     }
   }
 
   Future<void> _reportPlaybackStopped() async {
-    if (widget.itemId == null || widget.serverUrl == null || widget.accessToken == null || _playSessionId == null || _controller == null) return;
+    if (widget.itemId == null ||
+        widget.serverUrl == null ||
+        widget.accessToken == null ||
+        _playSessionId == null ||
+        _controller == null) return;
     try {
       final position = _controller!.value.position;
       final duration = _controller!.value.duration;
       final positionTicks = position.inMicroseconds * 10;
-      
+
       final url = '${widget.serverUrl}/Sessions/Playing/Stopped';
       final body = {
         'ItemId': widget.itemId,
         'PlaySessionId': _playSessionId,
         'PositionTicks': positionTicks,
       };
-      
-      await http.post(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Emby-Token': widget.accessToken!,
-        },
-        body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 5));
+
+      await http
+          .post(
+            Uri.parse(url),
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Emby-Token': widget.accessToken!,
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 5));
     } catch (e) {
       // 静默失败
     }
   }
 
-  @override
-  void dispose() {
+  void _cancelPlayerTimers() {
     _hideTimer?.cancel();
     _clockTimer?.cancel();
     _speedTimer?.cancel();
     _savePositionTimer?.cancel();
     _reportProgressTimer?.cancel();
     _indicatorTimer?.cancel();
-    _bufferingTimer?.cancel();  // 清理缓冲计时器
+    _bufferingTimer?.cancel();
+  }
 
-    _savePlayPosition();
-    _reportPlaybackStopped();
-    
-    // 清理弹幕控制器
+  Future<void> _shutdownPlayer() async {
+    if (_hasShutdownPlayer) return;
+    _hasShutdownPlayer = true;
+
+    _cancelPlayerTimers();
+    await _savePlayPosition();
+    await _reportPlaybackStopped();
+
     _danmakuController.dispose();
 
     if (!kIsWeb && Platform.isMacOS) {
-      _trafficLightsChannel.invokeMethod('show');
+      await _setMacWindowButtonsVisible(true);
     }
 
-    _controller?.dispose();
+    final controller = _controller;
+    _controller = null;
+    try {
+      await controller?.pause();
+    } catch (_) {}
+    await controller?.dispose();
+  }
+
+  @override
+  void onWindowClose() async {
+    if (_isWindowClosing) {
+      return;
+    }
+    _isWindowClosing = true;
+
+    await _shutdownPlayer();
+    await windowManager.setPreventClose(false);
+    await windowManager.close();
+  }
+
+  @override
+  void dispose() {
+    if (!kIsWeb && Platform.isMacOS && widget.isSubWindow) {
+      windowManager.removeListener(this);
+      windowManager.setPreventClose(false);
+    }
+
+    _cancelPlayerTimers();
+
+    if (!_hasShutdownPlayer) {
+      _hasShutdownPlayer = true;
+      unawaited(_savePlayPosition());
+      unawaited(_reportPlaybackStopped());
+      _danmakuController.dispose();
+      if (!kIsWeb && Platform.isMacOS) {
+        unawaited(_setMacWindowButtonsVisible(true));
+      }
+      final controller = _controller;
+      _controller = null;
+      unawaited(controller?.dispose() ?? Future.value());
+    }
+
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     super.dispose();
@@ -742,70 +829,89 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
   }
 
   void _updateNetworkSpeed() async {
-    if (!mounted || _controller == null || !_controller!.value.isInitialized) return;
-    
+    if (!mounted || _controller == null || !_controller!.value.isInitialized) {
+      return;
+    }
+
     try {
-      // 在 macOS 上使用系统 API 获取真实网速
-      if (Platform.isMacOS) {
-        final bytesPerSecond = await _networkSpeedChannel.invokeMethod<double>('getNetworkSpeed');
+      if (Platform.isMacOS && !widget.isSubWindow) {
+        final bytesPerSecond =
+            await _networkSpeedChannel.invokeMethod<double>('getNetworkSpeed');
         if (bytesPerSecond != null && bytesPerSecond > 0 && mounted) {
           setState(() => _networkSpeed = _formatSpeed(bytesPerSecond));
-        } else if (mounted && _controller!.value.isBuffering) {
-          setState(() => _networkSpeed = '缓冲中...');
+          return;
         }
-        return;
       }
-      
-      // 其他平台使用原来的估算方法
+
       final now = DateTime.now();
       final timeDiff = now.difference(_lastSpeedCheck).inSeconds.toDouble();
-      if (timeDiff >= 1.0) {
-        final currentBuffered = _controller!.value.buffered.isNotEmpty
-            ? _controller!.value.buffered.last.end.inMilliseconds
-            : 0;
-        final bufferDiff = currentBuffered - _lastBufferedPosition;
-        if (bufferDiff > 0) {
-          // 根据视频分辨率动态估算码率
-          final videoSize = _controller!.value.size;
-          double estimatedBitrate;
-          
-          if (videoSize.width >= 3840) {
-            // 4K: 15-50 Mbps，取中间值 25 Mbps
-            estimatedBitrate = 25000;
-          } else if (videoSize.width >= 1920) {
-            // 1080p: 5-15 Mbps，取 8 Mbps
-            estimatedBitrate = 8000;
-          } else if (videoSize.width >= 1280) {
-            // 720p: 3-8 Mbps，取 5 Mbps
-            estimatedBitrate = 5000;
-          } else {
-            // SD: 1-3 Mbps，取 2 Mbps
-            estimatedBitrate = 2000;
-          }
-          
-          final bufferIncreaseSec = bufferDiff / 1000.0;
-          final downloadedBytes = (bufferIncreaseSec * estimatedBitrate * 1000) / 8;
-          final bytesPerSecond = downloadedBytes / timeDiff;
-          if (bytesPerSecond > 0 && mounted) {
-            setState(() => _networkSpeed = _formatSpeed(bytesPerSecond));
-          }
-        }
-        _lastBufferedPosition = currentBuffered;
-        _lastSpeedCheck = now;
+      if (timeDiff < 1.0) {
+        return;
       }
+
+      final currentBuffered = _controller!.value.buffered.isNotEmpty
+          ? _controller!.value.buffered.last.end.inMilliseconds
+          : 0;
+      final bufferDiff = currentBuffered - _lastBufferedPosition;
+      _lastBufferedPosition = currentBuffered;
+      _lastSpeedCheck = now;
+
+      if (bufferDiff > 0) {
+        final videoSize = _controller!.value.size;
+        double estimatedBitrate;
+
+        if (videoSize.width >= 3840) {
+          estimatedBitrate = 25000;
+        } else if (videoSize.width >= 1920) {
+          estimatedBitrate = 8000;
+        } else if (videoSize.width >= 1280) {
+          estimatedBitrate = 5000;
+        } else {
+          estimatedBitrate = 2000;
+        }
+
+        final bufferIncreaseSec = bufferDiff / 1000.0;
+        final downloadedBytes =
+            (bufferIncreaseSec * estimatedBitrate * 1000) / 8;
+        final bytesPerSecond = downloadedBytes / timeDiff;
+        if (bytesPerSecond > 0 && mounted) {
+          setState(() => _networkSpeed = _formatSpeed(bytesPerSecond));
+          return;
+        }
+      }
+
       if (_controller!.value.isBuffering && mounted) {
         setState(() => _networkSpeed = '缓冲中...');
+      } else if (mounted) {
+        setState(() => _networkSpeed = '0 KB/s');
       }
     } catch (e) {
-      if (mounted) setState(() => _networkSpeed = '-- KB/s');
+      if (_controller!.value.isBuffering && mounted) {
+        setState(() => _networkSpeed = '缓冲中...');
+      } else if (mounted) {
+        setState(() => _networkSpeed = '0 KB/s');
+      }
     }
   }
 
   String _formatSpeed(double bytesPerSecond) {
     if (bytesPerSecond < 0) return '0 B/s';
-    if (bytesPerSecond < 1024) return '${bytesPerSecond.toStringAsFixed(0)} B/s';
-    if (bytesPerSecond < 1024 * 1024) return '${(bytesPerSecond / 1024).toStringAsFixed(1)} KB/s';
+    if (bytesPerSecond < 1024)
+      return '${bytesPerSecond.toStringAsFixed(0)} B/s';
+    if (bytesPerSecond < 1024 * 1024)
+      return '${(bytesPerSecond / 1024).toStringAsFixed(1)} KB/s';
     return '${(bytesPerSecond / (1024 * 1024)).toStringAsFixed(2)} MB/s';
+  }
+
+  Future<void> _setMacWindowButtonsVisible(bool visible) async {
+    if (kIsWeb || !Platform.isMacOS) return;
+
+    if (widget.isSubWindow) {
+      await windowManager.setTitleBarStyle(
+        TitleBarStyle.hidden,
+        windowButtonVisibility: visible,
+      );
+    }
   }
 
   void _startHideTimer() {
@@ -817,7 +923,7 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
           SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
         }
         if (Platform.isMacOS) {
-          _trafficLightsChannel.invokeMethod('hide');
+          _setMacWindowButtonsVisible(false);
         }
       }
     });
@@ -832,7 +938,7 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       }
       if (Platform.isMacOS) {
-        _trafficLightsChannel.invokeMethod('show');
+        _setMacWindowButtonsVisible(true);
       }
       _startHideTimer();
     } else {
@@ -840,9 +946,19 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
       }
       if (Platform.isMacOS) {
-        _trafficLightsChannel.invokeMethod('hide');
+        _setMacWindowButtonsVisible(false);
       }
       _hideTimer?.cancel();
+    }
+  }
+
+  Future<void> _closePlayerWindow() async {
+    if (!kIsWeb && Platform.isMacOS && widget.isSubWindow) {
+      await windowManager.close();
+      return;
+    }
+    if (mounted) {
+      Navigator.maybePop(context);
     }
   }
 
@@ -862,9 +978,8 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
     final newPos = currentPos + offset;
     final duration = _controller!.value.duration;
     final clampedPos = Duration(
-      milliseconds: newPos.inMilliseconds.clamp(0, duration.inMilliseconds)
-    );
-    
+        milliseconds: newPos.inMilliseconds.clamp(0, duration.inMilliseconds));
+
     _controller!.seekTo(clampedPos);
     _startHideTimer();
   }
@@ -892,117 +1007,134 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
 
   String _getAspectRatioLabel() {
     switch (_aspectRatio) {
-      case 'fill': return '填充';
-      case 'stretch': return '拉伸';
-      case 'fit': default: return '适应';
+      case 'fill':
+        return '填充';
+      case 'stretch':
+        return '拉伸';
+      case 'fit':
+      default:
+        return '适应';
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: GestureDetector(
-        onTap: _toggleControls,
-        onVerticalDragUpdate: (details) {
-          final screenWidth = MediaQuery.of(context).size.width;
-          final isLeft = details.globalPosition.dx < screenWidth / 2;
-          _handleVerticalDragUpdate(details, isLeft);
-        },
-        onHorizontalDragUpdate: _handleHorizontalDragUpdate,
-        onHorizontalDragEnd: _handleHorizontalDragEnd,
-        child: Stack(
-          children: [
-            if (_controller != null && _controller!.value.isInitialized)
-              Center(
-                child: _aspectRatio == 'fill'
-                    ? SizedBox.expand(
-                        child: FittedBox(
-                          fit: BoxFit.cover,
-                          child: SizedBox(
-                            width: _controller!.value.size.width,
-                            height: _controller!.value.size.height,
-                            child: VideoPlayer(_controller!),
+    return PopScope(
+      canPop: !(!kIsWeb && Platform.isMacOS && widget.isSubWindow),
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        await _closePlayerWindow();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: GestureDetector(
+          onTap: _toggleControls,
+          onVerticalDragUpdate: (details) {
+            final screenWidth = MediaQuery.of(context).size.width;
+            final isLeft = details.globalPosition.dx < screenWidth / 2;
+            _handleVerticalDragUpdate(details, isLeft);
+          },
+          onHorizontalDragUpdate: _handleHorizontalDragUpdate,
+          onHorizontalDragEnd: _handleHorizontalDragEnd,
+          child: Stack(
+            children: [
+              if (_controller != null && _controller!.value.isInitialized)
+                Center(
+                  child: _aspectRatio == 'fill'
+                      ? SizedBox.expand(
+                          child: FittedBox(
+                            fit: BoxFit.cover,
+                            child: SizedBox(
+                              width: _controller!.value.size.width,
+                              height: _controller!.value.size.height,
+                              child: VideoPlayer(_controller!),
+                            ),
                           ),
+                        )
+                      : _aspectRatio == 'stretch'
+                          ? SizedBox.expand(child: VideoPlayer(_controller!))
+                          : AspectRatio(
+                              aspectRatio: _controller!.value.aspectRatio,
+                              child: VideoPlayer(_controller!),
+                            ),
+                )
+              else if (_isInitializing)
+                const Center(
+                    child: CircularProgressIndicator(color: Colors.white))
+              else if (_errorMessage != null)
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.error_outline,
+                            color: Colors.red, size: 48),
+                        const SizedBox(height: 16),
+                        Text(
+                          _errorMessage!,
+                          style:
+                              const TextStyle(color: Colors.red, fontSize: 14),
+                          textAlign: TextAlign.center,
                         ),
-                      )
-                    : _aspectRatio == 'stretch'
-                        ? SizedBox.expand(child: VideoPlayer(_controller!))
-                        : AspectRatio(
-                            aspectRatio: _controller!.value.aspectRatio,
-                            child: VideoPlayer(_controller!),
-                          ),
-              )
-            else if (_isInitializing)
-              const Center(child: CircularProgressIndicator(color: Colors.white))
-            else if (_errorMessage != null)
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.error_outline, color: Colors.red, size: 48),
-                      const SizedBox(height: 16),
-                      Text(
-                        _errorMessage!,
-                        style: const TextStyle(color: Colors.red, fontSize: 14),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
 
-            if (_showBrightnessIndicator) _buildBrightnessIndicator(),
-            if (_showVolumeIndicator) _buildVolumeIndicator(),
-            if (_showSeekIndicator) _buildSeekIndicator(),
-            
-            // 弹幕层
-            if (_controller != null && _controller!.value.isInitialized)
-              ListenableBuilder(
-                listenable: _danmakuController,
-                builder: (context, _) {
-                  return DanmakuView(
-                    danmakuList: _danmakuController.danmakuList,
-                    currentPosition: _controller!.value.position,
-                    isPlaying: _controller!.value.isPlaying,
-                    config: _danmakuController.config,
-                  );
-                },
-              ),
+              if (_showBrightnessIndicator) _buildBrightnessIndicator(),
+              if (_showVolumeIndicator) _buildVolumeIndicator(),
+              if (_showSeekIndicator) _buildSeekIndicator(),
 
-            if (_showControls && !_isLocked && !_isInitializing && _controller != null)
-              _buildControls(),
-
-            // 缓冲加载动画（放在最上层，确保不被遮挡）
-            if (_forceShowBuffering || 
-                (_controller != null && 
-                 _controller!.value.isInitialized && 
-                 _controller!.value.isBuffering))
-              _buildBufferingIndicator(),
-
-            if (_showControls)
-              Positioned(
-                left: 16,
-                top: MediaQuery.of(context).size.height / 2 - 24,
-                child: IconButton(
-                  icon: Icon(
-                    _isLocked ? Icons.lock : Icons.lock_open,
-                    color: Colors.white,
-                    size: 28,
-                  ),
-                  onPressed: () {
-                    setState(() => _isLocked = !_isLocked);
-                    if (_isLocked) {
-                      _hideTimer?.cancel();
-                    } else {
-                      _startHideTimer();
-                    }
+              // 弹幕层
+              if (_controller != null && _controller!.value.isInitialized)
+                ListenableBuilder(
+                  listenable: _danmakuController,
+                  builder: (context, _) {
+                    return DanmakuView(
+                      danmakuList: _danmakuController.danmakuList,
+                      currentPosition: _controller!.value.position,
+                      isPlaying: _controller!.value.isPlaying,
+                      config: _danmakuController.config,
+                    );
                   },
                 ),
-              ),
-          ],
+
+              if (_showControls &&
+                  !_isLocked &&
+                  !_isInitializing &&
+                  _controller != null)
+                _buildControls(),
+
+              // 缓冲加载动画（放在最上层，确保不被遮挡）
+              if (_forceShowBuffering ||
+                  (_controller != null &&
+                      _controller!.value.isInitialized &&
+                      _controller!.value.isBuffering))
+                _buildBufferingIndicator(),
+
+              if (_showControls)
+                Positioned(
+                  left: 16,
+                  top: MediaQuery.of(context).size.height / 2 - 24,
+                  child: IconButton(
+                    icon: Icon(
+                      _isLocked ? Icons.lock : Icons.lock_open,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                    onPressed: () {
+                      setState(() => _isLocked = !_isLocked);
+                      if (_isLocked) {
+                        _hideTimer?.cancel();
+                      } else {
+                        _startHideTimer();
+                      }
+                    },
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -1044,11 +1176,10 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
       child: DragToMoveArea(
         child: Padding(
           padding: EdgeInsets.only(
-            left: isMacOS ? 80.0 : 8.0, 
-            right: 8.0, 
-            top: isMacOS ? 4.0 : 0.0, 
-            bottom: 0.0
-          ),
+              left: isMacOS ? 80.0 : 8.0,
+              right: 8.0,
+              top: isMacOS ? 4.0 : 0.0,
+              bottom: 0.0),
           child: SizedBox(
             height: 42.0,
             child: Row(
@@ -1056,19 +1187,21 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
               children: [
                 IconButton(
                   icon: const Icon(Icons.arrow_back, color: Colors.white),
-                  onPressed: () {
-                    Navigator.pop(context);
-                  },
+                  onPressed: _closePlayerWindow,
                 ),
                 Expanded(
                   child: Text(
                     widget.title,
-                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: Colors.black.withOpacity(0.5),
                     borderRadius: BorderRadius.circular(4),
@@ -1076,25 +1209,33 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.speed, color: Colors.greenAccent, size: 14),
+                      const Icon(Icons.speed,
+                          color: Colors.greenAccent, size: 14),
                       const SizedBox(width: 4),
                       Text(
                         _networkSpeed,
-                        style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.w500),
+                        style: const TextStyle(
+                            color: Colors.greenAccent,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500),
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(width: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: Colors.black.withOpacity(0.5),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
                     _currentTime,
-                    style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -1116,7 +1257,9 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
         ),
         const SizedBox(width: 48),
         _buildCircleButton(
-          icon: _controller?.value.isPlaying == true ? Icons.pause : Icons.play_arrow,
+          icon: _controller?.value.isPlaying == true
+              ? Icons.pause
+              : Icons.play_arrow,
           size: 64,
           iconSize: 48,
           onPressed: _togglePlayPause,
@@ -1153,16 +1296,17 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
   Widget _buildProgressBar() {
     final position = _controller?.value.position ?? Duration.zero;
     final duration = _controller?.value.duration ?? Duration.zero;
-    
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
       child: Row(
         children: [
           Text(
-            _isDragging 
+            _isDragging
                 ? _formatDuration(Duration(milliseconds: _dragPosition.toInt()))
                 : _formatDuration(position),
-            style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+                color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -1173,7 +1317,8 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
                 final currentMs = _isDragging
                     ? _dragPosition
                     : position.inMilliseconds.toDouble();
-                final progress = maxMs > 0 ? (currentMs / maxMs).clamp(0.0, 1.0) : 0.0;
+                final progress =
+                    maxMs > 0 ? (currentMs / maxMs).clamp(0.0, 1.0) : 0.0;
 
                 return GestureDetector(
                   behavior: HitTestBehavior.opaque,
@@ -1190,38 +1335,42 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
                     final delta = details.delta.dx;
                     final msDelta = (delta / totalWidth) * maxMs;
                     setState(() {
-                      _dragPosition = (_dragPosition + msDelta).clamp(0.0, maxMs).toDouble();
+                      _dragPosition = (_dragPosition + msDelta)
+                          .clamp(0.0, maxMs)
+                          .toDouble();
                     });
                   },
                   onHorizontalDragEnd: (details) {
-                    final targetPosition = Duration(milliseconds: _dragPosition.toInt());
-                    
+                    final targetPosition =
+                        Duration(milliseconds: _dragPosition.toInt());
+
                     setState(() {
                       _isDragging = false;
                     });
-                    
+
                     _controller?.seekTo(targetPosition);
-                    
+
                     // Seek 完成后，监控是否真正开始播放
                     _bufferingTimer?.cancel();
                     var lastPosition = -1;
                     var stuckCount = 0;
-                    
-                    _bufferingTimer = Timer.periodic(const Duration(milliseconds: 300), (timer) {
+
+                    _bufferingTimer = Timer.periodic(
+                        const Duration(milliseconds: 300), (timer) {
                       if (!mounted || _controller == null) {
                         timer.cancel();
                         _bufferingTimer = null;
                         return;
                       }
-                      
+
                       final currentPos = _controller!.value.position.inSeconds;
-                      
+
                       if (lastPosition == -1) {
                         // 第一次检查，记录初始位置
                         lastPosition = currentPos;
                         return;
                       }
-                      
+
                       // 检查位置是否在变化（视频是否在播放）
                       if ((currentPos - lastPosition).abs() > 0) {
                         // 位置在变化，说明正在播放
@@ -1238,11 +1387,11 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
                           setState(() => _forceShowBuffering = true);
                         }
                       }
-                      
+
                       lastPosition = currentPos;
                       // 不设置超时，一直等待直到开始播放
                     });
-                    
+
                     _startHideTimer();
                   },
                   child: Container(
@@ -1317,7 +1466,8 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
             if (_textTracks.isNotEmpty)
               TextButton(
                 onPressed: _showSubtitleMenu,
-                child: const Text('字幕', style: TextStyle(color: Colors.white, fontSize: 14)),
+                child: const Text('字幕',
+                    style: TextStyle(color: Colors.white, fontSize: 14)),
               ),
             // 弹幕按钮
             ListenableBuilder(
@@ -1328,19 +1478,19 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
                     _danmakuController.toggleEnabled();
                   },
                   icon: Icon(
-                    _danmakuController.config.enabled 
-                        ? Icons.chat_bubble 
+                    _danmakuController.config.enabled
+                        ? Icons.chat_bubble
                         : Icons.chat_bubble_outline,
-                    color: _danmakuController.config.enabled 
-                        ? Colors.blue 
+                    color: _danmakuController.config.enabled
+                        ? Colors.blue
                         : Colors.white,
                     size: 18,
                   ),
                   label: Text(
                     '弹幕',
                     style: TextStyle(
-                      color: _danmakuController.config.enabled 
-                          ? Colors.blue 
+                      color: _danmakuController.config.enabled
+                          ? Colors.blue
                           : Colors.white,
                       fontSize: 14,
                     ),
@@ -1359,8 +1509,10 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
                               onTap: () {}, // 阻止点击穿透到背景
                               child: Container(
                                 constraints: BoxConstraints(
-                                  maxWidth: MediaQuery.of(context).size.width - 80,
-                                  maxHeight: MediaQuery.of(context).size.height - 160,
+                                  maxWidth:
+                                      MediaQuery.of(context).size.width - 80,
+                                  maxHeight:
+                                      MediaQuery.of(context).size.height - 160,
                                 ),
                                 child: DanmakuSettingsPanel(
                                   controller: _danmakuController,
@@ -1377,11 +1529,13 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
             ),
             TextButton(
               onPressed: _showAspectRatioMenu,
-              child: Text(_getAspectRatioLabel(), style: const TextStyle(color: Colors.white, fontSize: 14)),
+              child: Text(_getAspectRatioLabel(),
+                  style: const TextStyle(color: Colors.white, fontSize: 14)),
             ),
             TextButton(
               onPressed: _showSpeedMenu,
-              child: Text('${_playbackSpeed}x', style: const TextStyle(color: Colors.white, fontSize: 14)),
+              child: Text('${_playbackSpeed}x',
+                  style: const TextStyle(color: Colors.white, fontSize: 14)),
             ),
           ],
         ),
@@ -1389,9 +1543,11 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
     );
   }
 
-  Widget _buildBottomSheetContainer(BuildContext context, String title, Widget menuContent) {
+  Widget _buildBottomSheetContainer(
+      BuildContext context, String title, Widget menuContent) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? Colors.black.withOpacity(0.7) : Colors.white.withOpacity(0.85);
+    final bgColor =
+        isDark ? Colors.black.withOpacity(0.7) : Colors.white.withOpacity(0.85);
     final grabberColor = isDark ? Colors.white38 : Colors.black26;
     final titleColor = isDark ? Colors.white : Colors.black87;
 
@@ -1416,7 +1572,11 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
               ),
               Padding(
                 padding: const EdgeInsets.only(bottom: 16),
-                child: Text(title, style: TextStyle(color: titleColor, fontSize: 18, fontWeight: FontWeight.bold)),
+                child: Text(title,
+                    style: TextStyle(
+                        color: titleColor,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold)),
               ),
               Flexible(child: menuContent),
             ],
@@ -1430,7 +1590,8 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
     _hideTimer?.cancel();
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.transparent, // 使用透明背景，依靠 _buildBottomSheetContainer 展示高斯模糊
+      backgroundColor:
+          Colors.transparent, // 使用透明背景，依靠 _buildBottomSheetContainer 展示高斯模糊
       isScrollControlled: true,
       builder: (context) {
         return _buildBottomSheetContainer(
@@ -1449,7 +1610,8 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
                 final isInternal = track['is_internal'] == true;
                 final title = track['title'] ?? '未知语言';
                 final displayTitle = isInternal ? '$title (内置)' : '$title (外挂)';
-                return _buildActionItem(displayTitle, index, _selectedTextTrack, () {
+                return _buildActionItem(displayTitle, index, _selectedTextTrack,
+                    () {
                   setState(() => _selectedTextTrack = index);
                   if (isInternal) {
                     _controller?.setSubtitleTracks([track['mdk_id']]);
@@ -1484,9 +1646,12 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
           Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildActionItem('适应 (Fit)', 'fit', _aspectRatio, () => _changeAspectRatio('fit')),
-              _buildActionItem('拉伸 (Stretch)', 'stretch', _aspectRatio, () => _changeAspectRatio('stretch')),
-              _buildActionItem('填充 (Fill)', 'fill', _aspectRatio, () => _changeAspectRatio('fill')),
+              _buildActionItem('适应 (Fit)', 'fit', _aspectRatio,
+                  () => _changeAspectRatio('fit')),
+              _buildActionItem('拉伸 (Stretch)', 'stretch', _aspectRatio,
+                  () => _changeAspectRatio('stretch')),
+              _buildActionItem('填充 (Fill)', 'fill', _aspectRatio,
+                  () => _changeAspectRatio('fill')),
               const SizedBox(height: 16),
             ],
           ),
@@ -1507,12 +1672,18 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
           Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildActionItem('0.5x', 0.5, _playbackSpeed, () => _changeSpeed(0.5)),
-              _buildActionItem('0.75x', 0.75, _playbackSpeed, () => _changeSpeed(0.75)),
-              _buildActionItem('1.0x (正常)', 1.0, _playbackSpeed, () => _changeSpeed(1.0)),
-              _buildActionItem('1.25x', 1.25, _playbackSpeed, () => _changeSpeed(1.25)),
-              _buildActionItem('1.5x', 1.5, _playbackSpeed, () => _changeSpeed(1.5)),
-              _buildActionItem('2.0x', 2.0, _playbackSpeed, () => _changeSpeed(2.0)),
+              _buildActionItem(
+                  '0.5x', 0.5, _playbackSpeed, () => _changeSpeed(0.5)),
+              _buildActionItem(
+                  '0.75x', 0.75, _playbackSpeed, () => _changeSpeed(0.75)),
+              _buildActionItem(
+                  '1.0x (正常)', 1.0, _playbackSpeed, () => _changeSpeed(1.0)),
+              _buildActionItem(
+                  '1.25x', 1.25, _playbackSpeed, () => _changeSpeed(1.25)),
+              _buildActionItem(
+                  '1.5x', 1.5, _playbackSpeed, () => _changeSpeed(1.5)),
+              _buildActionItem(
+                  '2.0x', 2.0, _playbackSpeed, () => _changeSpeed(2.0)),
               const SizedBox(height: 16),
             ],
           ),
@@ -1521,11 +1692,12 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
     ).then((_) => _startHideTimer());
   }
 
-  Widget _buildActionItem<T>(String title, T value, T groupValue, VoidCallback onTap) {
+  Widget _buildActionItem<T>(
+      String title, T value, T groupValue, VoidCallback onTap) {
     bool isSelected = value == groupValue;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textColor = isSelected 
-        ? Theme.of(context).primaryColor 
+    final textColor = isSelected
+        ? Theme.of(context).primaryColor
         : (isDark ? Colors.white : Colors.black87);
     final inactiveIconColor = isDark ? Colors.white38 : Colors.black26;
 
@@ -1534,22 +1706,23 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         decoration: BoxDecoration(
-          color: isSelected ? Theme.of(context).primaryColor.withOpacity(0.1) : Colors.transparent,
+          color: isSelected
+              ? Theme.of(context).primaryColor.withOpacity(0.1)
+              : Colors.transparent,
         ),
         child: Row(
           children: [
             Expanded(
-              child: Text(
-                title, 
-                style: TextStyle(
-                  color: textColor,
-                  fontSize: 16,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500
-                )
-              ),
+              child: Text(title,
+                  style: TextStyle(
+                      color: textColor,
+                      fontSize: 16,
+                      fontWeight:
+                          isSelected ? FontWeight.bold : FontWeight.w500)),
             ),
-            if (isSelected) 
-              Icon(Icons.check_circle, color: Theme.of(context).primaryColor, size: 24)
+            if (isSelected)
+              Icon(Icons.check_circle,
+                  color: Theme.of(context).primaryColor, size: 24)
             else
               Icon(Icons.circle_outlined, color: inactiveIconColor, size: 24),
           ],
@@ -1562,7 +1735,9 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
     return Center(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        decoration: BoxDecoration(color: Colors.black.withOpacity(0.7), borderRadius: BorderRadius.circular(16)),
+        decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.7),
+            borderRadius: BorderRadius.circular(16)),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1577,7 +1752,8 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
               ),
             ),
             const SizedBox(height: 4),
-            Text('${(_brightness * 100).toInt()}%', style: const TextStyle(color: Colors.white)),
+            Text('${(_brightness * 100).toInt()}%',
+                style: const TextStyle(color: Colors.white)),
           ],
         ),
       ),
@@ -1588,12 +1764,16 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
     return Center(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        decoration: BoxDecoration(color: Colors.black.withOpacity(0.7), borderRadius: BorderRadius.circular(16)),
+        decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.7),
+            borderRadius: BorderRadius.circular(16)),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              _volume == 0 ? Icons.volume_off : (_volume < 0.5 ? Icons.volume_down : Icons.volume_up),
+              _volume == 0
+                  ? Icons.volume_off
+                  : (_volume < 0.5 ? Icons.volume_down : Icons.volume_up),
               color: Colors.white,
               size: 48,
             ),
@@ -1607,7 +1787,8 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
               ),
             ),
             const SizedBox(height: 4),
-            Text('${(_volume * 100).toInt()}%', style: const TextStyle(color: Colors.white)),
+            Text('${(_volume * 100).toInt()}%',
+                style: const TextStyle(color: Colors.white)),
           ],
         ),
       ),
@@ -1618,13 +1799,19 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> {
     return Center(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        decoration: BoxDecoration(color: Colors.black.withOpacity(0.7), borderRadius: BorderRadius.circular(16)),
+        decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.7),
+            borderRadius: BorderRadius.circular(16)),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.fast_forward, color: Colors.white, size: 48),
             const SizedBox(height: 12),
-            Text(_seekIndicatorText, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+            Text(_seekIndicatorText,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold)),
           ],
         ),
       ),

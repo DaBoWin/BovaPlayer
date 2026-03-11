@@ -1,0 +1,555 @@
+import 'package:flutter/material.dart';
+
+import '../../../core/theme/design_system.dart';
+import '../controllers/discover_controller.dart';
+import '../models/discover_feed.dart';
+import '../models/discover_section.dart';
+import '../models/tmdb_media_item.dart';
+import '../widgets/discover_bookmark_button.dart';
+import '../widgets/discover_featured_hero.dart';
+import '../widgets/discover_latency_indicator.dart';
+import '../widgets/discover_matched_source_strip.dart';
+import '../widgets/discover_poster_card.dart';
+import '../services/discover_library_resolver_service.dart';
+import '../widgets/discover_section_row.dart';
+
+class DiscoverPage extends StatefulWidget {
+  const DiscoverPage({
+    super.key,
+    required this.feed,
+    this.onExploreItem,
+    this.resolveLibraryMatches,
+    this.onQuickPlayMatch,
+    this.onSaveItem,
+    this.isBookmarked,
+    this.bookmarkListenable,
+  });
+
+  final DiscoverFeed feed;
+  final Future<void> Function(TmdbMediaItem item)? onExploreItem;
+  final Future<List<DiscoverLibraryMatch>> Function(TmdbMediaItem item)?
+      resolveLibraryMatches;
+  final Future<void> Function(
+    TmdbMediaItem item,
+    DiscoverLibraryMatch match,
+  )? onQuickPlayMatch;
+  final Future<void> Function(TmdbMediaItem item)? onSaveItem;
+  final bool Function(TmdbMediaItem item)? isBookmarked;
+  final Listenable? bookmarkListenable;
+
+  @override
+  State<DiscoverPage> createState() => _DiscoverPageState();
+}
+
+class _DiscoverPageState extends State<DiscoverPage> {
+  late final DiscoverController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = DiscoverController();
+    _controller.load(widget.feed, force: true);
+  }
+
+  @override
+  void didUpdateWidget(covariant DiscoverPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.feed != widget.feed) {
+      _controller.load(widget.feed, force: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  String _itemKey(TmdbMediaItem item) => '${item.mediaType}-${item.id}';
+
+  List<Widget> _buildQuickPlayButtons(TmdbMediaItem item,
+      {bool compact = false}) {
+    final resolver = widget.resolveLibraryMatches;
+    final onQuickPlayMatch = widget.onQuickPlayMatch;
+    if (resolver == null || onQuickPlayMatch == null) {
+      return const [];
+    }
+
+    return [
+      FutureBuilder<List<DiscoverLibraryMatch>>(
+        future: resolver(item),
+        builder: (context, snapshot) {
+          final matches = snapshot.data ?? const <DiscoverLibraryMatch>[];
+          if (matches.isEmpty) {
+            return const SizedBox.shrink();
+          }
+
+          if (compact) {
+            return DiscoverMatchedSourceStrip(
+              matches: matches,
+              onTap: (match) => onQuickPlayMatch(item, match),
+            );
+          }
+
+          final chips = [
+            for (final match in matches)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: _QuickPlayButton(
+                  key: ValueKey('${_itemKey(item)}-${match.source.id}'),
+                  label: match.source.name,
+                  latencyMs: match.responseTimeMs,
+                  onTap: () => onQuickPlayMatch(item, match),
+                ),
+              ),
+          ];
+
+          return Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: chips.map((chip) => chip.child!).toList(growable: false),
+          );
+        },
+      ),
+    ];
+  }
+
+  Widget? _buildBookmarkOverlay(TmdbMediaItem item) {
+    final onSaveItem = widget.onSaveItem;
+    final isBookmarked = widget.isBookmarked;
+    if (onSaveItem == null || isBookmarked == null) {
+      return null;
+    }
+
+    return DiscoverBookmarkButton(
+      isActive: isBookmarked(item),
+      onTap: () => onSaveItem(item),
+    );
+  }
+
+  Future<void> _handleItemTap(TmdbMediaItem item) async {
+    final handler = widget.onExploreItem;
+    if (handler != null) {
+      await handler(item);
+      return;
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Selected: ${item.title}')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = DesignSystem.isMobile(context);
+    final animation = widget.bookmarkListenable == null
+        ? _controller
+        : Listenable.merge([_controller, widget.bookmarkListenable!]);
+
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, _) {
+        if (!_controller.isConfigured) {
+          return _ConfigurationEmptyState(feed: widget.feed);
+        }
+
+        if (_controller.isLoading && _controller.payload == null) {
+          return const _DiscoverLoadingState();
+        }
+
+        if (_controller.errorMessage != null && _controller.payload == null) {
+          return _DiscoverErrorState(
+            message: _controller.errorMessage!,
+            onRetry: _controller.refresh,
+          );
+        }
+
+        final payload = _controller.payload ??
+            const DiscoverPayload(featured: null, wallItems: [], sections: []);
+
+        return RefreshIndicator(
+          color: const Color(0xFFE11D48),
+          onRefresh: _controller.refresh,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final horizontalPadding = constraints.maxWidth >= 1200
+                  ? 36.0
+                  : constraints.maxWidth >= 768
+                      ? 24.0
+                      : 16.0;
+              final wallColumns = constraints.maxWidth >= 1560
+                  ? 6
+                  : constraints.maxWidth >= 1320
+                      ? 5
+                      : constraints.maxWidth >= 1024
+                          ? 4
+                          : constraints.maxWidth >= 700
+                              ? 3
+                              : 2;
+              final wallCardWidth = (constraints.maxWidth -
+                      horizontalPadding * 2 -
+                      (wallColumns - 1) * 18) /
+                  wallColumns;
+              final wallCardExtent =
+                  wallCardWidth / 0.704 + (isMobile ? 140 : 118);
+              return CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(
+                    parent: BouncingScrollPhysics()),
+                slivers: [
+                  if (payload.featured case final TmdbMediaItem featured)
+                    SliverPadding(
+                      padding: EdgeInsets.fromLTRB(
+                          horizontalPadding, 24, horizontalPadding, 28),
+                      sliver: SliverToBoxAdapter(
+                        child: DiscoverFeaturedHero(
+                          item: featured,
+                          backdropUrl: _controller
+                              .imageUrl(featured.backdropPath, size: 'w1280'),
+                          compactLayout: isMobile,
+                          onPrimaryAction: () => _handleItemTap(featured),
+                          onSecondaryAction: widget.onSaveItem == null
+                              ? null
+                              : () => widget.onSaveItem!(featured),
+                          secondaryActive:
+                              widget.isBookmarked?.call(featured) ?? false,
+                          quickPlayButtons: _buildQuickPlayButtons(featured,
+                              compact: isMobile),
+                        ),
+                      ),
+                    ),
+                  if (payload.featured == null)
+                    const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                  if (payload.wallItems.isNotEmpty)
+                    SliverPadding(
+                      padding: EdgeInsets.fromLTRB(
+                          horizontalPadding, 8, horizontalPadding, 24),
+                      sliver: const SliverToBoxAdapter(
+                        child: _SectionIntro(
+                          title: 'Hot Wall',
+                          subtitle:
+                              'A live grid of high-interest titles pulled from TMDB.',
+                        ),
+                      ),
+                    ),
+                  if (payload.wallItems.isNotEmpty)
+                    SliverPadding(
+                      padding: EdgeInsets.fromLTRB(
+                          horizontalPadding, 0, horizontalPadding, 36),
+                      sliver: SliverGrid(
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) {
+                            final item = payload.wallItems[index];
+                            return DiscoverPosterCard(
+                              item: item,
+                              posterUrl: _controller.imageUrl(item.posterPath,
+                                  size: 'w500'),
+                              onTap: () => _handleItemTap(item),
+                              quickPlayButtons:
+                                  _buildQuickPlayButtons(item, compact: true),
+                              overlayAction: _buildBookmarkOverlay(item),
+                            );
+                          },
+                          childCount: payload.wallItems.length,
+                        ),
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: wallColumns,
+                          crossAxisSpacing: 18,
+                          mainAxisSpacing: 22,
+                          mainAxisExtent: wallCardExtent,
+                        ),
+                      ),
+                    ),
+                  for (final section in payload.sections)
+                    SliverPadding(
+                      padding: EdgeInsets.fromLTRB(
+                          horizontalPadding, 0, horizontalPadding, 28),
+                      sliver: SliverToBoxAdapter(
+                        child: DiscoverSectionRow(
+                          section: section,
+                          imageBuilder: _controller.imageUrl,
+                          onItemTap: _handleItemTap,
+                          quickPlayBuilder: (item) =>
+                              _buildQuickPlayButtons(item, compact: true),
+                          overlayActionBuilder: _buildBookmarkOverlay,
+                        ),
+                      ),
+                    ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 28)),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _QuickPlayButton extends StatefulWidget {
+  const _QuickPlayButton({
+    super.key,
+    required this.label,
+    required this.onTap,
+    this.latencyMs,
+  });
+
+  final String label;
+  final int? latencyMs;
+  final VoidCallback onTap;
+
+  @override
+  State<_QuickPlayButton> createState() => _QuickPlayButtonState();
+}
+
+class _QuickPlayButtonState extends State<_QuickPlayButton> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: DesignSystem.durationFast,
+          curve: DesignSystem.easeOutQuart,
+          transform: Matrix4.identity()
+            ..translateByDouble(0.0, _isHovered ? -2.0 : 0.0, 0.0, 1.0),
+          constraints: const BoxConstraints(
+            maxWidth: 240,
+          ),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 9,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.96),
+            borderRadius: BorderRadius.circular(DesignSystem.radiusFull),
+            border: Border.all(
+              color: const Color(0xFF111827).withValues(alpha: 0.08),
+            ),
+            boxShadow: _isHovered
+                ? [
+                    BoxShadow(
+                      color: const Color(0xFF111827).withValues(alpha: 0.12),
+                      blurRadius: 18,
+                      offset: const Offset(0, 10),
+                    ),
+                  ]
+                : const [],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.play_circle_fill_rounded,
+                size: 16,
+                color: Color(0xFFE11D48),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                widget.label,
+                style: const TextStyle(
+                  fontSize: DesignSystem.textSm,
+                  fontWeight: DesignSystem.weightSemibold,
+                  color: DesignSystem.neutral900,
+                  letterSpacing: -0.1,
+                ),
+              ),
+              const SizedBox(width: 8),
+              DiscoverLatencyIndicator(latencyMs: widget.latencyMs),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionIntro extends StatelessWidget {
+  const _SectionIntro({
+    required this.title,
+    required this.subtitle,
+  });
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 34,
+            fontWeight: DesignSystem.weightMedium,
+            color: DesignSystem.neutral700,
+            letterSpacing: -0.9,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          subtitle,
+          style: const TextStyle(
+            fontSize: DesignSystem.textBase,
+            color: DesignSystem.neutral500,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ConfigurationEmptyState extends StatelessWidget {
+  const _ConfigurationEmptyState({required this.feed});
+
+  final DiscoverFeed feed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Container(
+          margin: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(DesignSystem.radius2xl),
+            border: Border.all(color: DesignSystem.neutral200),
+            boxShadow: DesignSystem.shadowMd,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 68,
+                height: 68,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEE2E2),
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                child: const Icon(Icons.movie_creation_outlined,
+                    color: Color(0xFFE11D48), size: 30),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                '${feed.title} needs TMDB credentials',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: DesignSystem.weightSemibold,
+                  color: DesignSystem.neutral900,
+                  letterSpacing: -0.8,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Add `TMDB_READ_ACCESS_TOKEN` or `TMDB_API_KEY` to `ui/flutter_app/.env` to load live posters, trending picks and featured backdrops.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: DesignSystem.textBase,
+                  color: DesignSystem.neutral500,
+                  height: 1.6,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DiscoverLoadingState extends StatelessWidget {
+  const _DiscoverLoadingState();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: CircularProgressIndicator(color: Color(0xFFE11D48)),
+    );
+  }
+}
+
+class _DiscoverErrorState extends StatelessWidget {
+  const _DiscoverErrorState({
+    required this.message,
+    required this.onRetry,
+  });
+
+  final String message;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Container(
+          margin: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(DesignSystem.radius2xl),
+            border: Border.all(color: DesignSystem.neutral200),
+            boxShadow: DesignSystem.shadowMd,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.wifi_off_rounded,
+                color: Color(0xFFE11D48),
+                size: 36,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Unable to load discover feed',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: DesignSystem.weightSemibold,
+                  color: DesignSystem.neutral900,
+                  letterSpacing: -0.7,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: DesignSystem.textBase,
+                  color: DesignSystem.neutral500,
+                  height: 1.6,
+                ),
+              ),
+              const SizedBox(height: 22),
+              FilledButton(
+                onPressed: onRetry,
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFE11D48),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 14,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      DesignSystem.radiusFull,
+                    ),
+                  ),
+                ),
+                child: const Text('Try again'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
