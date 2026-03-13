@@ -2,6 +2,8 @@
 
 #include <dwmapi.h>
 #include <flutter_windows.h>
+#include <iostream>
+#include <sstream>
 
 #include "resource.h"
 
@@ -35,6 +37,28 @@ using EnableNonClientDpiScaling = BOOL __stdcall(HWND hwnd);
 // scale factor
 int Scale(int source, double scale_factor) {
   return static_cast<int>(source * scale_factor);
+}
+
+const char* ActivateStateName(WPARAM wparam) {
+  switch (LOWORD(wparam)) {
+    case WA_INACTIVE:
+      return "WA_INACTIVE";
+    case WA_ACTIVE:
+      return "WA_ACTIVE";
+    case WA_CLICKACTIVE:
+      return "WA_CLICKACTIVE";
+    default:
+      return "WA_UNKNOWN";
+  }
+}
+
+std::string RectToString(const RECT& rect) {
+  std::ostringstream stream;
+  stream << "[" << rect.left << "," << rect.top << " - " << rect.right << ","
+         << rect.bottom << "]"
+         << " w=" << (rect.right - rect.left)
+         << " h=" << (rect.bottom - rect.top);
+  return stream.str();
 }
 
 // Dynamically loads the |EnableNonClientDpiScaling| from the User32 module.
@@ -144,6 +168,14 @@ bool Win32Window::Create(const std::wstring& title,
     return false;
   }
 
+  RECT window_rect{};
+  GetWindowRect(window, &window_rect);
+
+  std::cout << "[RunnerWindow] Create hwnd=" << window
+            << " owner=" << GetWindow(window, GW_OWNER)
+            << " parent=" << GetParent(window)
+            << " rect=" << RectToString(window_rect) << std::endl;
+
   UpdateTheme(window);
 
   return OnCreate();
@@ -179,7 +211,29 @@ Win32Window::MessageHandler(HWND hwnd,
                             WPARAM const wparam,
                             LPARAM const lparam) noexcept {
   switch (message) {
+    case WM_MOUSEACTIVATE:
+      {
+        RECT rect{};
+        GetWindowRect(hwnd, &rect);
+      std::cout << "[RunnerWindow] WM_MOUSEACTIVATE hwnd=" << hwnd
+                << " owner=" << GetWindow(hwnd, GW_OWNER)
+                << " parent=" << GetParent(hwnd)
+                << " rect=" << RectToString(rect) << std::endl;
+      }
+      break;
+    case WM_SETFOCUS:
+      std::cout << "[RunnerWindow] WM_SETFOCUS hwnd=" << hwnd
+                << " child=" << child_content_ << std::endl;
+      break;
+    case WM_KILLFOCUS:
+      std::cout << "[RunnerWindow] WM_KILLFOCUS hwnd=" << hwnd
+                << " next=" << reinterpret_cast<HWND>(wparam) << std::endl;
+      break;
+    case WM_LBUTTONDOWN:
+      std::cout << "[RunnerWindow] WM_LBUTTONDOWN hwnd=" << hwnd << std::endl;
+      break;
     case WM_DESTROY:
+      std::cout << "[RunnerWindow] WM_DESTROY hwnd=" << hwnd << std::endl;
       window_handle_ = nullptr;
       Destroy();
       if (quit_on_close_) {
@@ -208,6 +262,15 @@ Win32Window::MessageHandler(HWND hwnd,
     }
 
     case WM_ACTIVATE:
+      {
+        RECT rect{};
+        GetWindowRect(hwnd, &rect);
+      std::cout << "[RunnerWindow] WM_ACTIVATE hwnd=" << hwnd
+                << " state=" << ActivateStateName(wparam)
+                << " other=" << reinterpret_cast<HWND>(lparam)
+                << " child=" << child_content_
+                << " rect=" << RectToString(rect) << std::endl;
+      }
       if (child_content_ != nullptr) {
         SetFocus(child_content_);
       }

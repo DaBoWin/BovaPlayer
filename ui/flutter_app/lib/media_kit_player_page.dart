@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'dart:ui';
@@ -15,6 +15,8 @@ import 'features/danmaku/controllers/danmaku_controller.dart';
 import 'features/danmaku/widgets/danmaku_view.dart';
 import 'features/danmaku/widgets/danmaku_settings_panel.dart';
 import 'features/auth/presentation/providers/auth_provider.dart';
+
+enum _GestureAxis { none, horizontal, vertical }
 
 class MediaKitPlayerPage extends StatefulWidget {
   final String url;
@@ -72,6 +74,17 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
   bool _showSeekIndicator = false;
   String _seekIndicatorText = '';
   int _accumulatedSeekSeconds = 0; // 手势拖拉累计的秒数
+  DateTime? _lastSeekIndicatorUpdateAt;
+  bool _gestureControlsBrightness = true;
+  double _gestureStartBrightness = 0.5;
+  double _gestureStartVolume = 0.5;
+  double _sideDragStartLocalDy = 0;
+  double _seekDragAccumulatedDx = 0;
+  static const Duration _seekIndicatorUpdateInterval =
+      Duration(milliseconds: 120);
+  static const double _gestureSideWidthFactor = 0.22;
+  static const double _gestureCenterWidthFactor = 0.56;
+  static const double _gestureRegionHeightFactor = 0.6;
   Timer? _indicatorTimer;
   bool _isDraggingProgress = false;
   double _dragProgressPosition = 0;
@@ -686,104 +699,122 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
 
   // ============== 手势控制 ==============
 
-  void _handleVerticalDragUpdate(DragUpdateDetails details, bool isLeft) {
+  void _handleVerticalDragUpdate(double totalDy) {
     if (_isLocked) return;
 
-    final delta = details.delta.dy;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final valueDelta =
+        (-totalDy / (screenHeight * _gestureRegionHeightFactor) * 0.9)
+            .clamp(-1.0, 1.0);
 
-    if (isLeft) {
-      // 左侧控制亮度
+    if (_gestureControlsBrightness) {
       setState(() {
-        _brightness = (_brightness - delta / 500).clamp(0.0, 1.0);
+        _brightness = (_gestureStartBrightness + valueDelta).clamp(0.0, 1.0);
         _showBrightnessIndicator = true;
         _showVolumeIndicator = false;
         _showSeekIndicator = false;
       });
 
-      // 设置屏幕亮度
       SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
         statusBarBrightness:
             _brightness > 0.5 ? Brightness.light : Brightness.dark,
       ));
-
-      _startIndicatorTimer();
     } else {
-      // 右侧控制音量
       setState(() {
-        _volume = (_volume - delta / 500).clamp(0.0, 1.0);
+        _volume = (_gestureStartVolume + valueDelta).clamp(0.0, 1.0);
         _showVolumeIndicator = true;
         _showBrightnessIndicator = false;
         _showSeekIndicator = false;
       });
 
       _player.setVolume(_volume * 100);
-      _startIndicatorTimer();
     }
+
+    _startIndicatorTimer();
   }
 
   // 手势拖拉相关
   Duration? _seekStartPosition; // 手势按下时的初始播放位置
   Duration? _seekTargetPosition; // 计算出的目标位置
 
-  void _handleHorizontalDragStart(DragStartDetails details) {
+  void _handleSideGestureStart(DragStartDetails details, bool controlsBrightness) {
     if (_isLocked) return;
-    // 记录拖拽开始时的当前播放进度
-    _seekStartPosition = _player.state.position;
-    _seekTargetPosition = _seekStartPosition;
+    _gestureControlsBrightness = controlsBrightness;
+    _gestureStartBrightness = _brightness;
+    _gestureStartVolume = _volume;
+    _sideDragStartLocalDy = details.localPosition.dy;
   }
 
-  void _handleHorizontalDragUpdate(DragUpdateDetails details) {
-    if (_isLocked || _seekStartPosition == null) return;
+  void _handleCenterSeekStart(DragStartDetails details) {
+    if (_isLocked) return;
+    _seekStartPosition = _player.state.position;
+    _seekTargetPosition = _seekStartPosition;
+    _seekDragAccumulatedDx = 0;
+    _lastSeekIndicatorUpdateAt = null;
+  }
 
-    // 获取屏幕宽度和当前的横向移动增量
-    final screenWidth = MediaQuery.of(context).size.width;
-    final delta = details.primaryDelta ?? 0.0;
+  void _handleCenterSeekUpdate(DragUpdateDetails details) {
+    if (_isLocked) return;
+    if (_seekStartPosition == null) return;
 
-    // 定义滑动灵敏度：滑满全屏大约跨度 180 秒（3 分钟），也可根据视频总时长动态调整
-    // 这里采用：屏幕每滑动 1%，步进 1.5 秒
     final duration = _player.state.duration;
-    if (duration.inSeconds > 0) {
-      final percentageDelta = delta / screenWidth;
-      // 我们设定滑过全屏等于移动 180 秒，如果是长视频也可以改大
-      // 或者按视频总长度的 5%~10% 来映射
-      final secondsDelta = (percentageDelta * 180).round();
+    if (duration.inSeconds <= 0) return;
 
-      var newTargetSeconds = (_seekTargetPosition!.inSeconds + secondsDelta);
-      // 保证不越界
-      newTargetSeconds = newTargetSeconds.clamp(0, duration.inSeconds);
+    final gestureWidth =
+        MediaQuery.of(context).size.width * _gestureCenterWidthFactor;
+    _seekDragAccumulatedDx += details.delta.dx;
+    final offsetSeconds =
+        ((_seekDragAccumulatedDx / gestureWidth).clamp(-1.0, 1.0) * 600).round();
 
-      _seekTargetPosition = Duration(seconds: newTargetSeconds);
+    final newTargetSeconds =
+        (_seekStartPosition!.inSeconds + offsetSeconds).clamp(0, duration.inSeconds);
+    _seekTargetPosition = Duration(seconds: newTargetSeconds);
 
-      // 格式化显示时间
-      final minutes = newTargetSeconds ~/ 60;
-      final seconds = newTargetSeconds % 60;
-      final timeStr =
-          '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    final minutes = newTargetSeconds ~/ 60;
+    final seconds = newTargetSeconds % 60;
+    final timeStr =
+        '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    final now = DateTime.now();
+    final shouldRefreshUi = _seekIndicatorText != timeStr &&
+        (_lastSeekIndicatorUpdateAt == null ||
+            now.difference(_lastSeekIndicatorUpdateAt!) >=
+                _seekIndicatorUpdateInterval);
 
+    if (shouldRefreshUi || !_showSeekIndicator) {
+      _lastSeekIndicatorUpdateAt = now;
       setState(() {
         _showSeekIndicator = true;
         _showBrightnessIndicator = false;
         _showVolumeIndicator = false;
         _seekIndicatorText = timeStr;
       });
-
-      _startIndicatorTimer();
     }
+
+    _startIndicatorTimer();
   }
 
-  void _handleHorizontalDragEnd(DragEndDetails details) {
-    if (_isLocked || _seekTargetPosition == null) return;
+  void _handleCenterSeekEnd(DragEndDetails details) {
+    if (_isLocked || _seekTargetPosition == null) {
+      _resetGestureTracking();
+      return;
+    }
 
-    // 跳转到目标位置
-    _player.seek(_seekTargetPosition!);
+    if (_seekTargetPosition != null) {
+      _player.seek(_seekTargetPosition!);
 
-    // 重置
+      setState(() {
+        _showSeekIndicator = false;
+      });
+    }
+
+    _resetGestureTracking();
+  }
+
+  void _resetGestureTracking() {
     _seekStartPosition = null;
     _seekTargetPosition = null;
-
-    setState(() {
-      _showSeekIndicator = false;
-    });
+    _seekDragAccumulatedDx = 0;
+    _lastSeekIndicatorUpdateAt = null;
   }
 
   void _startIndicatorTimer() {
@@ -1233,14 +1264,6 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
       backgroundColor: Colors.black,
       body: GestureDetector(
         onTap: _toggleControls,
-        onVerticalDragUpdate: (details) {
-          final screenWidth = MediaQuery.of(context).size.width;
-          final isLeft = details.globalPosition.dx < screenWidth / 2;
-          _handleVerticalDragUpdate(details, isLeft);
-        },
-        onHorizontalDragStart: _handleHorizontalDragStart,
-        onHorizontalDragUpdate: _handleHorizontalDragUpdate,
-        onHorizontalDragEnd: _handleHorizontalDragEnd,
         child: Stack(
           children: [
             // 视频播放器
@@ -1269,6 +1292,65 @@ class _MediaKitPlayerPageState extends State<MediaKitPlayerPage> {
             if (_showBrightnessIndicator) _buildBrightnessIndicator(),
             if (_showVolumeIndicator) _buildVolumeIndicator(),
             if (_showSeekIndicator) _buildSeekIndicator(),
+
+            Positioned.fill(
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 22,
+                    child: Center(
+                      child: FractionallySizedBox(
+                        widthFactor: 1,
+                        heightFactor: _gestureRegionHeightFactor,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onVerticalDragStart: (details) =>
+                              _handleSideGestureStart(details, true),
+                          onVerticalDragUpdate: (details) =>
+                              _handleVerticalDragUpdate(
+                                  details.localPosition.dy - _sideDragStartLocalDy),
+                          child: const SizedBox.expand(),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    flex: 56,
+                    child: Center(
+                      child: FractionallySizedBox(
+                        widthFactor: 1,
+                        heightFactor: _gestureRegionHeightFactor,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onHorizontalDragStart: _handleCenterSeekStart,
+                          onHorizontalDragUpdate: _handleCenterSeekUpdate,
+                          onHorizontalDragEnd: _handleCenterSeekEnd,
+                          child: const SizedBox.expand(),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    flex: 22,
+                    child: Center(
+                      child: FractionallySizedBox(
+                        widthFactor: 1,
+                        heightFactor: _gestureRegionHeightFactor,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onVerticalDragStart: (details) =>
+                              _handleSideGestureStart(details, false),
+                          onVerticalDragUpdate: (details) =>
+                              _handleVerticalDragUpdate(
+                                  details.localPosition.dy - _sideDragStartLocalDy),
+                          child: const SizedBox.expand(),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
 
             // 错误信息显示 (自动重试面板)
             if (_errorMessage != null)

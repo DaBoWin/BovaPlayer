@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:ui';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -18,6 +18,8 @@ import 'features/danmaku/widgets/danmaku_view.dart';
 import 'features/danmaku/widgets/danmaku_settings_panel.dart';
 import 'package:provider/provider.dart';
 import 'features/auth/presentation/providers/auth_provider.dart';
+
+enum _GestureAxis { none, horizontal, vertical }
 
 class MdkPlayerPage extends StatefulWidget {
   final String url;
@@ -87,6 +89,18 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> with WindowListener {
   bool _showVolumeIndicator = false;
   bool _showSeekIndicator = false;
   String _seekIndicatorText = '';
+  DateTime? _lastSeekIndicatorUpdateAt;
+  bool _gestureControlsBrightness = true;
+  double _gestureStartBrightness = 0.5;
+  double _gestureStartVolume = 0.5;
+  double _sideDragStartLocalDy = 0;
+  Duration? _seekStartPosition;
+  double _seekDragAccumulatedDx = 0;
+  static const Duration _seekIndicatorUpdateInterval =
+      Duration(milliseconds: 120);
+  static const double _gestureSideWidthFactor = 0.22;
+  static const double _gestureCenterWidthFactor = 0.56;
+  static const double _gestureRegionHeightFactor = 0.72;
   Timer? _indicatorTimer;
 
   // 缓冲指示器相关
@@ -515,12 +529,16 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> with WindowListener {
     });
   }
 
-  void _handleVerticalDragUpdate(DragUpdateDetails details, bool isLeft) {
+  void _handleVerticalDragUpdate(double totalDy) {
     if (_isLocked) return;
-    final delta = details.delta.dy;
-    if (isLeft) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final valueDelta =
+        (-totalDy / (screenHeight * _gestureRegionHeightFactor) * 0.9)
+            .clamp(-1.0, 1.0);
+
+    if (_gestureControlsBrightness) {
       setState(() {
-        _brightness = (_brightness - delta / 500).clamp(0.0, 1.0);
+        _brightness = (_gestureStartBrightness + valueDelta).clamp(0.0, 1.0);
         _showBrightnessIndicator = true;
         _showVolumeIndicator = false;
         _showSeekIndicator = false;
@@ -529,103 +547,132 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> with WindowListener {
         statusBarBrightness:
             _brightness > 0.5 ? Brightness.light : Brightness.dark,
       ));
-      _startIndicatorTimer();
     } else {
       setState(() {
-        _volume = (_volume - delta / 500).clamp(0.0, 1.0);
+        _volume = (_gestureStartVolume + valueDelta).clamp(0.0, 1.0);
         _showVolumeIndicator = true;
         _showBrightnessIndicator = false;
         _showSeekIndicator = false;
       });
       _controller?.setVolume(_volume);
-      _startIndicatorTimer();
     }
+
+    _startIndicatorTimer();
   }
 
-  void _handleHorizontalDragUpdate(DragUpdateDetails details) {
+  void _handleSideGestureStart(DragStartDetails details, bool controlsBrightness) {
     if (_isLocked || _controller == null) return;
-    final screenWidth = MediaQuery.of(context).size.width;
+    _gestureControlsBrightness = controlsBrightness;
+    _gestureStartBrightness = _brightness;
+    _gestureStartVolume = _volume;
+    _sideDragStartLocalDy = details.localPosition.dy;
+  }
+
+  void _handleCenterSeekStart(DragStartDetails details) {
+    if (_isLocked || _controller == null) return;
+    _seekStartPosition = _controller!.value.position;
+    _seekTargetPosition = _seekStartPosition;
+    _seekDragAccumulatedDx = 0;
+    _lastSeekIndicatorUpdateAt = null;
+  }
+
+  void _handleCenterSeekUpdate(DragUpdateDetails details) {
+    if (_isLocked || _controller == null) return;
+    if (_seekStartPosition == null) return;
+
     final duration = _controller!.value.duration;
+    if (duration.inSeconds <= 0) return;
 
-    if (duration.inSeconds > 0) {
-      // 第一次拖拽时，以当前播放位置为起点
-      _seekTargetPosition ??= _controller!.value.position;
+    _seekDragAccumulatedDx += details.delta.dx;
 
-      // 根据手指滑动距离计算时间偏移（全屏宽度 = 视频总时长）
-      final deltaSec = (details.delta.dx / screenWidth) * duration.inSeconds;
-      final newSeconds = (_seekTargetPosition!.inSeconds + deltaSec)
-          .round()
-          .clamp(0, duration.inSeconds);
-      _seekTargetPosition = Duration(seconds: newSeconds);
+    final gestureWidth =
+        MediaQuery.of(context).size.width * _gestureCenterWidthFactor;
+    final offsetSeconds =
+        ((_seekDragAccumulatedDx / gestureWidth).clamp(-1.0, 1.0) * 600).round();
+    final newSeconds =
+        (_seekStartPosition!.inSeconds + offsetSeconds).clamp(0, duration.inSeconds);
+    _seekTargetPosition = Duration(seconds: newSeconds);
 
-      final minutes = newSeconds ~/ 60;
-      final seconds = newSeconds % 60;
-      final timeStr =
-          '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    final minutes = newSeconds ~/ 60;
+    final seconds = newSeconds % 60;
+    final timeStr =
+        '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    final now = DateTime.now();
+    final shouldRefreshUi = _seekIndicatorText != timeStr &&
+        (_lastSeekIndicatorUpdateAt == null ||
+            now.difference(_lastSeekIndicatorUpdateAt!) >=
+                _seekIndicatorUpdateInterval);
 
+    if (shouldRefreshUi || !_showSeekIndicator) {
+      _lastSeekIndicatorUpdateAt = now;
       setState(() {
         _showSeekIndicator = true;
         _showBrightnessIndicator = false;
         _showVolumeIndicator = false;
         _seekIndicatorText = timeStr;
       });
-
-      _startIndicatorTimer();
     }
+
+    _startIndicatorTimer();
   }
 
-  void _handleHorizontalDragEnd(DragEndDetails details) {
-    if (_isLocked || _seekTargetPosition == null || _controller == null) return;
+  void _handleCenterSeekEnd(DragEndDetails details) {
+    if (_isLocked || _seekTargetPosition == null || _controller == null) {
+      _resetGestureTracking();
+      return;
+    }
 
-    final targetPosition = _seekTargetPosition!;
-    _controller!.seekTo(targetPosition);
-    _seekTargetPosition = null;
+    if (_seekTargetPosition != null && _controller != null) {
+      final targetPosition = _seekTargetPosition!;
+      _controller!.seekTo(targetPosition);
 
-    setState(() {
-      _showSeekIndicator = false;
-    });
+      setState(() {
+        _showSeekIndicator = false;
+      });
 
-    // Seek 完成后，监控是否真正开始播放
-    _bufferingTimer?.cancel();
-    var lastPosition = -1;
-    var stuckCount = 0;
+      _bufferingTimer?.cancel();
+      var lastPosition = -1;
+      var stuckCount = 0;
 
-    _bufferingTimer =
-        Timer.periodic(const Duration(milliseconds: 300), (timer) {
-      if (!mounted || _controller == null) {
-        timer.cancel();
-        _bufferingTimer = null;
-        return;
-      }
+      _bufferingTimer =
+          Timer.periodic(const Duration(milliseconds: 300), (timer) {
+        if (!mounted || _controller == null) {
+          timer.cancel();
+          _bufferingTimer = null;
+          return;
+        }
 
-      final currentPos = _controller!.value.position.inSeconds;
+        final currentPos = _controller!.value.position.inSeconds;
+        if (lastPosition == -1) {
+          lastPosition = currentPos;
+          return;
+        }
 
-      if (lastPosition == -1) {
-        // 第一次检查，记录初始位置
+        if ((currentPos - lastPosition).abs() > 0) {
+          if (_forceShowBuffering) {
+            setState(() => _forceShowBuffering = false);
+          }
+          timer.cancel();
+          _bufferingTimer = null;
+        } else {
+          stuckCount++;
+          if (stuckCount >= 2 && !_forceShowBuffering) {
+            setState(() => _forceShowBuffering = true);
+          }
+        }
+
         lastPosition = currentPos;
-        return;
-      }
+      });
+    }
 
-      // 检查位置是否在变化（视频是否在播放）
-      if ((currentPos - lastPosition).abs() > 0) {
-        // 位置在变化，说明正在播放
-        if (_forceShowBuffering) {
-          setState(() => _forceShowBuffering = false);
-        }
-        timer.cancel();
-        _bufferingTimer = null;
-      } else {
-        // 位置没变化，说明卡住了
-        stuckCount++;
-        if (stuckCount >= 2 && !_forceShowBuffering) {
-          // 卡住超过 600ms，显示加载动画
-          setState(() => _forceShowBuffering = true);
-        }
-      }
+    _resetGestureTracking();
+  }
 
-      lastPosition = currentPos;
-      // 不设置超时，一直等待直到开始播放
-    });
+  void _resetGestureTracking() {
+    _seekStartPosition = null;
+    _seekTargetPosition = null;
+    _seekDragAccumulatedDx = 0;
+    _lastSeekIndicatorUpdateAt = null;
   }
 
   void _startIndicatorTimer() {
@@ -1029,13 +1076,6 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> with WindowListener {
         backgroundColor: Colors.black,
         body: GestureDetector(
           onTap: _toggleControls,
-          onVerticalDragUpdate: (details) {
-            final screenWidth = MediaQuery.of(context).size.width;
-            final isLeft = details.globalPosition.dx < screenWidth / 2;
-            _handleVerticalDragUpdate(details, isLeft);
-          },
-          onHorizontalDragUpdate: _handleHorizontalDragUpdate,
-          onHorizontalDragEnd: _handleHorizontalDragEnd,
           child: Stack(
             children: [
               if (_controller != null && _controller!.value.isInitialized)
@@ -1085,6 +1125,65 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> with WindowListener {
               if (_showBrightnessIndicator) _buildBrightnessIndicator(),
               if (_showVolumeIndicator) _buildVolumeIndicator(),
               if (_showSeekIndicator) _buildSeekIndicator(),
+
+              Positioned.fill(
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 22,
+                      child: Center(
+                        child: FractionallySizedBox(
+                          widthFactor: 1,
+                          heightFactor: _gestureRegionHeightFactor,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.translucent,
+                            onVerticalDragStart: (details) =>
+                                _handleSideGestureStart(details, true),
+                            onVerticalDragUpdate: (details) =>
+                                _handleVerticalDragUpdate(
+                                    details.localPosition.dy - _sideDragStartLocalDy),
+                            child: const SizedBox.expand(),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      flex: 56,
+                      child: Center(
+                        child: FractionallySizedBox(
+                          widthFactor: 1,
+                          heightFactor: _gestureRegionHeightFactor,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.translucent,
+                            onHorizontalDragStart: _handleCenterSeekStart,
+                            onHorizontalDragUpdate: _handleCenterSeekUpdate,
+                            onHorizontalDragEnd: _handleCenterSeekEnd,
+                            child: const SizedBox.expand(),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      flex: 22,
+                      child: Center(
+                        child: FractionallySizedBox(
+                          widthFactor: 1,
+                          heightFactor: _gestureRegionHeightFactor,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.translucent,
+                            onVerticalDragStart: (details) =>
+                                _handleSideGestureStart(details, false),
+                            onVerticalDragUpdate: (details) =>
+                                _handleVerticalDragUpdate(
+                                    details.localPosition.dy - _sideDragStartLocalDy),
+                            child: const SizedBox.expand(),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
 
               // 弹幕层
               if (_controller != null && _controller!.value.isInitialized)

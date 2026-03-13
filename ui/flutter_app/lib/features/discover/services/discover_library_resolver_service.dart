@@ -39,6 +39,7 @@ class DiscoverLibraryResolverService {
         _client = client ?? http.Client();
 
   static const Duration _latencyCacheTtl = Duration(minutes: 2);
+  static const int _latencyProbeAttempts = 3;
 
   final MediaLibrarySourceService _sourceService;
   final http.Client _client;
@@ -108,25 +109,36 @@ class DiscoverLibraryResolverService {
       return cached.latencyMs;
     }
 
-    try {
-      final stopwatch = Stopwatch()..start();
-      final socket =
-          await Socket.connect(host, port).timeout(const Duration(seconds: 2));
-      stopwatch.stop();
-      socket.destroy();
-      final latencyMs = stopwatch.elapsedMilliseconds;
+    final results = <int>[];
+    for (var attempt = 0; attempt < _latencyProbeAttempts; attempt++) {
+      try {
+        final stopwatch = Stopwatch()..start();
+        final socket = await Socket.connect(
+          host,
+          port,
+        ).timeout(const Duration(seconds: 2));
+        stopwatch.stop();
+        socket.destroy();
+        results.add(stopwatch.elapsedMilliseconds);
+      } catch (_) {
+        continue;
+      }
+    }
+
+    if (results.isNotEmpty) {
+      final latencyMs = results.reduce((left, right) => left < right ? left : right);
       _latencyCache[cacheKey] = _LatencyCacheEntry(
         latencyMs: latencyMs,
         measuredAt: now,
       );
       return latencyMs;
-    } catch (_) {
-      _latencyCache[cacheKey] = _LatencyCacheEntry(
-        latencyMs: null,
-        measuredAt: now,
-      );
-      return null;
     }
+
+    _latencyCache[cacheKey] = _LatencyCacheEntry(
+      latencyMs: null,
+      measuredAt: now,
+    );
+    return null;
   }
 
   Future<DiscoverLibraryMatch?> _resolveInEmbySource(

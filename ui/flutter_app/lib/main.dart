@@ -24,6 +24,7 @@ import 'features/auth/presentation/pages/account_page.dart';
 import 'core/theme/app_theme.dart';
 import 'core/widgets/main_navigation.dart';
 import 'player_window/desktop_player_window.dart';
+import 'player_window/window_focus_bridge.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,6 +39,10 @@ Future<void> main() async {
       final controller = await WindowController.fromCurrentEngine();
       currentWindow = AppWindowArguments.tryParse(controller.arguments) ??
           AppWindowArguments.main();
+      print(
+        '[Main] current desktop window id=${controller.windowId} '
+        'type=${currentWindow.type}',
+      );
       if (currentWindow.type == kPlayerAppWindowType &&
           currentWindow.payload != null) {
         playerPayload = DesktopPlayerPayload.fromJson(currentWindow.payload!);
@@ -78,12 +83,41 @@ Future<void> main() async {
 
   if (isDesktop) {
     await windowManager.ensureInitialized();
+    await windowManager.setIgnoreMouseEvents(false);
     final windowOptions = playerPayload != null
         ? playerWindowOptions(playerPayload)
         : mainWindowOptions();
     windowManager.waitUntilReadyToShow(windowOptions, () async {
+      if (playerPayload != null) {
+        await windowManager.setResizable(false);
+        await windowManager.setMaximizable(false);
+      }
       await windowManager.show();
       await windowManager.focus();
+    });
+  }
+
+  if (isDesktop && playerPayload == null) {
+    print('[Main] registering main window focus channel');
+    await registerMainWindowChannel();
+    onWindowsChanged.listen((_) async {
+      final windows = await WindowController.getAll();
+      final summary = windows
+          .map((window) {
+            final parsed = AppWindowArguments.tryParse(window.arguments);
+            return '${window.windowId}:${parsed?.type ?? 'unknown'}';
+          })
+          .join(', ');
+      print('[Main] windows changed -> count=${windows.length} [$summary]');
+      if (windows.length == 1) {
+        await ensureMainWindowInteractive('windows changed immediate');
+        Future<void>.delayed(const Duration(milliseconds: 80), () async {
+          await ensureMainWindowInteractive('windows changed delayed(80ms)');
+        });
+        Future<void>.delayed(const Duration(milliseconds: 220), () async {
+          await ensureMainWindowInteractive('windows changed delayed(220ms)');
+        });
+      }
     });
   }
 

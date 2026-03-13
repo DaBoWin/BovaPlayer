@@ -1065,60 +1065,68 @@ class _MainNavigationState extends State<MainNavigation> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF1F3F6),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            children: [
-              DesktopSidebar(
-                isExpanded: _isSidebarExpanded,
-                profileName: _profileName(user),
-                profileSubtitle: _profileSubtitle(),
-                avatar: _buildAvatar(user, size: 52),
-                destinations: _buildDestinations(),
-                onToggle: () {
-                  setState(() => _isSidebarExpanded = !_isSidebarExpanded);
-                },
-                onLogoutTap: _logout,
-              ),
-              const SizedBox(width: 20),
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(34),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF111827).withValues(alpha: 0.06),
-                        blurRadius: 28,
-                        offset: const Offset(0, 18),
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(34),
-                    child: Column(
-                      children: [
-                        ShellTopBar(
-                          title: _sectionTitle(),
-                          sectionIcon: _sectionIcon(),
-                          onBack: _shouldShowTopBarBackButton()
-                              ? _handleTopBarBack
-                              : null,
-                          actions: _buildTopActions(),
-                        ),
-                        Expanded(
-                          child: ColoredBox(
-                            color: const Color(0xFFF9FAFB),
-                            child: _buildDesktopContent(),
-                          ),
+      body: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (event) {
+          debugPrint(
+            '[MainNavigation] pointer down x=${event.position.dx} y=${event.position.dy}',
+          );
+        },
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                DesktopSidebar(
+                  isExpanded: _isSidebarExpanded,
+                  profileName: _profileName(user),
+                  profileSubtitle: _profileSubtitle(),
+                  avatar: _buildAvatar(user, size: 52),
+                  destinations: _buildDestinations(),
+                  onToggle: () {
+                    setState(() => _isSidebarExpanded = !_isSidebarExpanded);
+                  },
+                  onLogoutTap: _logout,
+                ),
+                const SizedBox(width: 20),
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(34),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF111827).withValues(alpha: 0.06),
+                          blurRadius: 28,
+                          offset: const Offset(0, 18),
                         ),
                       ],
                     ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(34),
+                      child: Column(
+                        children: [
+                          ShellTopBar(
+                            title: _sectionTitle(),
+                            sectionIcon: _sectionIcon(),
+                            onBack: _shouldShowTopBarBackButton()
+                                ? _handleTopBarBack
+                                : null,
+                            actions: _buildTopActions(),
+                          ),
+                          Expanded(
+                            child: ColoredBox(
+                              color: const Color(0xFFF9FAFB),
+                              child: _buildDesktopContent(),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

@@ -37,90 +37,84 @@ class ShellTopBar extends StatelessWidget {
           bottom: BorderSide(color: Color(0xFFF0F1F4)),
         ),
       ),
-      child: Stack(
-        children: [
-          if (isDesktop)
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onPanStart: (_) async {
-                  await windowManager.startDragging();
-                },
-                child: const SizedBox.expand(),
-              ),
-            ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Row(
-              children: [
-                if (onBack != null) ...[
-                  IconButton(
-                    onPressed: onBack,
-                    icon: const Icon(
-                      Icons.arrow_back_ios_new_rounded,
-                      color: DesignSystem.neutral700,
-                      size: 18,
-                    ),
-                    tooltip: 'Back',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onPanStart: isDesktop
+            ? (_) async {
+                await windowManager.startDragging();
+              }
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Row(
+            children: [
+              if (onBack != null) ...[
+                IconButton(
+                  onPressed: onBack,
+                  icon: const Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    color: DesignSystem.neutral700,
+                    size: 18,
                   ),
-                  const SizedBox(width: 6),
-                ],
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: DesignSystem.neutral200),
-                    boxShadow: DesignSystem.shadowSm,
-                  ),
-                  child: Icon(
-                    sectionIcon,
-                    color: const Color(0xFFE11D48),
-                    size: 20,
-                  ),
+                  tooltip: 'Back',
                 ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+                const SizedBox(width: 6),
+              ],
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: DesignSystem.neutral200),
+                  boxShadow: DesignSystem.shadowSm,
+                ),
+                child: Icon(
+                  sectionIcon,
+                  color: const Color(0xFFE11D48),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: DesignSystem.weightSemibold,
+                        color: DesignSystem.neutral900,
+                        letterSpacing: -0.8,
+                        height: 1.0,
+                      ),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 4),
                       Text(
-                        title,
+                        subtitle!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 28,
-                          fontWeight: DesignSystem.weightSemibold,
-                          color: DesignSystem.neutral900,
-                          letterSpacing: -0.8,
-                          height: 1.0,
+                          fontSize: DesignSystem.textSm,
+                          color: DesignSystem.neutral400,
                         ),
                       ),
-                      if (subtitle != null) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          subtitle!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: DesignSystem.textSm,
-                            color: DesignSystem.neutral400,
-                          ),
-                        ),
-                      ],
                     ],
-                  ),
+                  ],
                 ),
-                if (showWindowControls) ...[
-                  const SizedBox(width: 12),
-                  const _DesktopWindowControls(),
-                  const SizedBox(width: 8),
-                ],
-                ...actions,
+              ),
+              if (showWindowControls) ...[
+                const SizedBox(width: 12),
+                const _DesktopWindowControls(),
+                const SizedBox(width: 8),
               ],
-            ),
+              ...actions,
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

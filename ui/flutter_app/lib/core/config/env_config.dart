@@ -33,6 +33,12 @@ class EnvConfig {
   static String get tmdbReadAccessToken =>
       dotenv.get('TMDB_READ_ACCESS_TOKEN', fallback: '');
   static String get tmdbApiKey => dotenv.get('TMDB_API_KEY', fallback: '');
+  static String get tmdbBaseUrl =>
+      dotenv.get('TMDB_BASE_URL', fallback: 'https://api.themoviedb.org/3');
+  static String get tmdbImageBaseUrl => dotenv.get(
+        'TMDB_IMAGE_BASE_URL',
+        fallback: 'https://image.tmdb.org/t/p/',
+      );
   static String get tmdbLanguage =>
       dotenv.get('TMDB_LANGUAGE', fallback: 'en-US');
 

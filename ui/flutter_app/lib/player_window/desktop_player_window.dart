@@ -18,7 +18,8 @@ import '../unified_player_page.dart';
 const String kMainAppWindowType = 'main';
 const String kPlayerAppWindowType = 'player';
 
-bool get supportsDetachedPlayerWindow => !kIsWeb && Platform.isMacOS;
+bool get supportsDetachedPlayerWindow =>
+    !kIsWeb && Platform.isMacOS;
 
 class AppWindowArguments {
   const AppWindowArguments({required this.type, this.payload});

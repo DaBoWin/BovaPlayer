@@ -557,6 +557,7 @@ class _EmbyPageState extends State<EmbyPage> {
 
   final ScrollController _browserScrollController = ScrollController();
   final ScrollController _dashboardScrollController = ScrollController();
+  final ScrollController _episodeScrollController = ScrollController();
   final PageController _carouselController =
       PageController(viewportFraction: 1.0);
 
@@ -601,6 +602,7 @@ class _EmbyPageState extends State<EmbyPage> {
   void dispose() {
     _browserScrollController.dispose();
     _dashboardScrollController.dispose();
+    _episodeScrollController.dispose();
     _carouselController.dispose();
     super.dispose();
   }
@@ -4396,128 +4398,198 @@ class _EmbyPageState extends State<EmbyPage> {
       );
     }
 
+    final bool showScrollButtons = episodes.length > 4;
+
     return SizedBox(
       height: 180,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        itemCount: episodes.length,
-        itemBuilder: (_, i) {
-          final ep = episodes[i];
-          final epName = ep['Name'] ?? '';
-          final epNum = ep['IndexNumber'];
-          final epId = ep['Id'] ?? '';
-          final label = epNum != null ? 'Episode $epNum' : epName;
+      child: Stack(
+        children: [
+          ListView.builder(
+            controller: _episodeScrollController,
+            scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.symmetric(
+              horizontal: showScrollButtons ? 56 : 20,
+            ),
+            itemCount: episodes.length,
+            itemBuilder: (_, i) {
+              final ep = episodes[i];
+              final epName = ep['Name'] ?? '';
+              final epNum = ep['IndexNumber'];
+              final epId = ep['Id'] ?? '';
+              final label = epNum != null ? 'Episode $epNum' : epName;
 
-          return GestureDetector(
-            onTap: () => _handleItemClick(ep),
-            child: Container(
-              width: 240,
-              margin: const EdgeInsets.only(right: 12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
+              return GestureDetector(
+                onTap: () => _handleItemClick(ep),
+                child: Container(
+                  width: 240,
+                  margin: const EdgeInsets.only(right: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Image.network(
-                      _imageUrl(epId),
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: AppTheme.primaryLight,
-                        child: const Center(
-                          child: Icon(
-                            Icons.tv_rounded,
-                            color: AppTheme.textTertiary,
-                            size: 40,
-                          ),
-                        ),
-                      ),
-                    ),
-                    // 渐变遮罩
-                    Positioned.fill(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              Colors.black.withOpacity(0.7),
-                            ],
-                            stops: const [0.5, 1.0],
-                          ),
-                        ),
-                      ),
-                    ),
-                    // 底部标签
-                    Positioned(
-                      left: 12,
-                      right: 12,
-                      bottom: 12,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            label,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          if (epName.isNotEmpty && epNum != null) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              epName,
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.8),
-                                fontSize: 12,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Image.network(
+                          _imageUrl(epId),
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            color: AppTheme.primaryLight,
+                            child: const Center(
+                              child: Icon(
+                                Icons.tv_rounded,
+                                color: AppTheme.textTertiary,
+                                size: 40,
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
                             ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    // 播放图标
-                    Positioned.fill(
-                      child: Center(
-                        child: Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color: AppTheme.primary.withOpacity(0.9),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.play_arrow_rounded,
-                            color: Colors.white,
-                            size: 28,
                           ),
                         ),
-                      ),
+                        Positioned.fill(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.transparent,
+                                  Colors.black.withOpacity(0.7),
+                                ],
+                                stops: const [0.5, 1.0],
+                              ),
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          left: 12,
+                          right: 12,
+                          bottom: 12,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                label,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if (epName.isNotEmpty && epNum != null) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  epName,
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.8),
+                                    fontSize: 12,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        Positioned.fill(
+                          child: Center(
+                            child: Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: AppTheme.primary.withOpacity(0.9),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.play_arrow_rounded,
+                                color: Colors.white,
+                                size: 28,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
+              );
+            },
+          ),
+          if (showScrollButtons)
+            Positioned(
+              left: 8,
+              top: 0,
+              bottom: 0,
+              child: _buildEpisodeScrollButton(
+                icon: Icons.chevron_left_rounded,
+                onTap: () => _scrollEpisodes(-280),
               ),
             ),
-          );
-        },
+          if (showScrollButtons)
+            Positioned(
+              right: 8,
+              top: 0,
+              bottom: 0,
+              child: _buildEpisodeScrollButton(
+                icon: Icons.chevron_right_rounded,
+                onTap: () => _scrollEpisodes(280),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _scrollEpisodes(double delta) async {
+    if (!_episodeScrollController.hasClients) {
+      return;
+    }
+
+    final position = _episodeScrollController.position;
+    final target = (_episodeScrollController.offset + delta).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+
+    await _episodeScrollController.animateTo(
+      target.toDouble(),
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  Widget _buildEpisodeScrollButton({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return Center(
+      child: Material(
+        color: Colors.white,
+        elevation: 6,
+        shadowColor: Colors.black.withOpacity(0.12),
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: SizedBox(
+            width: 36,
+            height: 36,
+            child: Icon(
+              icon,
+              color: AppTheme.textPrimary,
+            ),
+          ),
+        ),
       ),
     );
   }

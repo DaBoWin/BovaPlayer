@@ -30,17 +30,26 @@ class EmbyQuickPlayService {
   }) async {
     final session = await _resolveSession(source);
     final item = await _fetchItemDetails(session, itemId);
-    final title = _buildFullTitle(item, fallbackTitle);
-    final startData = await _loadSavedPosition(itemId);
-    final playbackInfo = await _fetchPlaybackInfo(
-      session,
-      itemId,
-      startTimeTicks: startData.startTimeTicks,
-    );
+    final playableItem = await _resolvePlayableItem(session, item);
+    final playableItemId = playableItem['Id']?.toString() ?? itemId;
+    final title = _buildFullTitle(playableItem, fallbackTitle);
+    final startData = await _loadSavedPosition(playableItemId);
+    Map<String, dynamic> playbackInfo = const {};
+    try {
+      playbackInfo = await _fetchPlaybackInfo(
+        session,
+        playableItemId,
+        startTimeTicks: startData.startTimeTicks,
+      );
+    } on EmbyQuickPlayException catch (error) {
+      // Some Emby servers reject PlaybackInfo for quick-play requests.
+      // Fall back to a basic stream URL instead of blocking playback entirely.
+      print('[EmbyQuickPlayService] $error, fallback to basic stream URL');
+    }
     final playbackUrl = _resolvePlaybackUrl(
       playbackInfo,
       session,
-      itemId,
+      playableItemId,
       startTimeTicks: startData.startTimeTicks,
     );
 
@@ -57,8 +66,8 @@ class EmbyQuickPlayService {
       url: playbackUrl,
       title: title,
       httpHeaders: _buildPlaybackHeaders(session.accessToken),
-      subtitles: _extractSubtitles(item, session),
-      itemId: itemId,
+      subtitles: _extractSubtitles(playableItem, session),
+      itemId: playableItemId,
       serverUrl: session.serverUrl,
       accessToken: session.accessToken,
       userId: session.userId,
@@ -142,63 +151,130 @@ class EmbyQuickPlayService {
     );
   }
 
+  Future<Map<String, dynamic>> _resolvePlayableItem(
+    _EmbySession session,
+    Map<String, dynamic> item,
+  ) async {
+    final type = item['Type']?.toString();
+    if (type != 'Series') {
+      return item;
+    }
+
+    final seriesId = item['Id']?.toString();
+    if (seriesId == null || seriesId.isEmpty) {
+      return item;
+    }
+
+    final episode = await _fetchFirstPlayableEpisode(session, seriesId);
+    return episode ?? item;
+  }
+
+  Future<Map<String, dynamic>?> _fetchFirstPlayableEpisode(
+    _EmbySession session,
+    String seriesId,
+  ) async {
+    final uri = Uri.parse(
+      '${session.serverUrl}/emby/Shows/$seriesId/Episodes'
+      '?UserId=${session.userId}'
+      '&Fields=ProductionYear,MediaStreams,ParentIndexNumber,IndexNumber,SeriesName'
+      '&IsMissing=false'
+      '&Limit=1',
+    );
+    final response = await _client
+        .get(uri, headers: _headers(session.accessToken))
+        .timeout(const Duration(seconds: 8));
+
+    if (response.statusCode != 200) {
+      return null;
+    }
+
+    final data = jsonDecode(utf8.decode(response.bodyBytes));
+    final items = (data is Map<String, dynamic> ? data['Items'] : null);
+    if (items is List && items.isNotEmpty) {
+      final first = items.first;
+      if (first is Map<String, dynamic>) {
+        return first;
+      }
+      if (first is Map) {
+        return first.cast<String, dynamic>();
+      }
+    }
+    return null;
+  }
+
   Future<Map<String, dynamic>> _fetchPlaybackInfo(
     _EmbySession session,
     String itemId, {
     int? startTimeTicks,
   }) async {
-    final response = await _client
-        .post(
-          Uri.parse(
-            '${session.serverUrl}/Items/$itemId/PlaybackInfo'
-            '?UserId=${session.userId}&api_key=${session.accessToken}',
-          ),
-          headers: {
-            'Content-Type': 'application/json',
-            ..._headers(session.accessToken),
+    final playbackInfoUri = Uri.parse(
+      '${session.serverUrl}/emby/Items/$itemId/PlaybackInfo'
+      '?UserId=${session.userId}&api_key=${session.accessToken}',
+    );
+    final headers = {
+      'Content-Type': 'application/json',
+      ..._headers(session.accessToken),
+    };
+    final requestBody = {
+      'DeviceProfile': {
+        'MaxStreamingBitrate': 120000000,
+        'MaxStaticBitrate': 100000000,
+        'MusicStreamingTranscodingBitrate': 384000,
+        'DirectPlayProfiles': [
+          {
+            'Container': 'mp4,m4v,mkv,avi,mov,wmv,asf,webm,flv,ts',
+            'Type': 'Video',
+            'VideoCodec': 'h264,hevc,vp8,vp9,av1,mpeg4,mpeg2video',
+            'AudioCodec': 'aac,mp3,ac3,flac,opus,vorbis,pcm',
           },
-          body: jsonEncode({
-            'DeviceProfile': {
-              'MaxStreamingBitrate': 120000000,
-              'MaxStaticBitrate': 100000000,
-              'MusicStreamingTranscodingBitrate': 384000,
-              'DirectPlayProfiles': [
-                {
-                  'Container': 'mp4,m4v,mkv,avi,mov,wmv,asf,webm,flv,ts',
-                  'Type': 'Video',
-                  'VideoCodec': 'h264,hevc,vp8,vp9,av1,mpeg4,mpeg2video',
-                  'AudioCodec': 'aac,mp3,ac3,flac,opus,vorbis,pcm',
-                },
-              ],
-              'TranscodingProfiles': [
-                {
-                  'Container': 'ts',
-                  'Type': 'Audio',
-                  'AudioCodec': 'aac',
-                  'Protocol': 'hls',
-                  'Context': 'Streaming',
-                },
-                {
-                  'Container': 'ts',
-                  'Type': 'Video',
-                  'AudioCodec': 'aac',
-                  'VideoCodec': 'h264,hevc',
-                  'Protocol': 'hls',
-                  'Context': 'Streaming',
-                },
-              ],
-              'ContainerProfiles': const [],
-              'CodecProfiles': const [],
-              'SubtitleProfiles': const [
-                {'Format': 'srt', 'Method': 'External'},
-                {'Format': 'ass', 'Method': 'External'},
-                {'Format': 'vtt', 'Method': 'External'},
-              ],
-            },
-            if (startTimeTicks != null) 'StartTimeTicks': startTimeTicks,
-          }),
+        ],
+        'TranscodingProfiles': [
+          {
+            'Container': 'ts',
+            'Type': 'Audio',
+            'AudioCodec': 'aac',
+            'Protocol': 'hls',
+            'Context': 'Streaming',
+          },
+          {
+            'Container': 'ts',
+            'Type': 'Video',
+            'AudioCodec': 'aac',
+            'VideoCodec': 'h264,hevc',
+            'Protocol': 'hls',
+            'Context': 'Streaming',
+          },
+        ],
+        'ContainerProfiles': const [],
+        'CodecProfiles': const [],
+        'SubtitleProfiles': const [
+          {'Format': 'srt', 'Method': 'External'},
+          {'Format': 'ass', 'Method': 'External'},
+          {'Format': 'vtt', 'Method': 'External'},
+        ],
+      },
+      if (startTimeTicks != null) 'StartTimeTicks': startTimeTicks,
+    };
+
+    http.Response response = await _client
+        .post(
+          playbackInfoUri,
+          headers: headers,
+          body: jsonEncode(requestBody),
         )
         .timeout(const Duration(seconds: 10));
+
+    if (response.statusCode >= 500) {
+      response = await _client
+          .post(
+            playbackInfoUri,
+            headers: headers,
+            body: jsonEncode({
+              if (startTimeTicks != null) 'StartTimeTicks': startTimeTicks,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+    }
 
     if (response.statusCode != 200) {
       throw EmbyQuickPlayException(
@@ -255,7 +331,7 @@ class EmbyQuickPlayService {
       if (mediaSource['SupportsDirectPlay'] == true &&
           mediaSourceId != null &&
           mediaSourceId.isNotEmpty) {
-        return '${session.serverUrl}/Videos/$itemId/stream'
+        return '${session.serverUrl}/emby/Videos/$itemId/stream'
             '?MediaSourceId=$mediaSourceId&Static=false'
             '&api_key=${session.accessToken}$extStartTime';
       }
@@ -264,13 +340,13 @@ class EmbyQuickPlayService {
           mediaSourceId != null &&
           mediaSourceId.isNotEmpty) {
         final container = mediaSource['Container']?.toString() ?? 'mkv';
-        return '${session.serverUrl}/Videos/$itemId/stream.$container'
+        return '${session.serverUrl}/emby/Videos/$itemId/stream.$container'
             '?MediaSourceId=$mediaSourceId'
             '&api_key=${session.accessToken}$extStartTime';
       }
     }
 
-    return '${session.serverUrl}/Videos/$itemId/stream'
+    return '${session.serverUrl}/emby/Videos/$itemId/stream'
         '?api_key=${session.accessToken}';
   }
 
@@ -377,10 +453,13 @@ class EmbyQuickPlayService {
       };
 
   String _normalizeServerUrl(String url) {
+    var normalized = url.trim();
     if (url.contains(':443')) {
-      return url.replaceAll(':443', '');
+      normalized = url.replaceAll(':443', '');
     }
-    return url;
+    return normalized.endsWith('/')
+        ? normalized.substring(0, normalized.length - 1)
+        : normalized;
   }
 }
 

@@ -8,11 +8,12 @@ import '../models/discover_section.dart';
 import '../models/tmdb_media_item.dart';
 
 class TmdbService {
-  TmdbService({http.Client? client}) : _client = client ?? http.Client();
+  TmdbService({http.Client? client})
+      : _client = client ?? http.Client(),
+        _imageBaseUrl = EnvConfig.tmdbImageBaseUrl;
 
   final http.Client _client;
-  static const String _baseUrl = 'https://api.themoviedb.org/3';
-  String _imageBaseUrl = 'https://image.tmdb.org/t/p/';
+  String _imageBaseUrl;
 
   bool get isConfigured =>
       EnvConfig.tmdbReadAccessToken.isNotEmpty ||
@@ -60,16 +61,29 @@ class TmdbService {
   }
 
   Future<void> _ensureConfiguration() async {
+    if (EnvConfig.tmdbImageBaseUrl.isNotEmpty) {
+      _imageBaseUrl = _normalizeImageBaseUrl(EnvConfig.tmdbImageBaseUrl);
+    }
+
     try {
       final json = await _getJson('/configuration');
       final images = json['images'] as Map<String, dynamic>?;
       final secureBaseUrl = images?['secure_base_url']?.toString();
       if (secureBaseUrl != null && secureBaseUrl.isNotEmpty) {
-        _imageBaseUrl = secureBaseUrl;
+        _imageBaseUrl = _normalizeImageBaseUrl(secureBaseUrl);
       }
     } catch (_) {
-      _imageBaseUrl = 'https://image.tmdb.org/t/p/';
+      _imageBaseUrl = _normalizeImageBaseUrl(EnvConfig.tmdbImageBaseUrl);
     }
+  }
+
+  String _normalizeImageBaseUrl(String value) {
+    if (value.isEmpty) {
+      return 'https://image.tmdb.org/t/p/';
+    }
+
+    final trimmed = value.trim();
+    return trimmed.endsWith('/') ? trimmed : '$trimmed/';
   }
 
   Future<DiscoverPayload> _fetchHomePayload() async {
@@ -241,8 +255,9 @@ class TmdbService {
       mergedQuery['api_key'] = EnvConfig.tmdbApiKey;
     }
 
+    final baseUrl = EnvConfig.tmdbBaseUrl.replaceFirst(RegExp(r'/$'), '');
     final uri =
-        Uri.parse('$_baseUrl$path').replace(queryParameters: mergedQuery);
+        Uri.parse('$baseUrl$path').replace(queryParameters: mergedQuery);
     final response = await _client.get(
       uri,
       headers: {

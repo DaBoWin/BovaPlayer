@@ -1,4 +1,8 @@
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../../../../core/theme/design_system.dart';
 
@@ -33,10 +37,12 @@ class AuthWorkspaceScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isMobile = DesignSystem.isMobile(context);
+    final isDesktop =
+        !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
 
     return Scaffold(
       backgroundColor: authWorkspaceCanvas,
-      appBar: showBackButton
+      appBar: !isDesktop && showBackButton
           ? AppBar(
               backgroundColor: Colors.transparent,
               surfaceTintColor: Colors.transparent,
@@ -51,52 +57,284 @@ class AuthWorkspaceScaffold extends StatelessWidget {
               ),
             )
           : null,
-      body: SafeArea(
-        top: !showBackButton,
-        child: Center(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.fromLTRB(
-              isMobile ? DesignSystem.space4 : DesignSystem.space6,
-              showBackButton ? DesignSystem.space2 : DesignSystem.space6,
-              isMobile ? DesignSystem.space4 : DesignSystem.space6,
-              DesignSystem.space8,
-            ),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1120),
-              child: isMobile
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _HeroPanel(
-                          eyebrow: eyebrow,
-                          title: title,
-                          subtitle: subtitle,
-                          icon: icon,
-                          heroGraphic: heroGraphic,
-                          facts: facts,
-                        ),
-                        const SizedBox(height: DesignSystem.space5),
-                        child,
-                      ],
-                    )
-                  : Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          flex: 11,
-                          child: _HeroPanel(
-                            eyebrow: eyebrow,
-                            title: title,
-                            subtitle: subtitle,
-                            icon: icon,
-                            heroGraphic: heroGraphic,
-                            facts: facts,
-                          ),
-                        ),
-                        const SizedBox(width: DesignSystem.space5),
-                        Expanded(flex: 9, child: child),
-                      ],
+      body: Column(
+        children: [
+          if (isDesktop)
+            _AuthDesktopWindowBar(showBackButton: showBackButton),
+          Expanded(
+            child: Stack(
+              children: [
+                if (isDesktop)
+                  Positioned.fill(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onPanStart: (_) async {
+                        await windowManager.startDragging();
+                      },
+                      onDoubleTap: () async {
+                        final isMaximized = await windowManager.isMaximized();
+                        if (isMaximized) {
+                          await windowManager.unmaximize();
+                        } else {
+                          await windowManager.maximize();
+                        }
+                      },
+                      child: const SizedBox.expand(),
                     ),
+                  ),
+                SafeArea(
+                  top: false,
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.fromLTRB(
+                        isMobile ? DesignSystem.space4 : DesignSystem.space6,
+                        showBackButton && !isDesktop
+                            ? DesignSystem.space2
+                            : DesignSystem.space6,
+                        isMobile ? DesignSystem.space4 : DesignSystem.space6,
+                        DesignSystem.space8,
+                      ),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 1120),
+                        child: isMobile
+                            ? Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  _HeroPanel(
+                                    eyebrow: eyebrow,
+                                    title: title,
+                                    subtitle: subtitle,
+                                    icon: icon,
+                                    heroGraphic: heroGraphic,
+                                    facts: facts,
+                                  ),
+                                  const SizedBox(height: DesignSystem.space5),
+                                  child,
+                                ],
+                              )
+                            : Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    flex: 11,
+                                    child: _HeroPanel(
+                                      eyebrow: eyebrow,
+                                      title: title,
+                                      subtitle: subtitle,
+                                      icon: icon,
+                                      heroGraphic: heroGraphic,
+                                      facts: facts,
+                                    ),
+                                  ),
+                                  const SizedBox(width: DesignSystem.space5),
+                                  Expanded(flex: 9, child: child),
+                                ],
+                              ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AuthDesktopWindowBar extends StatefulWidget {
+  const _AuthDesktopWindowBar({required this.showBackButton});
+
+  final bool showBackButton;
+
+  @override
+  State<_AuthDesktopWindowBar> createState() => _AuthDesktopWindowBarState();
+}
+
+class _AuthDesktopWindowBarState extends State<_AuthDesktopWindowBar>
+    with WindowListener {
+  bool _isMaximized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    windowManager.addListener(this);
+    _syncWindowState();
+  }
+
+  @override
+  void dispose() {
+    windowManager.removeListener(this);
+    super.dispose();
+  }
+
+  @override
+  void onWindowMaximize() {
+    _setMaximized(true);
+  }
+
+  @override
+  void onWindowUnmaximize() {
+    _setMaximized(false);
+  }
+
+  Future<void> _syncWindowState() async {
+    final isMaximized = await windowManager.isMaximized();
+    _setMaximized(isMaximized);
+  }
+
+  void _setMaximized(bool value) {
+    if (!mounted || _isMaximized == value) {
+      return;
+    }
+    setState(() {
+      _isMaximized = value;
+    });
+  }
+
+  Future<void> _toggleMaximize() async {
+    if (_isMaximized) {
+      await windowManager.unmaximize();
+    } else {
+      await windowManager.maximize();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 54,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          bottom: BorderSide(color: authWorkspacePanelBorder),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onPanStart: (_) async {
+                await windowManager.startDragging();
+              },
+              onDoubleTap: _toggleMaximize,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    if (widget.showBackButton)
+                      IconButton(
+                        icon: const Icon(
+                          Icons.arrow_back_rounded,
+                          color: DesignSystem.neutral900,
+                          size: 18,
+                        ),
+                        onPressed: () => Navigator.maybePop(context),
+                      )
+                    else
+                      const SizedBox(width: 12),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'BovaPlayer',
+                      style: TextStyle(
+                        fontSize: DesignSystem.textSm,
+                        fontWeight: DesignSystem.weightSemibold,
+                        color: DesignSystem.neutral900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const _AuthDesktopWindowControls(),
+          const SizedBox(width: 8),
+        ],
+      ),
+    );
+  }
+}
+
+class _AuthDesktopWindowControls extends StatelessWidget {
+  const _AuthDesktopWindowControls();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _AuthWindowActionButton(
+          icon: Icons.minimize_rounded,
+          onPressed: () => windowManager.minimize(),
+        ),
+        const SizedBox(width: 8),
+        _AuthWindowActionButton(
+          icon: Icons.crop_square_rounded,
+          onPressed: () async {
+            final isMaximized = await windowManager.isMaximized();
+            if (isMaximized) {
+              await windowManager.unmaximize();
+            } else {
+              await windowManager.maximize();
+            }
+          },
+        ),
+        const SizedBox(width: 8),
+        _AuthWindowActionButton(
+          icon: Icons.close_rounded,
+          hoverColor: authWorkspaceAccent,
+          iconColor: authWorkspaceAccent,
+          hoverIconColor: Colors.white,
+          onPressed: () => windowManager.close(),
+        ),
+      ],
+    );
+  }
+}
+
+class _AuthWindowActionButton extends StatefulWidget {
+  const _AuthWindowActionButton({
+    required this.icon,
+    required this.onPressed,
+    this.iconColor = DesignSystem.neutral700,
+    this.hoverColor = const Color(0xFFF4F5F7),
+    this.hoverIconColor = DesignSystem.neutral900,
+  });
+
+  final IconData icon;
+  final Future<void> Function() onPressed;
+  final Color iconColor;
+  final Color hoverColor;
+  final Color hoverIconColor;
+
+  @override
+  State<_AuthWindowActionButton> createState() =>
+      _AuthWindowActionButtonState();
+}
+
+class _AuthWindowActionButtonState extends State<_AuthWindowActionButton> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: Material(
+        color: _hovered ? widget.hoverColor : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: widget.onPressed,
+          child: SizedBox(
+            width: 36,
+            height: 36,
+            child: Icon(
+              widget.icon,
+              size: 18,
+              color: _hovered ? widget.hoverIconColor : widget.iconColor,
             ),
           ),
         ),
