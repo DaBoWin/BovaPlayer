@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../core/theme/design_system.dart';
+import '../../../../l10n/generated/app_localizations.dart';
 import '../providers/auth_provider.dart';
 
 const Color _adminAccent = Color(0xFFE11D48);
@@ -22,11 +23,11 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
   bool _isLoading = false;
   String _filter = 'all';
 
-  static const Map<String, String> _filters = {
-    'all': '全部',
-    'unused': '未使用',
-    'used': '已使用',
-    'expired': '已过期',
+  Map<String, String> _buildFilters(S l10n) => {
+    'all': l10n.redemptionFilterAll,
+    'unused': l10n.redemptionFilterUnused,
+    'used': l10n.redemptionFilterUsed,
+    'expired': l10n.redemptionFilterExpired,
   };
 
   @override
@@ -49,11 +50,11 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
         });
       } else {
         setState(() => _isLoading = false);
-        _showError(result['message'] ?? '加载失败');
+        _showError(result['message'] ?? S.of(context).redemptionLoadFailed);
       }
     } catch (error) {
       setState(() => _isLoading = false);
-      _showError('加载失败: $error');
+      _showError(S.of(context).redemptionLoadError(error.toString()));
     }
   }
 
@@ -71,6 +72,9 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = S.of(context);
+    final filters = _buildFilters(l10n);
+
     return Scaffold(
       backgroundColor: _adminCanvas,
       appBar: AppBar(
@@ -85,9 +89,9 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
           ),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          '兑换码管理',
-          style: TextStyle(
+        title: Text(
+          l10n.redemptionTitle,
+          style: const TextStyle(
             fontSize: DesignSystem.textLg,
             fontWeight: DesignSystem.weightSemibold,
             color: DesignSystem.neutral900,
@@ -110,7 +114,7 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
                 icon: const Icon(Icons.add_rounded,
                     size: 18, color: _adminAccent),
                 onPressed: _showGenerateDialog,
-                tooltip: '生成兑换码',
+                tooltip: l10n.redemptionGenerateTooltip,
               ),
             ),
           ),
@@ -127,9 +131,9 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _buildHero(),
+                  _buildHero(l10n),
                   const SizedBox(height: DesignSystem.space5),
-                  _buildFilterBar(),
+                  _buildFilterBar(filters),
                   const SizedBox(height: DesignSystem.space4),
                   if (_isLoading)
                     const Padding(
@@ -139,12 +143,12 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
                       ),
                     )
                   else if (_codes.isEmpty)
-                    _buildEmptyState()
+                    _buildEmptyState(l10n)
                   else
                     ..._codes.map((code) => Padding(
                           padding: const EdgeInsets.only(
                               bottom: DesignSystem.space3),
-                          child: _buildCodeCard(code),
+                          child: _buildCodeCard(code, l10n),
                         )),
                 ],
               ),
@@ -155,7 +159,7 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
     );
   }
 
-  Widget _buildHero() {
+  Widget _buildHero(S l10n) {
     return _buildPanel(
       padding: EdgeInsets.zero,
       child: Container(
@@ -195,9 +199,9 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
                 ),
               ),
               const SizedBox(height: DesignSystem.space4),
-              const Text(
-                '管理兑换码与权益发放',
-                style: TextStyle(
+              Text(
+                l10n.redemptionHeroTitle,
+                style: const TextStyle(
                   fontSize: 30,
                   fontWeight: DesignSystem.weightBold,
                   color: DesignSystem.neutral900,
@@ -206,9 +210,9 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
                 ),
               ),
               const SizedBox(height: DesignSystem.space3),
-              const Text(
-                '这里统一展示兑换码状态、类型、过期信息与生成入口。整体风格与账户工作区保持一致。',
-                style: TextStyle(
+              Text(
+                l10n.redemptionHeroDesc,
+                style: const TextStyle(
                   fontSize: DesignSystem.textSm,
                   color: DesignSystem.neutral600,
                   height: 1.6,
@@ -221,12 +225,12 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
     );
   }
 
-  Widget _buildFilterBar() {
+  Widget _buildFilterBar(Map<String, String> filters) {
     return _buildPanel(
       child: Wrap(
         spacing: DesignSystem.space2,
         runSpacing: DesignSystem.space2,
-        children: _filters.entries.map((entry) {
+        children: filters.entries.map((entry) {
           final isActive = _filter == entry.key;
           return ChoiceChip(
             label: Text(entry.value),
@@ -253,7 +257,7 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(S l10n) {
     return _buildPanel(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 64),
@@ -273,18 +277,18 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
               ),
             ),
             const SizedBox(height: DesignSystem.space4),
-            const Text(
-              '暂无兑换码',
-              style: TextStyle(
+            Text(
+              l10n.redemptionEmpty,
+              style: const TextStyle(
                 fontSize: DesignSystem.textLg,
                 fontWeight: DesignSystem.weightSemibold,
                 color: DesignSystem.neutral900,
               ),
             ),
             const SizedBox(height: DesignSystem.space2),
-            const Text(
-              '点击右上角加号生成新的兑换码。',
-              style: TextStyle(
+            Text(
+              l10n.redemptionEmptyHint,
+              style: const TextStyle(
                 fontSize: DesignSystem.textSm,
                 color: DesignSystem.neutral600,
               ),
@@ -295,7 +299,7 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
     );
   }
 
-  Widget _buildCodeCard(dynamic code) {
+  Widget _buildCodeCard(dynamic code, S l10n) {
     final isUsed = code['is_used'] == true;
     final isExpired = code['is_expired'] == true;
     final codeType = code['code_type'] as String? ?? 'pro';
@@ -307,15 +311,15 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
 
     if (isUsed) {
       statusColor = DesignSystem.neutral500;
-      statusText = '已使用';
+      statusText = l10n.redemptionStatusUsed;
       statusIcon = Icons.check_circle_rounded;
     } else if (isExpired) {
       statusColor = DesignSystem.error;
-      statusText = '已过期';
+      statusText = l10n.redemptionStatusExpired;
       statusIcon = Icons.cancel_rounded;
     } else {
       statusColor = DesignSystem.success;
-      statusText = '可用';
+      statusText = l10n.redemptionStatusAvailable;
       statusIcon = Icons.radio_button_checked_rounded;
     }
 
@@ -353,10 +357,10 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
                   size: 18,
                   color: DesignSystem.neutral600,
                 ),
-                tooltip: '复制兑换码',
+                tooltip: l10n.redemptionCopyTooltip,
                 onPressed: () async {
                   await Clipboard.setData(ClipboardData(text: codeValue));
-                  _showSuccess('已复制兑换码');
+                  _showSuccess(l10n.redemptionCopied);
                 },
               ),
             ],
@@ -376,7 +380,7 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
                 icon: codeType == 'lifetime'
                     ? Icons.auto_awesome_outlined
                     : Icons.workspace_premium_outlined,
-                label: codeType == 'lifetime' ? '永久版' : 'Pro 版',
+                label: codeType == 'lifetime' ? l10n.redemptionTypeLifetime : l10n.redemptionTypePro,
                 color: typeColor,
                 background: typeBg,
               ),
@@ -387,12 +391,12 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
             spacing: DesignSystem.space4,
             runSpacing: DesignSystem.space3,
             children: [
-              _buildMeta('创建时间', _formatDate(code['created_at'])),
-              _buildMeta('过期时间', _formatDate(code['expires_at'])),
+              _buildMeta(l10n.redemptionCreatedAt, _formatDate(code['created_at'])),
+              _buildMeta(l10n.redemptionExpiresAt, _formatDate(code['expires_at'])),
               if (code['used_by'] != null)
-                _buildMeta('使用者', code['used_by'].toString()),
+                _buildMeta(l10n.redemptionUsedBy, code['used_by'].toString()),
               if (code['used_at'] != null)
-                _buildMeta('使用时间', _formatDate(code['used_at'])),
+                _buildMeta(l10n.redemptionUsedAt, _formatDate(code['used_at'])),
             ],
           ),
           if ((code['note'] as String?)?.isNotEmpty == true) ...[
@@ -491,6 +495,7 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
   }
 
   void _showGenerateDialog() {
+    final l10n = S.of(context);
     String selectedType = 'pro';
     final countController = TextEditingController(text: '1');
     final durationController = TextEditingController(text: '30');
@@ -505,9 +510,9 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(DesignSystem.radiusXl),
           ),
-          title: const Text(
-            '生成兑换码',
-            style: TextStyle(
+          title: Text(
+            l10n.redemptionGenerateTitle,
+            style: const TextStyle(
               color: DesignSystem.neutral900,
               fontWeight: DesignSystem.weightSemibold,
             ),
@@ -519,9 +524,9 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    '选择权益类型并填写数量、有效天数与备注信息。',
-                    style: TextStyle(
+                  Text(
+                    l10n.redemptionGenerateDesc,
+                    style: const TextStyle(
                       fontSize: DesignSystem.textSm,
                       color: DesignSystem.neutral600,
                       height: 1.5,
@@ -533,7 +538,7 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
                       Expanded(
                         child: _buildTypeOption(
                           emoji: '💎',
-                          label: 'Pro 版',
+                          label: l10n.redemptionTypePro,
                           active: selectedType == 'pro',
                           activeColor: const Color(0xFFA21CAF),
                           onTap: () =>
@@ -544,7 +549,7 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
                       Expanded(
                         child: _buildTypeOption(
                           emoji: '👑',
-                          label: '永久版',
+                          label: l10n.redemptionTypeLifetime,
                           active: selectedType == 'lifetime',
                           activeColor: DesignSystem.accent700,
                           onTap: () =>
@@ -554,19 +559,19 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
                     ],
                   ),
                   const SizedBox(height: DesignSystem.space4),
-                  _buildInputField(countController, '生成数量', '1-100',
+                  _buildInputField(countController, l10n.redemptionGenerateCount, l10n.redemptionGenerateCountHint,
                       isNumber: true),
                   const SizedBox(height: DesignSystem.space3),
                   if (selectedType == 'pro') ...[
                     _buildInputField(
-                        durationController, 'Pro 有效天数', '如 30、90、365',
+                        durationController, l10n.redemptionProDuration, l10n.redemptionProDurationHint,
                         isNumber: true),
                     const SizedBox(height: DesignSystem.space3),
                   ],
-                  _buildInputField(expiresController, '兑换码过期天数', '生成后多少天内有效',
+                  _buildInputField(expiresController, l10n.redemptionCodeExpiry, l10n.redemptionCodeExpiryHint,
                       isNumber: true),
                   const SizedBox(height: DesignSystem.space3),
-                  _buildInputField(noteController, '备注（可选）', '如：送给活动用户'),
+                  _buildInputField(noteController, l10n.redemptionNote, l10n.redemptionNoteHint),
                 ],
               ),
             ),
@@ -574,9 +579,9 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text(
-                '取消',
-                style: TextStyle(color: DesignSystem.neutral600),
+              child: Text(
+                l10n.cancel,
+                style: const TextStyle(color: DesignSystem.neutral600),
               ),
             ),
             FilledButton(
@@ -596,7 +601,7 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
                 backgroundColor: _adminAccent,
                 foregroundColor: Colors.white,
               ),
-              child: const Text('生成'),
+              child: Text(l10n.redemptionGenerate),
             ),
           ],
         ),
@@ -698,6 +703,7 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
     required int expiresDays,
     String? note,
   }) async {
+    final l10n = S.of(context);
     setState(() => _isLoading = true);
 
     try {
@@ -712,21 +718,21 @@ class _RedemptionAdminPageState extends State<RedemptionAdminPage> {
 
       if (result['success'] == true) {
         final codes = result['codes'] as List?;
-        _showSuccess('成功生成 ${codes?.length ?? count} 个兑换码');
+        _showSuccess(l10n.redemptionGenerateSuccess(codes?.length ?? count));
 
         if (codes != null && codes.length == 1) {
           await Clipboard.setData(ClipboardData(text: codes.first.toString()));
-          _showSuccess('已复制: ${codes.first}');
+          _showSuccess(l10n.redemptionCopiedCode(codes.first.toString()));
         }
 
         await _loadCodes();
       } else {
         setState(() => _isLoading = false);
-        _showError(result['message'] ?? '生成失败');
+        _showError(result['message'] ?? l10n.redemptionGenerateFailed);
       }
     } catch (error) {
       setState(() => _isLoading = false);
-      _showError('生成失败: $error');
+      _showError(l10n.redemptionGenerateError(error.toString()));
     }
   }
 

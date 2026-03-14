@@ -17,7 +17,7 @@ class BovaTextField extends StatefulWidget {
   final ValueChanged<String>? onChanged;
   final VoidCallback? onTap;
   final bool autofocus;
-  
+
   const BovaTextField({
     super.key,
     this.controller,
@@ -35,7 +35,7 @@ class BovaTextField extends StatefulWidget {
     this.onTap,
     this.autofocus = false,
   });
-  
+
   @override
   State<BovaTextField> createState() => _BovaTextFieldState();
 }
@@ -43,62 +43,61 @@ class BovaTextField extends StatefulWidget {
 class _BovaTextFieldState extends State<BovaTextField> {
   final FocusNode _focusNode = FocusNode();
   bool _isFocused = false;
-  
+
   @override
   void initState() {
     super.initState();
     _focusNode.addListener(_handleFocusChange);
   }
-  
+
   @override
   void dispose() {
     _focusNode.removeListener(_handleFocusChange);
     _focusNode.dispose();
     super.dispose();
   }
-  
+
   void _handleFocusChange() {
     setState(() {
       _isFocused = _focusNode.hasFocus;
     });
   }
-  
+
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final hasError = widget.errorText != null;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 标签
         if (widget.label != null) ...[
           Text(
             widget.label!,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: DesignSystem.textSm,
               fontWeight: DesignSystem.weightSemibold,
-              color: DesignSystem.neutral900,
+              color: scheme.onSurface,
               letterSpacing: -0.1,
             ),
           ),
           const SizedBox(height: DesignSystem.space2),
         ],
-        
-        // 输入框
+
         AnimatedContainer(
           duration: DesignSystem.durationFast,
           curve: DesignSystem.easeOutQuart,
           decoration: BoxDecoration(
-            color: widget.enabled 
-                ? DesignSystem.neutral100 
-                : DesignSystem.neutral50,
+            color: widget.enabled
+                ? scheme.surfaceContainerHighest.withValues(alpha: 0.5)
+                : scheme.surfaceContainerHighest.withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(DesignSystem.radiusMd),
             border: Border.all(
               color: hasError
-                  ? DesignSystem.error
+                  ? scheme.error
                   : _isFocused
-                      ? DesignSystem.accent600
-                      : Colors.transparent,
+                      ? scheme.primary
+                      : scheme.outlineVariant.withValues(alpha: 0.3),
               width: _isFocused || hasError ? 2 : 1,
             ),
           ),
@@ -112,24 +111,24 @@ class _BovaTextFieldState extends State<BovaTextField> {
             autofocus: widget.autofocus,
             onChanged: widget.onChanged,
             onTap: widget.onTap,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: DesignSystem.textBase,
-              color: DesignSystem.neutral900,
+              color: scheme.onSurface,
               letterSpacing: -0.1,
             ),
             decoration: InputDecoration(
               hintText: widget.hint,
-              hintStyle: const TextStyle(
-                color: DesignSystem.neutral400,
+              hintStyle: TextStyle(
+                color: scheme.onSurfaceVariant.withValues(alpha: 0.5),
                 fontSize: DesignSystem.textBase,
               ),
               prefixIcon: widget.prefixIcon != null
                   ? Icon(
                       widget.prefixIcon,
                       size: 20,
-                      color: _isFocused 
-                          ? DesignSystem.accent600 
-                          : DesignSystem.neutral500,
+                      color: _isFocused
+                          ? scheme.primary
+                          : scheme.onSurfaceVariant,
                     )
                   : null,
               suffixIcon: widget.suffixIcon,
@@ -141,17 +140,16 @@ class _BovaTextFieldState extends State<BovaTextField> {
             ),
           ),
         ),
-        
-        // 辅助文字或错误信息
+
         if (widget.helperText != null || widget.errorText != null) ...[
           const SizedBox(height: DesignSystem.space1),
           Text(
             widget.errorText ?? widget.helperText!,
             style: TextStyle(
               fontSize: DesignSystem.textXs,
-              color: hasError 
-                  ? DesignSystem.error 
-                  : DesignSystem.neutral600,
+              color: hasError
+                  ? scheme.error
+                  : scheme.onSurfaceVariant,
               letterSpacing: 0,
             ),
           ),
@@ -167,7 +165,7 @@ class BovaSearchField extends StatelessWidget {
   final String? hint;
   final ValueChanged<String>? onChanged;
   final VoidCallback? onClear;
-  
+
   const BovaSearchField({
     super.key,
     this.controller,
@@ -175,12 +173,12 @@ class BovaSearchField extends StatelessWidget {
     this.onChanged,
     this.onClear,
   });
-  
+
   @override
   Widget build(BuildContext context) {
     return BovaTextField(
       controller: controller,
-      hint: hint ?? '搜索...',
+      hint: hint ?? 'Search...',
       prefixIcon: Icons.search,
       suffixIcon: controller?.text.isNotEmpty == true
           ? IconButton(

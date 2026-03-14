@@ -31,7 +31,7 @@ class MediaLibrarySourceService {
   }) async {
     final loginResult = await _loginToEmby(url, username, password);
     if (loginResult == null) {
-      throw Exception('登录失败，请检查服务器地址和凭据');
+      throw Exception('login_failed');
     }
 
     final updatedSource = MediaSource(
@@ -65,7 +65,7 @@ class MediaLibrarySourceService {
     final loginResult =
         await _loginToEmby(source.url, source.username, source.password);
     if (loginResult == null) {
-      throw Exception('登录失败，请检查服务器地址和凭据');
+      throw Exception('login_failed');
     }
 
     final updatedSource = MediaSource(

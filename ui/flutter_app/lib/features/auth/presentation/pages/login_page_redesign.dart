@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/bova_button.dart';
 import '../../../../core/widgets/bova_text_field.dart';
+import '../../../../l10n/generated/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/auth_workspace_shell.dart';
 
@@ -74,11 +75,11 @@ class _LoginPageRedesignState extends State<LoginPageRedesign>
     final password = _passwordController.text;
 
     if (email.isEmpty || !email.contains('@')) {
-      _showSnackBar('请输入正确的邮箱地址', isError: true);
+      _showSnackBar(S.of(context).authInvalidEmail, isError: true);
       return false;
     }
     if (password.isEmpty) {
-      _showSnackBar('请输入密码', isError: true);
+      _showSnackBar(S.of(context).authEnterPassword, isError: true);
       return false;
     }
     return true;
@@ -98,9 +99,9 @@ class _LoginPageRedesignState extends State<LoginPageRedesign>
     setState(() => _isLoading = false);
 
     if (success) {
-      _showSnackBar('登录成功！', isError: false);
+      _showSnackBar(S.of(context).authLoginSuccess, isError: false);
     } else {
-      _showSnackBar(authProvider.errorMessage ?? '登录失败', isError: true);
+      _showSnackBar(authProvider.errorMessage ?? S.of(context).authLoginFailed, isError: true);
     }
   }
 
@@ -111,7 +112,7 @@ class _LoginPageRedesignState extends State<LoginPageRedesign>
     if (!mounted) return;
     setState(() => _isLoading = false);
     if (!success) {
-      _showSnackBar(authProvider.errorMessage ?? 'GitHub 登录失败', isError: true);
+      _showSnackBar(authProvider.errorMessage ?? S.of(context).authGitHubLoginFailed, isError: true);
     }
   }
 
@@ -155,18 +156,18 @@ class _LoginPageRedesignState extends State<LoginPageRedesign>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
-                  '登录账户',
-                  style: TextStyle(
+                Text(
+                  S.of(context).authLoginTitle,
+                  style: const TextStyle(
                     fontSize: DesignSystem.textXl,
                     fontWeight: DesignSystem.weightSemibold,
                     color: DesignSystem.neutral900,
                   ),
                 ),
                 const SizedBox(height: DesignSystem.space2),
-                const Text(
-                  '输入邮箱和密码继续，或直接使用 GitHub 登录。',
-                  style: TextStyle(
+                Text(
+                  S.of(context).authLoginSubtitle,
+                  style: const TextStyle(
                     fontSize: DesignSystem.textSm,
                     color: DesignSystem.neutral600,
                     height: 1.5,
@@ -220,7 +221,7 @@ class _LoginPageRedesignState extends State<LoginPageRedesign>
                 const SizedBox(height: DesignSystem.space5),
                 BovaTextField(
                   controller: _emailController,
-                  label: '邮箱地址',
+                  label: S.of(context).authEmailLabel,
                   hint: 'your@email.com',
                   prefixIcon: Icons.email_outlined,
                   keyboardType: TextInputType.emailAddress,
@@ -229,8 +230,8 @@ class _LoginPageRedesignState extends State<LoginPageRedesign>
                 const SizedBox(height: DesignSystem.space4),
                 BovaTextField(
                   controller: _passwordController,
-                  label: '密码',
-                  hint: '输入您的密码',
+                  label: S.of(context).authPasswordLabel,
+                  hint: S.of(context).authPasswordHint,
                   prefixIcon: Icons.lock_outlined,
                   obscureText: _obscurePassword,
                   enabled: !_isLoading,
@@ -255,8 +256,8 @@ class _LoginPageRedesignState extends State<LoginPageRedesign>
                         ? null
                         : () =>
                             Navigator.pushNamed(context, '/forgot-password'),
-                    child: const Text(
-                      '忘记密码？',
+                    child: Text(
+                      S.of(context).authForgotPassword,
                       style: TextStyle(
                         fontSize: DesignSystem.textSm,
                         fontWeight: DesignSystem.weightSemibold,
@@ -267,33 +268,33 @@ class _LoginPageRedesignState extends State<LoginPageRedesign>
                 ),
                 const SizedBox(height: DesignSystem.space4),
                 BovaButton(
-                  text: '登录',
+                  text: S.of(context).authLoginButton,
                   onPressed: _isLoading ? null : _handleLogin,
                   isLoading: _isLoading,
                   isFullWidth: true,
                   size: BovaButtonSize.large,
                 ),
                 const SizedBox(height: DesignSystem.space4),
-                const Row(
+                Row(
                   children: [
-                    Expanded(child: Divider(color: DesignSystem.neutral200)),
+                    const Expanded(child: Divider(color: DesignSystem.neutral200)),
                     Padding(
                       padding:
-                          EdgeInsets.symmetric(horizontal: DesignSystem.space3),
+                          const EdgeInsets.symmetric(horizontal: DesignSystem.space3),
                       child: Text(
-                        '或使用第三方登录',
-                        style: TextStyle(
+                        S.of(context).authOrThirdParty,
+                        style: const TextStyle(
                           fontSize: DesignSystem.textSm,
                           color: DesignSystem.neutral500,
                         ),
                       ),
                     ),
-                    Expanded(child: Divider(color: DesignSystem.neutral200)),
+                    const Expanded(child: Divider(color: DesignSystem.neutral200)),
                   ],
                 ),
                 const SizedBox(height: DesignSystem.space4),
                 BovaButton(
-                  text: '使用 GitHub 登录',
+                  text: S.of(context).authGitHubLogin,
                   icon: Icons.code_rounded,
                   onPressed: _isLoading ? null : _handleGitHubLogin,
                   style: BovaButtonStyle.secondary,
@@ -302,8 +303,8 @@ class _LoginPageRedesignState extends State<LoginPageRedesign>
                 ),
                 const SizedBox(height: DesignSystem.space5),
                 AuthWorkspaceFooterLink(
-                  label: '还没有账户？',
-                  action: '立即注册',
+                  label: S.of(context).authNoAccount,
+                  action: S.of(context).authRegisterNow,
                   enabled: !_isLoading,
                   onTap: () => Navigator.pushNamed(context, '/register'),
                 ),

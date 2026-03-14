@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../../../core/providers/theme_provider.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/design_system.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../services/discover_library_resolver_service.dart';
 import 'discover_latency_indicator.dart';
 
@@ -76,6 +80,17 @@ class _DiscoverSourceChipState extends State<_DiscoverSourceChip> {
 
   @override
   Widget build(BuildContext context) {
+    final accent = _resolveAccent(context);
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final chipBg = isDark ? scheme.surface : Colors.white.withValues(alpha: 0.98);
+    final chipBorder = isDark
+        ? scheme.outline.withValues(alpha: 0.15)
+        : DesignSystem.neutral200.withValues(alpha: 0.92);
+    final shadowColor = isDark
+        ? Colors.black.withValues(alpha: 0.20)
+        : const Color(0xFF111827);
+
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
@@ -93,22 +108,20 @@ class _DiscoverSourceChipState extends State<_DiscoverSourceChip> {
           ),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.98),
+            color: chipBg,
             borderRadius: BorderRadius.circular(DesignSystem.radiusFull),
-            border: Border.all(
-              color: DesignSystem.neutral200.withValues(alpha: 0.92),
-            ),
+            border: Border.all(color: chipBorder),
             boxShadow: _isHovered
                 ? [
                     BoxShadow(
-                      color: const Color(0xFF111827).withValues(alpha: 0.08),
+                      color: shadowColor.withValues(alpha: 0.08),
                       blurRadius: 14,
                       offset: const Offset(0, 7),
                     ),
                   ]
                 : [
                     BoxShadow(
-                      color: const Color(0xFF111827).withValues(alpha: 0.03),
+                      color: shadowColor.withValues(alpha: 0.03),
                       blurRadius: 8,
                       offset: const Offset(0, 3),
                     ),
@@ -117,10 +130,10 @@ class _DiscoverSourceChipState extends State<_DiscoverSourceChip> {
           child: Row(
             mainAxisSize: MainAxisSize.max,
             children: [
-              const Icon(
+              Icon(
                 Icons.play_circle_fill_rounded,
                 size: 15,
-                color: Color(0xFFE11D48),
+                color: accent,
               ),
               const SizedBox(width: 7),
               Expanded(
@@ -128,10 +141,10 @@ class _DiscoverSourceChipState extends State<_DiscoverSourceChip> {
                   widget.label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: DesignSystem.textSm,
                     fontWeight: DesignSystem.weightSemibold,
-                    color: DesignSystem.neutral900,
+                    color: scheme.onSurface,
                     letterSpacing: -0.15,
                     height: 1,
                   ),
@@ -171,10 +184,17 @@ class _DiscoverSourceMenuButtonState extends State<_DiscoverSourceMenuButton> {
 
   @override
   Widget build(BuildContext context) {
+    final accent = _resolveAccent(context);
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final l = S.of(context);
+    final chipBg = isDark ? scheme.surface : Colors.white;
+    final accentBorder = accent.withValues(alpha: 0.25);
+
     return PopupMenuButton<DiscoverLibraryMatch>(
-      tooltip: '展开另外 ${widget.hiddenCount} 个媒体源',
+      tooltip: l.discoverExpandSources(widget.hiddenCount),
       onSelected: widget.onSelected,
-      color: Colors.white,
+      color: scheme.surface,
       elevation: 10,
       offset: const Offset(0, 8),
       constraints: const BoxConstraints(
@@ -185,7 +205,7 @@ class _DiscoverSourceMenuButtonState extends State<_DiscoverSourceMenuButton> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
         side: BorderSide(
-          color: DesignSystem.neutral200.withValues(alpha: 0.9),
+          color: scheme.outline.withValues(alpha: 0.15),
         ),
       ),
       padding: EdgeInsets.zero,
@@ -213,22 +233,22 @@ class _DiscoverSourceMenuButtonState extends State<_DiscoverSourceMenuButton> {
           ),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: chipBg,
             borderRadius: BorderRadius.circular(999),
             border: Border.all(
-              color: const Color(0xFFFBCFE8),
+              color: accentBorder,
             ),
             boxShadow: _isHovered
                 ? [
                     BoxShadow(
-                      color: const Color(0xFF111827).withValues(alpha: 0.08),
+                      color: Colors.black.withValues(alpha: 0.08),
                       blurRadius: 12,
                       offset: const Offset(0, 6),
                     ),
                   ]
                 : [
                     BoxShadow(
-                      color: const Color(0xFF111827).withValues(alpha: 0.03),
+                      color: Colors.black.withValues(alpha: 0.03),
                       blurRadius: 6,
                       offset: const Offset(0, 2),
                     ),
@@ -237,10 +257,10 @@ class _DiscoverSourceMenuButtonState extends State<_DiscoverSourceMenuButton> {
           child: Center(
             child: Text(
               '+${widget.hiddenCount}',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
                 fontWeight: DesignSystem.weightSemibold,
-                color: Color(0xFFBE123C),
+                color: accent,
                 height: 1,
                 letterSpacing: -0.1,
               ),
@@ -259,12 +279,15 @@ class _DiscoverSourceMenuItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accent = _resolveAccent(context);
+    final scheme = Theme.of(context).colorScheme;
+
     return Row(
       children: [
-        const Icon(
+        Icon(
           Icons.play_circle_fill_rounded,
           size: 15,
-          color: Color(0xFFE11D48),
+          color: accent,
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -272,10 +295,10 @@ class _DiscoverSourceMenuItem extends StatelessWidget {
             match.source.name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: DesignSystem.textSm,
               fontWeight: DesignSystem.weightSemibold,
-              color: DesignSystem.neutral900,
+              color: scheme.onSurface,
               letterSpacing: -0.15,
             ),
           ),
@@ -288,4 +311,12 @@ class _DiscoverSourceMenuItem extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Shared accent color resolver for discover widgets.
+Color _resolveAccent(BuildContext context) {
+  final mode = context.read<ThemeProvider>().themeMode;
+  if (mode == AppThemeMode.cyberpunk) return AppTheme.cyberNeon;
+  if (mode == AppThemeMode.sweetiePro) return AppTheme.sweetieHotPink;
+  return Theme.of(context).colorScheme.primary;
 }

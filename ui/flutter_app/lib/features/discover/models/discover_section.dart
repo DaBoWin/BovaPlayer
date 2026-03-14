@@ -1,13 +1,13 @@
 import 'tmdb_media_item.dart';
 
 class DiscoverSection {
-  final String title;
-  final String subtitle;
+  final String titleKey;
+  final String subtitleKey;
   final List<TmdbMediaItem> items;
 
   const DiscoverSection({
-    required this.title,
-    required this.subtitle,
+    required this.titleKey,
+    required this.subtitleKey,
     required this.items,
   });
 }

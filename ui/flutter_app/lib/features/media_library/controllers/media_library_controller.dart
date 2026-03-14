@@ -57,9 +57,9 @@ class MediaLibraryController extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     } catch (error, stackTrace) {
-      debugPrint('[MediaLibrary] 加载失败: $error');
-      debugPrint('[MediaLibrary] 堆栈: $stackTrace');
-      _errorMessage = '加载失败: $error';
+      debugPrint('[MediaLibrary] Load failed: $error');
+      debugPrint('[MediaLibrary] Stack: $stackTrace');
+      _errorMessage = 'load_failed:$error';
       _isLoading = false;
       notifyListeners();
     }
@@ -85,7 +85,7 @@ class MediaLibraryController extends ChangeNotifier {
           source.toNetworkConnection(lastConnected: DateTime.now()),
         );
         if (!success) {
-          throw Exception('连接失败');
+          throw Exception('connection_failed');
         }
       } else if (source.type == SourceType.smb) {
         _smbService = SMBService();
@@ -93,7 +93,7 @@ class MediaLibraryController extends ChangeNotifier {
           source.toNetworkConnection(lastConnected: DateTime.now()),
         );
         if (!success) {
-          throw Exception('连接失败');
+          throw Exception('connection_failed');
         }
       }
 
@@ -109,7 +109,7 @@ class MediaLibraryController extends ChangeNotifier {
       _currentPath = '/';
       _isLoading = false;
       notifyListeners();
-      throw Exception('连接失败: $error');
+      throw Exception('connection_failed:$error');
     }
   }
 
@@ -139,7 +139,7 @@ class MediaLibraryController extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     } catch (error) {
-      _errorMessage = '加载目录失败: $error';
+      _errorMessage = 'load_dir_failed:$error';
       _isLoading = false;
       notifyListeners();
     }
@@ -167,7 +167,7 @@ class MediaLibraryController extends ChangeNotifier {
       _upsertSource(updatedSource);
       _isLoading = false;
       notifyListeners();
-      return existingSource == null ? '添加成功' : '服务器更新成功';
+      return existingSource == null ? 'add_success' : 'server_update_success';
     } catch (error) {
       _isLoading = false;
       notifyListeners();
@@ -207,7 +207,7 @@ class MediaLibraryController extends ChangeNotifier {
       _upsertSource(updatedSource);
       _isLoading = false;
       notifyListeners();
-      return existingSource == null ? '添加成功' : '媒体源更新成功';
+      return existingSource == null ? 'add_success' : 'update_success';
     } catch (error) {
       _isLoading = false;
       notifyListeners();
@@ -220,29 +220,29 @@ class MediaLibraryController extends ChangeNotifier {
       await _sourceService.deleteSource(source);
       _sources.removeWhere((item) => item.id == source.id);
       notifyListeners();
-      return '删除成功';
+      return 'delete_success';
     } catch (error) {
-      throw Exception('删除失败: $error');
+      throw Exception('delete_failed:$error');
     }
   }
 
   Future<String> refreshAndSync(AuthProvider authProvider) async {
     if (!authProvider.isAuthenticated) {
-      throw Exception('请先登录');
+      throw Exception('please_login');
     }
     if (!authProvider.isSyncEnabled) {
-      throw Exception('请先在账户页面启用云同步');
+      throw Exception('enable_sync');
     }
 
     await authProvider.triggerSync();
     await loadSources();
-    return '同步完成';
+    return 'sync_complete';
   }
 
   String createProxyUrl(NetworkFile file) {
     final activeSource = _activeSource;
     if (activeSource == null) {
-      throw Exception('当前没有激活的媒体源');
+      throw Exception('no_active_source');
     }
 
     final connection = activeSource.toNetworkConnection();

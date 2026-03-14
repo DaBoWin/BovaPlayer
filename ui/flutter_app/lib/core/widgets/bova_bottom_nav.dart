@@ -1,7 +1,10 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../providers/theme_provider.dart';
+import '../theme/app_theme.dart';
 import '../theme/design_system.dart';
 
 class BovaBottomNav extends StatelessWidget {
@@ -18,6 +21,29 @@ class BovaBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final themeMode = context.watch<ThemeProvider>().themeMode;
+    final isCyberpunk = themeMode == AppThemeMode.cyberpunk;
+    final isSweetie = themeMode == AppThemeMode.sweetiePro;
+    final isSpecial = isCyberpunk || isSweetie;
+    final specialNeon = isSweetie ? AppTheme.sweetieHotPink : AppTheme.cyberNeon;
+    final specialBg = isSweetie ? const Color(0xFFFFF0F5) : const Color(0xFF0E0E1A);
+
+    final navBg = isSpecial
+        ? specialBg.withValues(alpha: 0.94)
+        : isDark
+            ? const Color(0xFF141418).withValues(alpha: 0.94)
+            : const Color(0xFFF4F5F7).withValues(alpha: 0.94);
+    final navBorder = isSpecial
+        ? specialNeon.withValues(alpha: 0.12)
+        : isDark
+            ? const Color(0xFF2A2A30).withValues(alpha: 0.92)
+            : Colors.white.withValues(alpha: 0.92);
+    final navShadowColor = isSpecial
+        ? specialNeon.withValues(alpha: 0.06)
+        : DesignSystem.neutral900.withValues(alpha: 0.07);
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         DesignSystem.space3,
@@ -34,14 +60,12 @@ class BovaBottomNav extends StatelessWidget {
           ),
           child: Container(
             decoration: BoxDecoration(
-              color: const Color(0xFFF4F5F7).withValues(alpha: 0.94),
+              color: navBg,
               borderRadius: BorderRadius.circular(DesignSystem.radius2xl),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.92),
-              ),
+              border: Border.all(color: navBorder),
               boxShadow: [
                 BoxShadow(
-                  color: DesignSystem.neutral900.withValues(alpha: 0.07),
+                  color: navShadowColor,
                   blurRadius: 22,
                   offset: const Offset(0, 12),
                 ),
@@ -129,8 +153,32 @@ class _BottomNavItemWidgetState extends State<_BottomNavItemWidget>
 
   @override
   Widget build(BuildContext context) {
-    final foregroundColor =
-        widget.isSelected ? const Color(0xFFE11D48) : DesignSystem.neutral500;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final themeMode = context.watch<ThemeProvider>().themeMode;
+    final isCyberpunk = themeMode == AppThemeMode.cyberpunk;
+    final isSweetieNav = themeMode == AppThemeMode.sweetiePro;
+    final isSpecialNav = isCyberpunk || isSweetieNav;
+    final specialNeonNav = isSweetieNav ? AppTheme.sweetieHotPink : AppTheme.cyberNeon;
+
+    final accentColor = isSpecialNav ? specialNeonNav : theme.colorScheme.primary;
+    final inactiveColor = isSpecialNav
+        ? (isSweetieNav ? const Color(0xFFCC88AA) : const Color(0xFF555570))
+        : isDark
+            ? const Color(0xFF6B6B75)
+            : DesignSystem.neutral500;
+    final foregroundColor = widget.isSelected ? accentColor : inactiveColor;
+
+    final selectedBg = isSpecialNav
+        ? specialNeonNav.withValues(alpha: 0.08)
+        : isDark
+            ? const Color(0xFF1E1E24).withValues(alpha: 0.98)
+            : Colors.white.withValues(alpha: 0.98);
+    final selectedBorder = isSpecialNav
+        ? specialNeonNav.withValues(alpha: 0.2)
+        : isDark
+            ? const Color(0xFF2A2A30)
+            : const Color(0xFFFBCFE8);
 
     return GestureDetector(
       onTap: widget.onTap,
@@ -144,19 +192,17 @@ class _BottomNavItemWidgetState extends State<_BottomNavItemWidget>
             vertical: DesignSystem.space2 + 1,
           ),
           decoration: BoxDecoration(
-            color: widget.isSelected
-                ? Colors.white.withValues(alpha: 0.98)
-                : Colors.transparent,
+            color: widget.isSelected ? selectedBg : Colors.transparent,
             borderRadius: BorderRadius.circular(DesignSystem.radiusFull),
             border: widget.isSelected
-                ? Border.all(
-                    color: const Color(0xFFFBCFE8),
-                  )
+                ? Border.all(color: selectedBorder)
                 : null,
             boxShadow: widget.isSelected
                 ? [
                     BoxShadow(
-                      color: const Color(0xFF111827).withValues(alpha: 0.05),
+                      color: isSpecialNav
+                          ? specialNeonNav.withValues(alpha: 0.08)
+                          : const Color(0xFF111827).withValues(alpha: 0.05),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -173,8 +219,16 @@ class _BottomNavItemWidgetState extends State<_BottomNavItemWidget>
                 height: 3,
                 margin: EdgeInsets.only(bottom: widget.isSelected ? 5 : 0),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE11D48),
+                  color: accentColor,
                   borderRadius: BorderRadius.circular(DesignSystem.radiusFull),
+                  boxShadow: isSpecialNav && widget.isSelected
+                      ? [
+                          BoxShadow(
+                            color: specialNeonNav.withValues(alpha: 0.5),
+                            blurRadius: 4,
+                          ),
+                        ]
+                      : null,
                 ),
               ),
               ScaleTransition(
@@ -195,7 +249,7 @@ class _BottomNavItemWidgetState extends State<_BottomNavItemWidget>
                       ? DesignSystem.weightSemibold
                       : DesignSystem.weightMedium,
                   color: foregroundColor,
-                  letterSpacing: -0.1,
+                  letterSpacing: isSpecialNav ? 0.3 : -0.1,
                 ),
                 child: Text(widget.item.label),
               ),

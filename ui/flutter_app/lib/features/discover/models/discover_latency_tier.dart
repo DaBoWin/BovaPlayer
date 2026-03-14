@@ -26,17 +26,26 @@ class DiscoverLatencyTierResolver {
     }
   }
 
-  static String tooltip(int? latencyMs) {
+  /// Returns a localized tooltip string.
+  /// Requires [good], [medium], [slow], [unreachable] labels from the caller
+  /// (typically from S.of(context)).
+  static String tooltip(
+    int? latencyMs, {
+    required String good,
+    required String medium,
+    required String slow,
+    required String unreachable,
+  }) {
     final tier = fromMs(latencyMs);
     switch (tier) {
       case DiscoverLatencyTier.green:
-        return '$latencyMs ms · 优';
+        return '$latencyMs ms · $good';
       case DiscoverLatencyTier.yellow:
-        return '$latencyMs ms · 中';
+        return '$latencyMs ms · $medium';
       case DiscoverLatencyTier.red:
-        return '$latencyMs ms · 慢';
+        return '$latencyMs ms · $slow';
       case DiscoverLatencyTier.offline:
-        return '连接不可达';
+        return unreachable;
     }
   }
 }

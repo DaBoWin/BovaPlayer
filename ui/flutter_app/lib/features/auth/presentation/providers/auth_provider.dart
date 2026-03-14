@@ -71,7 +71,7 @@ class AuthProvider with ChangeNotifier {
         }
       });
     } catch (e) {
-      _setError('初始化失败：$e');
+      _setError('Initialization failed: $e');
     }
   }
 
@@ -408,7 +408,7 @@ class AuthProvider with ChangeNotifier {
       return result;
     } catch (e) {
       debugPrint('[Auth] ❌ 兑换失败: $e');
-      return {'success': false, 'message': '兑换失败：$e'};
+      return {'success': false, 'message': 'redeem_failed:$e'};
     }
   }
 
@@ -431,7 +431,7 @@ class AuthProvider with ChangeNotifier {
       );
     } catch (e) {
       debugPrint('[Auth] ❌ 生成兑换码失败: $e');
-      return {'success': false, 'message': '生成失败：$e'};
+      return {'success': false, 'message': 'generate_failed:$e'};
     }
   }
 
@@ -441,7 +441,7 @@ class AuthProvider with ChangeNotifier {
       return await _authService.listCodes(filter: filter);
     } catch (e) {
       debugPrint('[Auth] ❌ 查询兑换码列表失败: $e');
-      return {'success': false, 'message': '查询失败：$e'};
+      return {'success': false, 'message': 'query_failed:$e'};
     }
   }
 

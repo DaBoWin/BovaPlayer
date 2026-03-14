@@ -11,12 +11,10 @@ import 'features/media_library/models/media_source.dart';
 import 'features/media_library/widgets/media_library_browser.dart';
 import 'features/media_library/widgets/media_library_dialogs.dart';
 import 'features/media_library/widgets/media_library_overview.dart';
+import 'l10n/generated/app_localizations.dart';
 import 'models/network_file.dart';
 import 'player_window/desktop_player_window.dart';
 import 'widgets/custom_app_bar.dart';
-
-const Color _libraryWorkspaceCanvas = Color(0xFFF1F3F6);
-const Color _librarySurface = Colors.white;
 
 class MediaLibraryPage extends StatefulWidget {
   const MediaLibraryPage({super.key, this.embedded = false});
@@ -50,6 +48,10 @@ class MediaLibraryPageState extends State<MediaLibraryPage> {
       listenable: _controller,
       builder: (context, _) {
         final activeSource = _controller.activeSource;
+        final rawError = _controller.errorMessage;
+        final localizedError = rawError != null
+            ? _localizeError(rawError)
+            : null;
         final content = AnimatedSwitcher(
           duration: const Duration(milliseconds: 280),
           switchInCurve: Curves.easeOutCubic,
@@ -59,7 +61,7 @@ class MediaLibraryPageState extends State<MediaLibraryPage> {
                   key: const ValueKey('library-overview'),
                   sources: _controller.sources,
                   isLoading: _controller.isLoading,
-                  errorMessage: _controller.errorMessage,
+                  errorMessage: localizedError,
                   onRefresh: _controller.loadSources,
                   onAddSource: () => _showAddSourcePicker(context),
                   onOpenSource: _handleOpenSource,
@@ -71,7 +73,7 @@ class MediaLibraryPageState extends State<MediaLibraryPage> {
                   items: _controller.currentItems,
                   currentPath: _controller.currentPath,
                   isLoading: _controller.isLoading,
-                  errorMessage: _controller.errorMessage,
+                  errorMessage: localizedError,
                   onRefresh: () =>
                       _controller.loadDirectory(_controller.currentPath),
                   onNavigateTo: _controller.loadDirectory,
@@ -81,7 +83,7 @@ class MediaLibraryPageState extends State<MediaLibraryPage> {
 
         if (widget.embedded) {
           return ColoredBox(
-            color: _libraryWorkspaceCanvas,
+            color: EmbyColors.of(context).workspaceCanvas,
             child: Column(
               children: [
                 if (activeSource != null)
@@ -96,7 +98,7 @@ class MediaLibraryPageState extends State<MediaLibraryPage> {
         }
 
         return Scaffold(
-          backgroundColor: _libraryWorkspaceCanvas,
+          backgroundColor: EmbyColors.of(context).workspaceCanvas,
           appBar: activeSource != null
               ? CustomAppBar(
                   showBackButton: true,
@@ -121,12 +123,12 @@ class MediaLibraryPageState extends State<MediaLibraryPage> {
   Future<void> refreshAndSync() async {
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final message = await _controller.refreshAndSync(authProvider);
+      final messageKey = await _controller.refreshAndSync(authProvider);
       if (!mounted) return;
-      _showSuccess(message);
+      _showSuccess(_localizeMessage(messageKey));
     } catch (error) {
       if (!mounted) return;
-      _showError(_normalizeError(error));
+      _showError(_localizeError(error));
     }
   }
 
@@ -156,7 +158,7 @@ class MediaLibraryPageState extends State<MediaLibraryPage> {
       await _controller.connectToSource(source);
     } catch (error) {
       if (!mounted) return;
-      _showError(_normalizeError(error));
+      _showError(_localizeError(error));
     }
   }
 
@@ -171,7 +173,7 @@ class MediaLibraryPageState extends State<MediaLibraryPage> {
       return;
     }
 
-    _showError('暂不支持打开此文件类型');
+    _showError(S.of(context).mediaSourceFileUnsupported);
   }
 
   Future<void> _openPlayer(NetworkFile file) async {
@@ -186,7 +188,7 @@ class MediaLibraryPageState extends State<MediaLibraryPage> {
       );
     } catch (error) {
       if (!mounted) return;
-      _showError('播放失败: ${_normalizeError(error)}');
+      _showError(S.of(context).mediaSourcePlayFailed(_localizeError(error)));
     }
   }
 
@@ -214,7 +216,7 @@ class MediaLibraryPageState extends State<MediaLibraryPage> {
     if (formData == null) return;
 
     try {
-      final message = await _controller.saveEmbySource(
+      final messageKey = await _controller.saveEmbySource(
         existingSource: editSource,
         name: formData.name,
         url: formData.url,
@@ -222,10 +224,10 @@ class MediaLibraryPageState extends State<MediaLibraryPage> {
         password: formData.password,
       );
       if (!mounted) return;
-      _showSuccess(message);
+      _showSuccess(_localizeMessage(messageKey));
     } catch (error) {
       if (!mounted) return;
-      _showError(_normalizeError(error));
+      _showError(_localizeError(error));
     }
   }
 
@@ -241,7 +243,7 @@ class MediaLibraryPageState extends State<MediaLibraryPage> {
     if (formData == null) return;
 
     try {
-      final message = await _controller.saveNetworkSource(
+      final messageKey = await _controller.saveNetworkSource(
         existingSource: editSource,
         type: type,
         name: formData.name,
@@ -254,10 +256,10 @@ class MediaLibraryPageState extends State<MediaLibraryPage> {
         savePassword: formData.savePassword,
       );
       if (!mounted) return;
-      _showSuccess(message);
+      _showSuccess(_localizeMessage(messageKey));
     } catch (error) {
       if (!mounted) return;
-      _showError(_normalizeError(error));
+      _showError(_localizeError(error));
     }
   }
 
@@ -266,12 +268,12 @@ class MediaLibraryPageState extends State<MediaLibraryPage> {
     if (!shouldDelete) return;
 
     try {
-      final message = await _controller.deleteSource(source);
+      final messageKey = await _controller.deleteSource(source);
       if (!mounted) return;
-      _showSuccess(message);
+      _showSuccess(_localizeMessage(messageKey));
     } catch (error) {
       if (!mounted) return;
-      _showError(_normalizeError(error));
+      _showError(_localizeError(error));
     }
   }
 
@@ -309,11 +311,63 @@ class MediaLibraryPageState extends State<MediaLibraryPage> {
     );
   }
 
-  String _normalizeError(Object error) {
-    final message = error.toString();
-    return message.startsWith('Exception: ')
-        ? message.substring('Exception: '.length)
-        : message;
+  String _localizeMessage(String key) {
+    final l10n = S.of(context);
+    switch (key) {
+      case 'add_success':
+        return l10n.mediaSourceAddSuccess;
+      case 'update_success':
+      case 'server_update_success':
+        return l10n.mediaSourceUpdateSuccess;
+      case 'delete_success':
+        return l10n.mediaSourceDeleteSuccess;
+      case 'sync_complete':
+        return l10n.mediaSourceSyncComplete;
+      default:
+        return key;
+    }
+  }
+
+  String _localizeError(Object error) {
+    final raw = error.toString();
+    final message = raw.startsWith('Exception: ')
+        ? raw.substring('Exception: '.length)
+        : raw;
+    final l10n = S.of(context);
+
+    if (message == 'connection_failed') {
+      return l10n.mediaSourceConnectionFailed;
+    }
+    if (message.startsWith('connection_failed:')) {
+      final detail = message.substring('connection_failed:'.length);
+      return '${l10n.mediaSourceConnectionFailed}: $detail';
+    }
+    if (message == 'login_failed') {
+      return l10n.mediaSourceLoginFailed;
+    }
+    if (message == 'please_login') {
+      return l10n.mediaSourcePleaseLogin;
+    }
+    if (message == 'enable_sync') {
+      return l10n.mediaSourceEnableSync;
+    }
+    if (message == 'no_active_source') {
+      return l10n.mediaSourceNoActive;
+    }
+    if (message.startsWith('delete_failed:')) {
+      final detail = message.substring('delete_failed:'.length);
+      return l10n.mediaSourceDeleteFailed(detail);
+    }
+    if (message.startsWith('load_failed:')) {
+      final detail = message.substring('load_failed:'.length);
+      return l10n.mediaSourceLoadFailed(detail);
+    }
+    if (message.startsWith('load_dir_failed:')) {
+      final detail = message.substring('load_dir_failed:'.length);
+      return l10n.mediaSourceLoadFailed(detail);
+    }
+
+    return message;
   }
 }
 
@@ -331,7 +385,7 @@ class _EmbeddedLibraryHeader extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 18, 24, 16),
       decoration: BoxDecoration(
-        color: _librarySurface.withValues(alpha: 0.96),
+        color: EmbyColors.of(context).workspaceSurface.withValues(alpha: 0.96),
         border: Border(
           bottom: BorderSide(
             color: Colors.black.withValues(alpha: 0.05),
@@ -344,7 +398,7 @@ class _EmbeddedLibraryHeader extends StatelessWidget {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: _librarySurface,
+              color: EmbyColors.of(context).workspaceSurface,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: DesignSystem.neutral900.withValues(alpha: 0.06),
@@ -365,7 +419,7 @@ class _EmbeddedLibraryHeader extends StatelessWidget {
               ),
               onPressed: onBackPressed,
               splashRadius: 20,
-              tooltip: '返回媒体库',
+              tooltip: S.of(context).browserBackToLibrary,
             ),
           ),
           const SizedBox(width: 14),

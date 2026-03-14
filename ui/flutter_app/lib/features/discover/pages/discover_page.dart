@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../../../core/providers/theme_provider.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/design_system.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../controllers/discover_controller.dart';
 import '../models/discover_feed.dart';
 import '../models/discover_section.dart';
@@ -169,7 +173,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
             const DiscoverPayload(featured: null, wallItems: [], sections: []);
 
         return RefreshIndicator(
-          color: const Color(0xFFE11D48),
+          color: Theme.of(context).colorScheme.primary,
           onRefresh: _controller.refresh,
           child: LayoutBuilder(
             builder: (context, constraints) {
@@ -224,11 +228,10 @@ class _DiscoverPageState extends State<DiscoverPage> {
                     SliverPadding(
                       padding: EdgeInsets.fromLTRB(
                           horizontalPadding, 8, horizontalPadding, 24),
-                      sliver: const SliverToBoxAdapter(
+                      sliver: SliverToBoxAdapter(
                         child: _SectionIntro(
-                          title: 'Hot Wall',
-                          subtitle:
-                              'A live grid of high-interest titles pulled from TMDB.',
+                          title: S.of(context).discoverHotWall,
+                          subtitle: S.of(context).discoverHotWallSubtitle,
                         ),
                       ),
                     ),
@@ -307,6 +310,17 @@ class _QuickPlayButtonState extends State<_QuickPlayButton> {
 
   @override
   Widget build(BuildContext context) {
+    final accent = _resolveAccent(context);
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final chipBg = isDark ? scheme.surface : Colors.white.withValues(alpha: 0.96);
+    final borderColor = isDark
+        ? scheme.outline.withValues(alpha: 0.15)
+        : scheme.onSurface.withValues(alpha: 0.08);
+    final shadowColor = isDark
+        ? Colors.black.withValues(alpha: 0.20)
+        : scheme.onSurface.withValues(alpha: 0.12);
+
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
@@ -325,15 +339,13 @@ class _QuickPlayButtonState extends State<_QuickPlayButton> {
             vertical: 9,
           ),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.96),
+            color: chipBg,
             borderRadius: BorderRadius.circular(DesignSystem.radiusFull),
-            border: Border.all(
-              color: const Color(0xFF111827).withValues(alpha: 0.08),
-            ),
+            border: Border.all(color: borderColor),
             boxShadow: _isHovered
                 ? [
                     BoxShadow(
-                      color: const Color(0xFF111827).withValues(alpha: 0.12),
+                      color: shadowColor,
                       blurRadius: 18,
                       offset: const Offset(0, 10),
                     ),
@@ -343,18 +355,18 @@ class _QuickPlayButtonState extends State<_QuickPlayButton> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
+              Icon(
                 Icons.play_circle_fill_rounded,
                 size: 16,
-                color: Color(0xFFE11D48),
+                color: accent,
               ),
               const SizedBox(width: 6),
               Text(
                 widget.label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: DesignSystem.textSm,
                   fontWeight: DesignSystem.weightSemibold,
-                  color: DesignSystem.neutral900,
+                  color: scheme.onSurface,
                   letterSpacing: -0.1,
                 ),
               ),
@@ -379,24 +391,25 @@ class _SectionIntro extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 34,
             fontWeight: DesignSystem.weightMedium,
-            color: DesignSystem.neutral700,
+            color: scheme.onSurface.withValues(alpha: 0.7),
             letterSpacing: -0.9,
           ),
         ),
         const SizedBox(height: 8),
         Text(
           subtitle,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: DesignSystem.textBase,
-            color: DesignSystem.neutral500,
+            color: scheme.onSurface.withValues(alpha: 0.5),
           ),
         ),
       ],
@@ -411,6 +424,11 @@ class _ConfigurationEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accent = _resolveAccent(context);
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final l = S.of(context);
+
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 560),
@@ -418,9 +436,13 @@ class _ConfigurationEmptyState extends StatelessWidget {
           margin: const EdgeInsets.all(24),
           padding: const EdgeInsets.all(28),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: scheme.surface,
             borderRadius: BorderRadius.circular(DesignSystem.radius2xl),
-            border: Border.all(color: DesignSystem.neutral200),
+            border: Border.all(
+              color: isDark
+                  ? scheme.outline.withValues(alpha: 0.15)
+                  : DesignSystem.neutral200,
+            ),
             boxShadow: DesignSystem.shadowMd,
           ),
           child: Column(
@@ -430,30 +452,30 @@ class _ConfigurationEmptyState extends StatelessWidget {
                 width: 68,
                 height: 68,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFEE2E2),
+                  color: accent.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(22),
                 ),
-                child: const Icon(Icons.movie_creation_outlined,
-                    color: Color(0xFFE11D48), size: 30),
+                child: Icon(Icons.movie_creation_outlined,
+                    color: accent, size: 30),
               ),
               const SizedBox(height: 20),
               Text(
-                '${feed.title} needs TMDB credentials',
+                l.discoverTmdbCredentials(feed.title),
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 28,
                   fontWeight: DesignSystem.weightSemibold,
-                  color: DesignSystem.neutral900,
+                  color: scheme.onSurface,
                   letterSpacing: -0.8,
                 ),
               ),
               const SizedBox(height: 12),
-              const Text(
-                'Add `TMDB_READ_ACCESS_TOKEN` or `TMDB_API_KEY` to `ui/flutter_app/.env` to load live posters, trending picks and featured backdrops.',
+              Text(
+                l.discoverTmdbCredentialsHint,
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: DesignSystem.textBase,
-                  color: DesignSystem.neutral500,
+                  color: scheme.onSurface.withValues(alpha: 0.5),
                   height: 1.6,
                 ),
               ),
@@ -470,8 +492,10 @@ class _DiscoverLoadingState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: CircularProgressIndicator(color: Color(0xFFE11D48)),
+    return Center(
+      child: CircularProgressIndicator(
+        color: Theme.of(context).colorScheme.primary,
+      ),
     );
   }
 }
@@ -487,6 +511,11 @@ class _DiscoverErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accent = _resolveAccent(context);
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final l = S.of(context);
+
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 520),
@@ -494,27 +523,31 @@ class _DiscoverErrorState extends StatelessWidget {
           margin: const EdgeInsets.all(24),
           padding: const EdgeInsets.all(28),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: scheme.surface,
             borderRadius: BorderRadius.circular(DesignSystem.radius2xl),
-            border: Border.all(color: DesignSystem.neutral200),
+            border: Border.all(
+              color: isDark
+                  ? scheme.outline.withValues(alpha: 0.15)
+                  : DesignSystem.neutral200,
+            ),
             boxShadow: DesignSystem.shadowMd,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
+              Icon(
                 Icons.wifi_off_rounded,
-                color: Color(0xFFE11D48),
+                color: accent,
                 size: 36,
               ),
               const SizedBox(height: 16),
-              const Text(
-                'Unable to load discover feed',
+              Text(
+                l.discoverUnableToLoad,
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: DesignSystem.weightSemibold,
-                  color: DesignSystem.neutral900,
+                  color: scheme.onSurface,
                   letterSpacing: -0.7,
                 ),
               ),
@@ -522,9 +555,9 @@ class _DiscoverErrorState extends StatelessWidget {
               Text(
                 message,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: DesignSystem.textBase,
-                  color: DesignSystem.neutral500,
+                  color: scheme.onSurface.withValues(alpha: 0.5),
                   height: 1.6,
                 ),
               ),
@@ -532,7 +565,7 @@ class _DiscoverErrorState extends StatelessWidget {
               FilledButton(
                 onPressed: onRetry,
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFFE11D48),
+                  backgroundColor: accent,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 22,
@@ -544,7 +577,7 @@ class _DiscoverErrorState extends StatelessWidget {
                     ),
                   ),
                 ),
-                child: const Text('Try again'),
+                child: Text(l.discoverTryAgain),
               ),
             ],
           ),
@@ -552,4 +585,12 @@ class _DiscoverErrorState extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Shared accent color resolver for discover widgets.
+Color _resolveAccent(BuildContext context) {
+  final mode = context.read<ThemeProvider>().themeMode;
+  if (mode == AppThemeMode.cyberpunk) return AppTheme.cyberNeon;
+  if (mode == AppThemeMode.sweetiePro) return AppTheme.sweetieHotPink;
+  return Theme.of(context).colorScheme.primary;
 }

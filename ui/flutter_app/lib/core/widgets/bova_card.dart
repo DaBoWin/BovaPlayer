@@ -74,6 +74,9 @@ class _BovaCardState extends State<BovaCard> with SingleTickerProviderStateMixin
   
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return MouseRegion(
       onEnter: _handleHoverEnter,
       onExit: _handleHoverExit,
@@ -90,12 +93,17 @@ class _BovaCardState extends State<BovaCard> with SingleTickerProviderStateMixin
                 height: widget.height,
                 padding: widget.padding ?? const EdgeInsets.all(DesignSystem.space4),
                 decoration: BoxDecoration(
-                  color: widget.backgroundColor ?? Colors.white,
+                  color: widget.backgroundColor ?? scheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(DesignSystem.radiusLg),
-                  boxShadow: widget.showShadow
+                  border: isDark
+                      ? Border.all(
+                          color: scheme.outlineVariant.withValues(alpha: 0.2),
+                        )
+                      : null,
+                  boxShadow: widget.showShadow && !isDark
                       ? [
                           BoxShadow(
-                            color: DesignSystem.neutral900.withOpacity(
+                            color: Colors.black.withOpacity(
                               0.04 + (_elevationAnimation.value * 0.04),
                             ),
                             blurRadius: 6 + (_elevationAnimation.value * 6),
@@ -135,6 +143,7 @@ class BovaMediaCard extends StatelessWidget {
   
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return BovaCard(
       onTap: onTap,
       padding: EdgeInsets.zero,
@@ -151,19 +160,17 @@ class BovaMediaCard extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  // 图片或占位符
                   if (imageUrl != null)
                     Image.network(
                       imageUrl!,
                       fit: BoxFit.cover,
                       errorBuilder: (context, error, stackTrace) {
-                        return _buildPlaceholder();
+                        return _buildPlaceholder(context);
                       },
                     )
                   else
-                    _buildPlaceholder(),
-                  
-                  // 渐变遮罩（底部）
+                    _buildPlaceholder(context),
+
                   Positioned(
                     left: 0,
                     right: 0,
@@ -182,8 +189,7 @@ class BovaMediaCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  
-                  // 徽章（右上角）
+
                   if (badge != null)
                     Positioned(
                       top: DesignSystem.space2,
@@ -194,8 +200,7 @@ class BovaMediaCard extends StatelessWidget {
               ),
             ),
           ),
-          
-          // 标题和副标题
+
           Padding(
             padding: const EdgeInsets.all(DesignSystem.space3),
             child: Column(
@@ -203,10 +208,10 @@ class BovaMediaCard extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: DesignSystem.textBase,
                     fontWeight: DesignSystem.weightSemibold,
-                    color: DesignSystem.neutral900,
+                    color: scheme.onSurface,
                     letterSpacing: -0.2,
                   ),
                   maxLines: 2,
@@ -216,9 +221,9 @@ class BovaMediaCard extends StatelessWidget {
                   const SizedBox(height: DesignSystem.space1),
                   Text(
                     subtitle!,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: DesignSystem.textSm,
-                      color: DesignSystem.neutral600,
+                      color: scheme.onSurfaceVariant,
                       letterSpacing: -0.1,
                     ),
                     maxLines: 1,
@@ -232,15 +237,16 @@ class BovaMediaCard extends StatelessWidget {
       ),
     );
   }
-  
-  Widget _buildPlaceholder() {
+
+  Widget _buildPlaceholder(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
-      color: DesignSystem.neutral100,
-      child: const Center(
+      color: scheme.surfaceContainerHighest,
+      child: Center(
         child: Icon(
           Icons.play_circle_outline,
           size: 48,
-          color: DesignSystem.neutral400,
+          color: scheme.onSurfaceVariant,
         ),
       ),
     );

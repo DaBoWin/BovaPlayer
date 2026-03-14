@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../../../core/providers/theme_provider.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/design_system.dart';
 
 class DiscoverBookmarkButton extends StatefulWidget {
@@ -24,7 +27,20 @@ class _DiscoverBookmarkButtonState extends State<DiscoverBookmarkButton> {
 
   @override
   Widget build(BuildContext context) {
-    const accent = Color(0xFFE11D48);
+    final mode = context.read<ThemeProvider>().themeMode;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isSpecial = mode == AppThemeMode.cyberpunk || mode == AppThemeMode.sweetiePro;
+    final accent = mode == AppThemeMode.cyberpunk
+        ? AppTheme.cyberNeon
+        : mode == AppThemeMode.sweetiePro
+            ? AppTheme.sweetieHotPink
+            : Theme.of(context).colorScheme.primary;
+    final inactiveColor = isDark || isSpecial
+        ? Colors.white.withValues(alpha: 0.70)
+        : DesignSystem.neutral700;
+    final bgInactive = isDark || isSpecial
+        ? Colors.white.withValues(alpha: 0.10)
+        : Colors.white.withValues(alpha: 0.94);
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -36,7 +52,7 @@ class _DiscoverBookmarkButtonState extends State<DiscoverBookmarkButton> {
         child: Material(
           color: widget.isActive
               ? accent.withValues(alpha: 0.14)
-              : Colors.white.withValues(alpha: 0.94),
+              : bgInactive,
           shape: const CircleBorder(),
           child: InkWell(
             customBorder: const CircleBorder(),
@@ -48,7 +64,7 @@ class _DiscoverBookmarkButtonState extends State<DiscoverBookmarkButton> {
                 widget.isActive
                     ? Icons.bookmark_rounded
                     : Icons.bookmark_border_rounded,
-                color: widget.isActive ? accent : DesignSystem.neutral700,
+                color: widget.isActive ? accent : inactiveColor,
                 size: widget.size * 0.5,
               ),
             ),

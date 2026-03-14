@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/design_system.dart';
 import '../../../core/theme/bova_icons.dart';
 import '../../../core/widgets/bova_card.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../models/network_file.dart';
 import '../media_library_ui.dart';
 import '../models/media_source.dart';
@@ -94,7 +95,7 @@ class _BrowserHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final visual = mediaSourceVisual(source.type);
+    final visual = mediaSourceVisual(source.type, context: context);
 
     return Container(
       decoration: BoxDecoration(
@@ -142,7 +143,7 @@ class _BrowserHero extends StatelessWidget {
                   ),
                   const SizedBox(height: DesignSystem.space2),
                   Text(
-                    '当前位置：$currentPath',
+                    S.of(context).browserCurrentPath(currentPath),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -155,7 +156,7 @@ class _BrowserHero extends StatelessWidget {
             ),
             IconButton(
               onPressed: onRefresh,
-              tooltip: '刷新目录',
+              tooltip: S.of(context).browserRefreshDir,
               icon: const Icon(BovaIcons.refreshOutline,
                   color: DesignSystem.neutral600),
             ),
@@ -181,7 +182,7 @@ class _BreadcrumbRow extends StatelessWidget {
         currentPath.split('/').where((item) => item.isNotEmpty).toList();
     final children = <Widget>[
       _BreadcrumbChip(
-        label: '根目录',
+        label: S.of(context).browserRootDir,
         isActive: segments.isEmpty,
         onTap: currentPath == '/' ? null : () => onNavigateTo('/'),
       ),
@@ -266,15 +267,15 @@ class _BrowserLoadingState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          CircularProgressIndicator(color: DesignSystem.accent600),
-          SizedBox(height: DesignSystem.space4),
+          const CircularProgressIndicator(color: DesignSystem.accent600),
+          const SizedBox(height: DesignSystem.space4),
           Text(
-            '正在载入目录内容…',
-            style: TextStyle(
+            S.of(context).browserLoadingDir,
+            style: const TextStyle(
               fontSize: DesignSystem.textSm,
               color: DesignSystem.neutral600,
             ),
@@ -315,9 +316,9 @@ class _BrowserErrorState extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: DesignSystem.space4),
-              const Text(
-                '目录加载失败',
-                style: TextStyle(
+              Text(
+                S.of(context).browserLoadFailed,
+                style: const TextStyle(
                   fontSize: DesignSystem.textLg,
                   fontWeight: DesignSystem.weightSemibold,
                   color: DesignSystem.neutral900,
@@ -337,7 +338,7 @@ class _BrowserErrorState extends StatelessWidget {
               FilledButton.icon(
                 onPressed: onRetry,
                 icon: const Icon(BovaIcons.refreshOutline),
-                label: const Text('重新加载'),
+                label: Text(S.of(context).browserReload),
               ),
             ],
           ),
@@ -374,19 +375,19 @@ class _BrowserEmptyState extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: DesignSystem.space4),
-              const Text(
-                '当前目录为空',
-                style: TextStyle(
+              Text(
+                S.of(context).browserDirEmpty,
+                style: const TextStyle(
                   fontSize: DesignSystem.textLg,
                   fontWeight: DesignSystem.weightSemibold,
                   color: DesignSystem.neutral900,
                 ),
               ),
               const SizedBox(height: DesignSystem.space2),
-              const Text(
-                '这个目录里暂时没有可显示的文件或文件夹。',
+              Text(
+                S.of(context).browserDirEmptyHint,
                 textAlign: TextAlign.center,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: DesignSystem.textSm,
                   color: DesignSystem.neutral600,
                 ),
@@ -407,9 +408,9 @@ class _FileItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final visual = mediaFileVisual(item);
+    final visual = mediaFileVisual(item, context: context);
     final meta = item.isDirectory
-        ? '文件夹 · 点击进入'
+        ? '${S.of(context).browserFolder} · ${S.of(context).browserClickToEnter}'
         : '${item.sizeFormatted}${item.modified != null ? ' · ${formatMediaLibraryTime(item.modified!)}' : ''}';
 
     return BovaCard(

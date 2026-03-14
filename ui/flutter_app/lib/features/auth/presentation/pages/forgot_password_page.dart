@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/bova_button.dart';
 import '../../../../core/widgets/bova_text_field.dart';
+import '../../../../l10n/generated/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/auth_workspace_shell.dart';
 
@@ -59,7 +60,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage>
   Future<void> _handleSendResetEmail() async {
     final email = _emailController.text.trim();
     if (email.isEmpty || !email.contains('@')) {
-      _showSnackBar('请输入正确的邮箱地址');
+      _showSnackBar(S.of(context).authInvalidEmail);
       return;
     }
 
@@ -73,7 +74,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage>
     if (success) {
       setState(() => _emailSent = true);
     } else {
-      _showSnackBar(authProvider.errorMessage ?? '发送失败');
+      _showSnackBar(authProvider.errorMessage ?? S.of(context).authForgotSendFailed);
     }
   }
 
@@ -92,23 +93,24 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage>
 
   @override
   Widget build(BuildContext context) {
+    final l10n = S.of(context);
     return AuthWorkspaceScaffold(
       eyebrow: 'Password Recovery',
-      title: _emailSent ? '检查你的邮箱' : '重置密码',
+      title: _emailSent ? l10n.authForgotCheckEmail : l10n.authForgotTitle,
       subtitle: _emailSent
-          ? '邮件已经发出。回到邮箱完成密码重置后，再重新登录你的工作区。'
-          : '输入注册邮箱后，我们会向你发送一封带有重置链接的邮件。这个流程也会保持和账户中心一致的版式。',
+          ? l10n.authForgotSubtitleSent
+          : l10n.authForgotSubtitleForm,
       icon: _emailSent
           ? Icons.mark_email_read_outlined
           : Icons.lock_reset_rounded,
       facts: _emailSent
-          ? const [
-              AuthWorkspaceFact(label: '邮件状态', value: '已发送'),
-              AuthWorkspaceFact(label: '下一步', value: '查收并点击链接'),
+          ? [
+              AuthWorkspaceFact(label: l10n.authForgotFactEmailStatus, value: l10n.authForgotFactEmailSent),
+              AuthWorkspaceFact(label: l10n.authForgotFactNextStep, value: l10n.authForgotFactNextStepValue),
             ]
-          : const [
-              AuthWorkspaceFact(label: '邮箱验证', value: '必需'),
-              AuthWorkspaceFact(label: '重置方式', value: '邮件链接'),
+          : [
+              AuthWorkspaceFact(label: l10n.authForgotFactEmailVerify, value: l10n.authForgotFactRequired),
+              AuthWorkspaceFact(label: l10n.authForgotFactResetMethod, value: l10n.authForgotFactResetViaEmail),
             ],
       child: FadeTransition(
         opacity: _fadeAnimation,
@@ -123,21 +125,22 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage>
   }
 
   Widget _buildFormState() {
+    final l10n = S.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
-          '发送重置链接',
-          style: TextStyle(
+        Text(
+          l10n.authForgotSendLink,
+          style: const TextStyle(
             fontSize: DesignSystem.textXl,
             fontWeight: DesignSystem.weightSemibold,
             color: DesignSystem.neutral900,
           ),
         ),
         const SizedBox(height: DesignSystem.space2),
-        const Text(
-          '输入你的注册邮箱，我们会发送一封带有重置密码链接的邮件。',
-          style: TextStyle(
+        Text(
+          l10n.authForgotFormDesc,
+          style: const TextStyle(
             fontSize: DesignSystem.textSm,
             color: DesignSystem.neutral600,
             height: 1.5,
@@ -146,7 +149,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage>
         const SizedBox(height: DesignSystem.space5),
         BovaTextField(
           controller: _emailController,
-          label: '邮箱地址',
+          label: l10n.authEmailLabel,
           hint: 'your@email.com',
           prefixIcon: Icons.email_outlined,
           keyboardType: TextInputType.emailAddress,
@@ -154,7 +157,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage>
         ),
         const SizedBox(height: DesignSystem.space5),
         BovaButton(
-          text: '发送重置链接',
+          text: l10n.authForgotSendLink,
           onPressed: _isLoading ? null : _handleSendResetEmail,
           isLoading: _isLoading,
           isFullWidth: true,
@@ -162,8 +165,8 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage>
         ),
         const SizedBox(height: DesignSystem.space5),
         AuthWorkspaceFooterLink(
-          label: '记起密码了？',
-          action: '返回登录',
+          label: l10n.authForgotRemembered,
+          action: l10n.authForgotBackToLogin,
           enabled: !_isLoading,
           onTap: () => Navigator.pop(context),
         ),
@@ -172,6 +175,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage>
   }
 
   Widget _buildSuccessState() {
+    final l10n = S.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -189,9 +193,9 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage>
           ),
         ),
         const SizedBox(height: DesignSystem.space5),
-        const Text(
-          '邮件已发送',
-          style: TextStyle(
+        Text(
+          l10n.authForgotEmailSentTitle,
+          style: const TextStyle(
             fontSize: DesignSystem.textXl,
             fontWeight: DesignSystem.weightSemibold,
             color: DesignSystem.neutral900,
@@ -199,7 +203,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage>
         ),
         const SizedBox(height: DesignSystem.space2),
         Text(
-          '我们已向 ${_emailController.text} 发送重置密码的链接，请查收邮件并完成后续操作。',
+          l10n.authForgotEmailSentDesc(_emailController.text),
           style: const TextStyle(
             fontSize: DesignSystem.textSm,
             color: DesignSystem.neutral600,
@@ -208,14 +212,14 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage>
         ),
         const SizedBox(height: DesignSystem.space5),
         BovaButton(
-          text: '返回登录',
+          text: l10n.authForgotReturnLogin,
           onPressed: () => Navigator.pop(context),
           isFullWidth: true,
           size: BovaButtonSize.large,
         ),
         const SizedBox(height: DesignSystem.space3),
         BovaButton(
-          text: '重新发送',
+          text: l10n.authForgotResend,
           onPressed: () => setState(() => _emailSent = false),
           style: BovaButtonStyle.secondary,
           isFullWidth: true,

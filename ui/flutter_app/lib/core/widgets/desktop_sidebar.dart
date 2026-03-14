@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../../l10n/generated/app_localizations.dart';
+import '../providers/theme_provider.dart';
+import '../theme/app_theme.dart';
 import '../theme/design_system.dart';
 
 class DesktopSidebarDestination {
@@ -29,6 +33,7 @@ class DesktopSidebar extends StatelessWidget {
     required this.onToggle,
     this.onAccountTap,
     this.onLogoutTap,
+    this.onSettingsTap,
   });
 
   final bool isExpanded;
@@ -39,9 +44,35 @@ class DesktopSidebar extends StatelessWidget {
   final VoidCallback onToggle;
   final VoidCallback? onAccountTap;
   final VoidCallback? onLogoutTap;
+  final VoidCallback? onSettingsTap;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final themeMode = context.watch<ThemeProvider>().themeMode;
+    final isCyberpunk = themeMode == AppThemeMode.cyberpunk;
+    final isSweetieSide = themeMode == AppThemeMode.sweetiePro;
+    final isSpecialSide = isCyberpunk || isSweetieSide;
+    final specialNeonSide = isSweetieSide ? AppTheme.sweetieHotPink : AppTheme.cyberNeon;
+    final l = S.of(context);
+
+    final sidebarBg = isSpecialSide
+        ? (isSweetieSide ? const Color(0xFFFFF0F5) : const Color(0xFF0E0E1A))
+        : isDark
+            ? const Color(0xFF141418)
+            : const Color(0xFFF4F5F7);
+    final sidebarBorder = isSpecialSide
+        ? specialNeonSide.withValues(alpha: 0.12)
+        : isDark
+            ? const Color(0xFF2A2A30).withValues(alpha: 0.7)
+            : Colors.white.withValues(alpha: 0.7);
+    final menuIconColor = isSpecialSide
+        ? specialNeonSide.withValues(alpha: 0.6)
+        : isDark
+            ? const Color(0xFF8888A0)
+            : const Color(0xFF6B7280);
+
     return AnimatedContainer(
       duration: DesignSystem.durationSlow,
       curve: DesignSystem.easeOutQuart,
@@ -49,9 +80,9 @@ class DesktopSidebar extends StatelessWidget {
       padding: EdgeInsets.fromLTRB(
           isExpanded ? 16 : 12, 18, isExpanded ? 16 : 12, 16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF4F5F7),
+        color: sidebarBg,
         borderRadius: BorderRadius.circular(32),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.7)),
+        border: Border.all(color: sidebarBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -62,9 +93,9 @@ class DesktopSidebar extends StatelessWidget {
               onPressed: onToggle,
               icon: Icon(
                 isExpanded ? Icons.menu_open_rounded : Icons.menu_rounded,
-                color: const Color(0xFF6B7280),
+                color: menuIconColor,
               ),
-              tooltip: isExpanded ? 'Collapse' : 'Expand',
+              tooltip: isExpanded ? l.sidebarCollapse : l.sidebarExpand,
             ),
           ),
           const SizedBox(height: 8),
@@ -87,18 +118,18 @@ class DesktopSidebar extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          if (onAccountTap != null)
+          if (onSettingsTap != null)
             _SidebarFooterAction(
               icon: Icons.settings_outlined,
-              label: 'Account',
+              label: l.settingsTitle,
               isExpanded: isExpanded,
-              onTap: onAccountTap!,
+              onTap: onSettingsTap!,
             ),
-          if (onLogoutTap != null) const SizedBox(height: 8),
+          if (onSettingsTap != null) const SizedBox(height: 8),
           if (onLogoutTap != null)
             _SidebarFooterAction(
               icon: Icons.logout_rounded,
-              label: 'Sign out',
+              label: l.sidebarSignOut,
               isExpanded: isExpanded,
               onTap: onLogoutTap!,
               destructive: true,
@@ -124,15 +155,51 @@ class _SidebarProfileCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final themeMode = context.watch<ThemeProvider>().themeMode;
+    final isCyberpunk = themeMode == AppThemeMode.cyberpunk;
+    final isSweetieProfile = themeMode == AppThemeMode.sweetiePro;
+    final isSpecialProfile = isCyberpunk || isSweetieProfile;
+    final specialNeonProfile = isSweetieProfile ? AppTheme.sweetieHotPink : AppTheme.cyberNeon;
+    final specialCardProfile = isSweetieProfile ? AppTheme.sweetieCard : AppTheme.cyberCard;
+
+    final cardBg = isSpecialProfile
+        ? specialCardProfile.withValues(alpha: 0.9)
+        : isDark
+            ? const Color(0xFF1E1E24).withValues(alpha: 0.9)
+            : Colors.white.withValues(alpha: 0.9);
+    final accentColor = isSpecialProfile ? specialNeonProfile : theme.colorScheme.primary;
+    final subtitleColor = isSpecialProfile
+        ? specialNeonProfile.withValues(alpha: 0.4)
+        : isDark
+            ? const Color(0xFF6B6B75)
+            : DesignSystem.neutral400;
+    final dotBorderColor = isSpecialProfile
+        ? specialCardProfile
+        : isDark
+            ? const Color(0xFF1E1E24)
+            : Colors.white;
+
     return AnimatedContainer(
       duration: DesignSystem.durationSlow,
       curve: DesignSystem.easeOutQuart,
       padding: EdgeInsets.symmetric(
           horizontal: isExpanded ? 18 : 6, vertical: isExpanded ? 18 : 8),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.9),
+        color: cardBg,
         borderRadius: BorderRadius.circular(28),
-        boxShadow: DesignSystem.shadowSm,
+        border: isSpecialProfile
+            ? Border.all(color: specialNeonProfile.withValues(alpha: 0.1))
+            : null,
+        boxShadow: isSpecialProfile
+            ? [
+                BoxShadow(
+                  color: specialNeonProfile.withValues(alpha: 0.05),
+                  blurRadius: 12,
+                )
+              ]
+            : DesignSystem.shadowSm,
       ),
       child: isExpanded
           ? Column(
@@ -153,9 +220,12 @@ class _SidebarProfileCard extends StatelessWidget {
                             width: 12,
                             height: 12,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFEF4444),
+                        color: isSpecialProfile
+                                  ? specialNeonProfile
+                                  : const Color(0xFFEF4444),
                               borderRadius: BorderRadius.circular(99),
-                              border: Border.all(color: Colors.white, width: 2),
+                              border:
+                                  Border.all(color: dotBorderColor, width: 2),
                             ),
                           ),
                         ),
@@ -165,14 +235,14 @@ class _SidebarProfileCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 18),
                 Text(
-                  'Hi, $profileName',
+                  S.of(context).profileGreeting(profileName),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 20,
                     fontWeight: DesignSystem.weightSemibold,
-                    color: Color(0xFFE11D48),
-                    letterSpacing: -0.5,
+                    color: accentColor,
+                    letterSpacing: isSpecialProfile ? 0.5 : -0.5,
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -180,9 +250,9 @@ class _SidebarProfileCard extends StatelessWidget {
                   profileSubtitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: DesignSystem.textSm,
-                    color: DesignSystem.neutral400,
+                    color: subtitleColor,
                   ),
                 ),
               ],
@@ -200,9 +270,11 @@ class _SidebarProfileCard extends StatelessWidget {
                       width: 11,
                       height: 11,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEF4444),
+                        color: isSpecialProfile
+                            ? specialNeonProfile
+                            : const Color(0xFFEF4444),
                         borderRadius: BorderRadius.circular(99),
-                        border: Border.all(color: Colors.white, width: 2),
+                        border: Border.all(color: dotBorderColor, width: 2),
                       ),
                     ),
                   ),
@@ -224,9 +296,26 @@ class _SidebarDestinationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const accent = Color(0xFFE11D48);
-    final foreground =
-        destination.isSelected ? accent : const Color(0xFF9CA3AF);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final themeMode = context.watch<ThemeProvider>().themeMode;
+    final isCyberpunk = themeMode == AppThemeMode.cyberpunk;
+    final isSweetieTile = themeMode == AppThemeMode.sweetiePro;
+    final isSpecialTile = isCyberpunk || isSweetieTile;
+    final specialNeonTile = isSweetieTile ? AppTheme.sweetieHotPink : AppTheme.cyberNeon;
+
+    final accent = isSpecialTile ? specialNeonTile : theme.colorScheme.primary;
+    final inactiveColor = isSpecialTile
+        ? (isSweetieTile ? const Color(0xFF885566) : const Color(0xFF555570))
+        : isDark
+            ? const Color(0xFF6B6B75)
+            : const Color(0xFF9CA3AF);
+    final foreground = destination.isSelected ? accent : inactiveColor;
+    final selectedBg = isSpecialTile
+        ? specialNeonTile.withValues(alpha: 0.08)
+        : isDark
+            ? const Color(0xFF1E1E24)
+            : Colors.white;
 
     return InkWell(
       onTap: destination.onTap,
@@ -238,7 +327,10 @@ class _SidebarDestinationTile extends StatelessWidget {
         padding: EdgeInsets.symmetric(horizontal: isExpanded ? 16 : 0),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(22),
-          color: destination.isSelected ? Colors.white : Colors.transparent,
+          color: destination.isSelected ? selectedBg : Colors.transparent,
+          border: destination.isSelected && isSpecialTile
+              ? Border.all(color: specialNeonTile.withValues(alpha: 0.15))
+              : null,
         ),
         child: Row(
           mainAxisAlignment:
@@ -250,6 +342,14 @@ class _SidebarDestinationTile extends StatelessWidget {
               decoration: BoxDecoration(
                 color: destination.isSelected ? accent : Colors.transparent,
                 borderRadius: BorderRadius.circular(99),
+                boxShadow: destination.isSelected && isSpecialTile
+                    ? [
+                        BoxShadow(
+                          color: specialNeonTile.withValues(alpha: 0.4),
+                          blurRadius: 6,
+                        ),
+                      ]
+                    : null,
               ),
             ),
             SizedBox(width: isExpanded ? 14 : 0),
@@ -273,7 +373,7 @@ class _SidebarDestinationTile extends StatelessWidget {
                         ? DesignSystem.weightSemibold
                         : DesignSystem.weightMedium,
                     color: foreground,
-                    letterSpacing: -0.4,
+                    letterSpacing: isSpecialTile ? 0.3 : -0.4,
                   ),
                 ),
               ),
@@ -302,8 +402,32 @@ class _SidebarFooterAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color =
-        destructive ? const Color(0xFFE11D48) : const Color(0xFF6B7280);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final themeMode = context.watch<ThemeProvider>().themeMode;
+    final isCyberpunk = themeMode == AppThemeMode.cyberpunk;
+    final isSweetieFooter = themeMode == AppThemeMode.sweetiePro;
+    final isSpecialFooter = isCyberpunk || isSweetieFooter;
+    final specialNeonFooter = isSweetieFooter ? AppTheme.sweetieHotPink : AppTheme.cyberNeon;
+    final specialCardFooter = isSweetieFooter ? AppTheme.sweetieCard : AppTheme.cyberCard;
+
+    final color = destructive
+        ? (isCyberpunk
+            ? AppTheme.cyberPink
+            : isSweetieFooter
+                ? AppTheme.sweetieHotPink
+                : theme.colorScheme.primary)
+        : isSpecialFooter
+            ? specialNeonFooter.withValues(alpha: 0.6)
+            : isDark
+                ? const Color(0xFF8888A0)
+                : const Color(0xFF6B7280);
+    final bgColor = isSpecialFooter
+        ? specialCardFooter.withValues(alpha: 0.8)
+        : isDark
+            ? const Color(0xFF1E1E24).withValues(alpha: 0.8)
+            : Colors.white.withValues(alpha: 0.8);
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
@@ -312,7 +436,7 @@ class _SidebarFooterAction extends StatelessWidget {
         padding: EdgeInsets.symmetric(horizontal: isExpanded ? 14 : 0),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
-          color: Colors.white.withValues(alpha: 0.8),
+          color: bgColor,
         ),
         child: Row(
           mainAxisAlignment:

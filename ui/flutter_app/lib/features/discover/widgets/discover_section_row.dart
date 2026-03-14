@@ -1,9 +1,35 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/design_system.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../models/discover_section.dart';
 import '../models/tmdb_media_item.dart';
 import 'discover_poster_card.dart';
+
+String _resolveKey(BuildContext context, String key) {
+  final l10n = S.of(context);
+  switch (key) {
+    case 'discoverTrendingNow': return l10n.discoverTrendingNow;
+    case 'discoverTrendingNowSub': return l10n.discoverTrendingNowSub;
+    case 'discoverPopularMovies': return l10n.discoverPopularMovies;
+    case 'discoverPopularMoviesSub': return l10n.discoverPopularMoviesSub;
+    case 'discoverPopularTV': return l10n.discoverPopularTV;
+    case 'discoverPopularTVSub': return l10n.discoverPopularTVSub;
+    case 'discoverTrendingMovies': return l10n.discoverTrendingMovies;
+    case 'discoverTrendingMoviesSub': return l10n.discoverTrendingMoviesSub;
+    case 'discoverNowPlaying': return l10n.discoverNowPlaying;
+    case 'discoverNowPlayingSub': return l10n.discoverNowPlayingSub;
+    case 'discoverMovies': return l10n.discoverMovies;
+    case 'discoverMoviesSub': return l10n.discoverMoviesSub;
+    case 'discoverTrendingShows': return l10n.discoverTrendingShows;
+    case 'discoverTrendingShowsSub': return l10n.discoverTrendingShowsSub;
+    case 'discoverPopularTVShows': return l10n.discoverPopularTVShows;
+    case 'discoverPopularTVShowsSub': return l10n.discoverPopularTVShowsSub;
+    case 'discoverTV': return l10n.discoverTV;
+    case 'discoverTVSub': return l10n.discoverTVSub;
+    default: return key;
+  }
+}
 
 class DiscoverSectionRow extends StatefulWidget {
   const DiscoverSectionRow({
@@ -113,21 +139,21 @@ class _DiscoverSectionRowState extends State<DiscoverSectionRow> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        widget.section.title,
-                        style: const TextStyle(
+                        _resolveKey(context, widget.section.titleKey),
+                        style: TextStyle(
                           fontSize: 30,
                           fontWeight: DesignSystem.weightMedium,
-                          color: DesignSystem.neutral700,
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
                           letterSpacing: -0.9,
                           height: 1.0,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        widget.section.subtitle,
-                        style: const TextStyle(
+                        _resolveKey(context, widget.section.subtitleKey),
+                        style: TextStyle(
                           fontSize: 15,
-                          color: DesignSystem.neutral500,
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
                           height: 1.3,
                         ),
                       ),
@@ -194,11 +220,12 @@ class _ScrollArrowGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(DesignSystem.radiusFull),
-        border: Border.all(color: DesignSystem.neutral200),
+        border: Border.all(color: scheme.outline.withValues(alpha: 0.15)),
       ),
       padding: const EdgeInsets.symmetric(
         horizontal: DesignSystem.space2,
@@ -252,7 +279,9 @@ class _ArrowButton extends StatelessWidget {
         child: Icon(
           icon,
           size: 20,
-          color: enabled ? DesignSystem.neutral500 : DesignSystem.neutral300,
+          color: enabled
+              ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)
+              : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2),
         ),
       ),
     );

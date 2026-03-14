@@ -104,18 +104,18 @@ class TmdbService {
       wallItems: wall,
       sections: [
         DiscoverSection(
-          title: 'Trending Now',
-          subtitle: 'The titles getting the most attention today',
+          titleKey: 'discoverTrendingNow',
+          subtitleKey: 'discoverTrendingNowSub',
           items: responses[0].take(12).toList(),
         ),
         DiscoverSection(
-          title: 'Popular Movies',
-          subtitle: 'Big-screen picks with broad appeal',
+          titleKey: 'discoverPopularMovies',
+          subtitleKey: 'discoverPopularMoviesSub',
           items: responses[1].take(12).toList(),
         ),
         DiscoverSection(
-          title: 'Popular TV',
-          subtitle: 'Series people keep coming back to',
+          titleKey: 'discoverPopularTV',
+          subtitleKey: 'discoverPopularTVSub',
           items: responses[2].take(12).toList(),
         ),
       ],
@@ -143,18 +143,18 @@ class TmdbService {
       wallItems: wall,
       sections: [
         DiscoverSection(
-          title: 'Trending Movies',
-          subtitle: 'Today\'s biggest movie momentum',
+          titleKey: 'discoverTrendingMovies',
+          subtitleKey: 'discoverTrendingMoviesSub',
           items: responses[0].take(12).toList(),
         ),
         DiscoverSection(
-          title: 'Now Playing',
-          subtitle: 'Movies currently rolling out worldwide',
+          titleKey: 'discoverNowPlaying',
+          subtitleKey: 'discoverNowPlayingSub',
           items: responses[2].take(12).toList(),
         ),
         DiscoverSection(
-          title: 'Discover Movies',
-          subtitle: 'High-popularity films surfaced from TMDB Discover',
+          titleKey: 'discoverMovies',
+          subtitleKey: 'discoverMoviesSub',
           items: responses[3].take(12).toList(),
         ),
       ],
@@ -181,18 +181,18 @@ class TmdbService {
       wallItems: wall,
       sections: [
         DiscoverSection(
-          title: 'Trending Shows',
-          subtitle: 'Series that are surging right now',
+          titleKey: 'discoverTrendingShows',
+          subtitleKey: 'discoverTrendingShowsSub',
           items: responses[0].take(12).toList(),
         ),
         DiscoverSection(
-          title: 'Popular TV',
-          subtitle: 'Broad-appeal TV picks from TMDB',
+          titleKey: 'discoverPopularTVShows',
+          subtitleKey: 'discoverPopularTVShowsSub',
           items: responses[1].take(12).toList(),
         ),
         DiscoverSection(
-          title: 'Discover TV',
-          subtitle: 'Fresh series surfaced by popularity',
+          titleKey: 'discoverTV',
+          subtitleKey: 'discoverTVSub',
           items: responses[2].take(12).toList(),
         ),
       ],

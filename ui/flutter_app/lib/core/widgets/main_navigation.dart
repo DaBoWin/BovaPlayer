@@ -16,11 +16,15 @@ import '../../features/discover/pages/discover_search_page.dart';
 import '../../features/discover/services/discover_bookmark_service.dart';
 import '../../features/discover/services/discover_library_resolver_service.dart';
 import '../../features/discover/services/tmdb_service.dart';
+import '../../features/settings/pages/settings_page.dart';
 import '../../services/emby_quick_play_service.dart';
-import '../../emby_page.dart';
+import '../../emby_page.dart' hide AppTheme;
 import '../../features/media_library/models/media_source.dart';
 import '../../media_library_page.dart';
 import '../../player_screen.dart';
+import '../../l10n/generated/app_localizations.dart';
+import '../providers/theme_provider.dart';
+import '../theme/app_theme.dart';
 import '../theme/bova_icons.dart';
 import '../theme/design_system.dart';
 import 'bova_bottom_nav.dart';
@@ -71,6 +75,7 @@ class _MainNavigationState extends State<MainNavigation> {
 
   _AppSection _currentSection = _AppSection.discover;
   bool _isSidebarExpanded = true;
+  bool _showSettings = false;
   String? _localAvatarPath;
   String? _desktopOverlayTitle;
   IconData? _desktopOverlayIcon;
@@ -127,22 +132,23 @@ class _MainNavigationState extends State<MainNavigation> {
   }
 
   Future<bool> _showExitConfirmDialog() async {
+    final l = S.of(context);
     return await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(DesignSystem.radiusLg),
             ),
-            title: const Text('退出应用'),
-            content: const Text('确定要退出 BovaPlayer 吗？'),
+            title: Text(l.exitAppTitle),
+            content: Text(l.exitAppMessage),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('取消'),
+                child: Text(l.cancel),
               ),
               TextButton(
                 onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('退出'),
+                child: Text(l.exit),
               ),
             ],
           ),
@@ -157,8 +163,9 @@ class _MainNavigationState extends State<MainNavigation> {
   }
 
   void _showComingSoon(String label) {
+    final l = S.of(context);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$label is coming next.')),
+      SnackBar(content: Text(l.comingSoon(label))),
     );
   }
 
@@ -244,7 +251,7 @@ class _MainNavigationState extends State<MainNavigation> {
       _showWorkspaceSnackBar(error.message, isError: true);
     } catch (error) {
       if (!mounted) return;
-      _showWorkspaceSnackBar('快速播放失败，请重试', isError: true);
+      _showWorkspaceSnackBar(S.of(context).quickPlayFailed, isError: true);
     }
   }
 
@@ -265,12 +272,13 @@ class _MainNavigationState extends State<MainNavigation> {
           );
         _discoverBookmarksNotifier.value = List.unmodifiable(updated);
       });
+      final l = S.of(context);
       _showWorkspaceSnackBar(
-        wasBookmarked ? '已移除书签：${item.title}' : '已加入书签：${item.title}',
+        wasBookmarked ? l.bookmarkRemoved(item.title) : l.bookmarkAdded(item.title),
       );
     } catch (error) {
       if (!mounted) return;
-      _showWorkspaceSnackBar('书签保存失败，请重试', isError: true);
+      _showWorkspaceSnackBar(S.of(context).bookmarkSaveFailed, isError: true);
     }
   }
 
@@ -406,7 +414,7 @@ class _MainNavigationState extends State<MainNavigation> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(DesignSystem.radiusXl),
           ),
-          title: const Text('选择进入的媒体库'),
+          title: Text(S.of(context).selectLibrary),
           content: SizedBox(
             width: 420,
             child: Column(
@@ -508,7 +516,7 @@ class _MainNavigationState extends State<MainNavigation> {
     if (!mounted) return;
 
     if (matches.isEmpty) {
-      _showWorkspaceSnackBar('没有在已连接的 Emby 媒体库中找到《${item.title}》',
+      _showWorkspaceSnackBar(S.of(context).discoverNotFoundInLibrary(item.title),
           isError: true);
       return;
     }
@@ -522,6 +530,7 @@ class _MainNavigationState extends State<MainNavigation> {
   void _selectSection(_AppSection section) {
     setState(() {
       _currentSection = section;
+      _showSettings = false;
       _desktopOverlayTitle = null;
       _desktopOverlayIcon = null;
     });
@@ -531,8 +540,19 @@ class _MainNavigationState extends State<MainNavigation> {
     return PopupMenuButton<String>(
       icon: const Icon(
         BovaIcons.addOutline,
-        color: DesignSystem.neutral700,
-        size: 22,
+        color: Color(0xFFE11D48),
+        size: 21,
+      ),
+      style: ButtonStyle(
+        backgroundColor: WidgetStateProperty.all(Colors.white),
+        shape: WidgetStateProperty.all(
+          RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: Color(0xFFF0F1F4)),
+          ),
+        ),
+        fixedSize: WidgetStateProperty.all(const Size(44, 44)),
+        padding: WidgetStateProperty.all(EdgeInsets.zero),
       ),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(DesignSystem.radiusMd),
@@ -547,41 +567,44 @@ class _MainNavigationState extends State<MainNavigation> {
           _mediaLibraryKey.currentState?.showAddSourceDialog(SourceType.ftp);
         }
       },
-      itemBuilder: (context) => [
-        const PopupMenuItem(
-          value: 'emby',
-          child: Row(
-            children: [
-              Icon(BovaIcons.cloudOutline,
-                  size: 18, color: DesignSystem.neutral700),
-              SizedBox(width: DesignSystem.space3),
-              Text('Emby 服务器'),
-            ],
+      itemBuilder: (ctx) {
+        final l = S.of(ctx);
+        return [
+          PopupMenuItem(
+            value: 'emby',
+            child: Row(
+              children: [
+                Icon(BovaIcons.cloudOutline,
+                    size: 18, color: Theme.of(ctx).iconTheme.color),
+                const SizedBox(width: DesignSystem.space3),
+                Text(l.addEmbyServer),
+              ],
+            ),
           ),
-        ),
-        const PopupMenuItem(
-          value: 'smb',
-          child: Row(
-            children: [
-              Icon(BovaIcons.folderOutline,
-                  size: 18, color: DesignSystem.neutral700),
-              SizedBox(width: DesignSystem.space3),
-              Text('SMB 共享'),
-            ],
+          PopupMenuItem(
+            value: 'smb',
+            child: Row(
+              children: [
+                Icon(BovaIcons.folderOutline,
+                    size: 18, color: Theme.of(ctx).iconTheme.color),
+                const SizedBox(width: DesignSystem.space3),
+                Text(l.addSmbShare),
+              ],
+            ),
           ),
-        ),
-        const PopupMenuItem(
-          value: 'ftp',
-          child: Row(
-            children: [
-              Icon(BovaIcons.uploadOutline,
-                  size: 18, color: DesignSystem.neutral700),
-              SizedBox(width: DesignSystem.space3),
-              Text('FTP 服务器'),
-            ],
+          PopupMenuItem(
+            value: 'ftp',
+            child: Row(
+              children: [
+                Icon(BovaIcons.uploadOutline,
+                    size: 18, color: Theme.of(ctx).iconTheme.color),
+                const SizedBox(width: DesignSystem.space3),
+                Text(l.addFtpServer),
+              ],
+            ),
           ),
-        ),
-      ],
+        ];
+      },
     );
   }
 
@@ -680,19 +703,20 @@ class _MainNavigationState extends State<MainNavigation> {
 
   String _sectionTitle() {
     if (_desktopOverlayTitle != null) return _desktopOverlayTitle!;
+    final l = S.of(context);
     switch (_currentSection) {
       case _AppSection.discover:
-        return 'Home';
+        return l.navHome;
       case _AppSection.movies:
-        return 'Movies';
+        return l.navMovies;
       case _AppSection.shows:
-        return 'Shows';
+        return l.navShows;
       case _AppSection.player:
-        return 'Player';
+        return l.navPlayer;
       case _AppSection.library:
-        return 'Media Library';
+        return l.navMediaLibrary;
       case _AppSection.account:
-        return 'Account';
+        return l.navAccount;
     }
   }
 
@@ -723,59 +747,61 @@ class _MainNavigationState extends State<MainNavigation> {
   }
 
   String _profileSubtitle() {
+    final l = S.of(context);
     switch (_currentSection) {
       case _AppSection.discover:
       case _AppSection.movies:
       case _AppSection.shows:
-        return 'Discovering';
+        return l.profileDiscovering;
       case _AppSection.player:
-        return 'Watching';
+        return l.profileWatching;
       case _AppSection.library:
-        return 'Browsing';
+        return l.profileBrowsing;
       case _AppSection.account:
-        return 'Managing account';
+        return l.profileManagingAccount;
     }
   }
 
   List<DesktopSidebarDestination> _buildDestinations() {
+    final l = S.of(context);
     return [
       DesktopSidebarDestination(
-        label: 'Home',
+        label: l.navHome,
         icon: BovaIcons.homeOutline,
         activeIcon: BovaIcons.homeFilled,
         isSelected: _currentSection == _AppSection.discover,
         onTap: () => _selectSection(_AppSection.discover),
       ),
       DesktopSidebarDestination(
-        label: 'Movies',
+        label: l.navMovies,
         icon: BovaIcons.movieOutline,
         activeIcon: BovaIcons.movieFilled,
         isSelected: _currentSection == _AppSection.movies,
         onTap: () => _selectSection(_AppSection.movies),
       ),
       DesktopSidebarDestination(
-        label: 'Shows',
+        label: l.navShows,
         icon: BovaIcons.tvOutline,
         activeIcon: BovaIcons.tvFilled,
         isSelected: _currentSection == _AppSection.shows,
         onTap: () => _selectSection(_AppSection.shows),
       ),
       DesktopSidebarDestination(
-        label: 'Player',
+        label: l.navPlayer,
         icon: BovaIcons.playerOutline,
         activeIcon: BovaIcons.playerFilled,
         isSelected: _currentSection == _AppSection.player,
         onTap: () => _selectSection(_AppSection.player),
       ),
       DesktopSidebarDestination(
-        label: 'Media Library',
+        label: l.navMediaLibrary,
         icon: BovaIcons.libraryOutline,
         activeIcon: BovaIcons.libraryFilled,
         isSelected: _currentSection == _AppSection.library,
         onTap: () => _selectSection(_AppSection.library),
       ),
       DesktopSidebarDestination(
-        label: 'Account',
+        label: l.navAccount,
         icon: BovaIcons.personOutline,
         activeIcon: BovaIcons.personFilled,
         isSelected: _currentSection == _AppSection.account,
@@ -785,12 +811,13 @@ class _MainNavigationState extends State<MainNavigation> {
   }
 
   List<Widget> _buildTopActions() {
+    final l = S.of(context);
     if (_currentSection == _AppSection.library) {
       return [
         _TopActionButton(
           icon: BovaIcons.refreshOutline,
           onTap: () => _mediaLibraryKey.currentState?.refreshAndSync(),
-          tooltip: '刷新并同步',
+          tooltip: l.actionRefreshSync,
         ),
         _buildAddButton(),
       ];
@@ -805,7 +832,7 @@ class _MainNavigationState extends State<MainNavigation> {
         _TopActionButton(
           icon: BovaIcons.searchOutline,
           onTap: _openDiscoverSearch,
-          tooltip: '搜索媒体',
+          tooltip: l.actionSearchMedia,
         ),
       ];
     }
@@ -814,19 +841,19 @@ class _MainNavigationState extends State<MainNavigation> {
       _TopActionButton(
         icon: BovaIcons.searchOutline,
         onTap: _openDiscoverSearch,
-        tooltip: 'Search',
+        tooltip: l.actionSearch,
       ),
       const SizedBox(width: 10),
       _TopActionButton(
         icon: BovaIcons.bookmarkOutline,
         onTap: _openDiscoverBookmarks,
-        tooltip: 'Bookmarks',
+        tooltip: l.actionBookmarks,
       ),
       const SizedBox(width: 10),
       _TopActionButton(
         icon: BovaIcons.bellOutline,
-        onTap: () => _showComingSoon('Notifications'),
-        tooltip: 'Notifications',
+        onTap: () => _showComingSoon(l.actionNotifications),
+        tooltip: l.actionNotifications,
       ),
     ];
   }
@@ -959,6 +986,9 @@ class _MainNavigationState extends State<MainNavigation> {
   }
 
   Widget _buildMobileTitleWidget(auth_entities.User? user) {
+    final theme = Theme.of(context);
+    final accentColor = theme.colorScheme.primary;
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -966,17 +996,17 @@ class _MainNavigationState extends State<MainNavigation> {
           width: 32,
           height: 32,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: theme.colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(11),
             border: Border.all(
-              color: DesignSystem.neutral200.withValues(alpha: 0.92),
+              color: theme.dividerTheme.color?.withValues(alpha: 0.92) ?? DesignSystem.neutral200,
             ),
             boxShadow: DesignSystem.shadowSm,
           ),
           child: Icon(
             _sectionIcon(),
             size: 17,
-            color: const Color(0xFFE11D48),
+            color: accentColor,
           ),
         ),
         const SizedBox(width: 10),
@@ -986,8 +1016,8 @@ class _MainNavigationState extends State<MainNavigation> {
           children: [
             Text(
               _sectionTitle(),
-              style: const TextStyle(
-                color: DesignSystem.neutral900,
+              style: TextStyle(
+                color: theme.colorScheme.onSurface,
                 fontSize: DesignSystem.textBase,
                 fontWeight: DesignSystem.weightSemibold,
                 letterSpacing: -0.3,
@@ -997,8 +1027,8 @@ class _MainNavigationState extends State<MainNavigation> {
             const SizedBox(height: 2),
             Text(
               _profileName(user),
-              style: const TextStyle(
-                color: DesignSystem.neutral500,
+              style: TextStyle(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                 fontSize: DesignSystem.textXs,
                 fontWeight: DesignSystem.weightMedium,
                 letterSpacing: 0.2,
@@ -1012,12 +1042,13 @@ class _MainNavigationState extends State<MainNavigation> {
   }
 
   List<Widget> _buildMobileTopActions() {
+    final l = S.of(context);
     if (_currentSection == _AppSection.library) {
       return [
         _TopActionButton(
           icon: BovaIcons.refreshOutline,
           onTap: () => _mediaLibraryKey.currentState?.refreshAndSync(),
-          tooltip: '刷新并同步',
+          tooltip: l.actionRefreshSync,
           size: 40,
           iconSize: 19,
           radius: 14,
@@ -1036,7 +1067,7 @@ class _MainNavigationState extends State<MainNavigation> {
       _TopActionButton(
         icon: BovaIcons.searchOutline,
         onTap: _openDiscoverSearch,
-        tooltip: '搜索',
+        tooltip: l.actionSearch,
         size: 40,
         iconSize: 19,
         radius: 14,
@@ -1045,7 +1076,7 @@ class _MainNavigationState extends State<MainNavigation> {
       _TopActionButton(
         icon: BovaIcons.bookmarkOutline,
         onTap: _openDiscoverBookmarks,
-        tooltip: '书签',
+        tooltip: l.actionBookmarks,
         size: 40,
         iconSize: 19,
         radius: 14,
@@ -1058,13 +1089,41 @@ class _MainNavigationState extends State<MainNavigation> {
     final authProvider = Provider.of<auth_provider.AuthProvider>(context);
     final user = authProvider.user;
     final isDesktop = DesignSystem.isDesktop(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final themeMode = context.watch<ThemeProvider>().themeMode;
+    final isCyberpunk = themeMode == AppThemeMode.cyberpunk;
+    final isSweetie = themeMode == AppThemeMode.sweetiePro;
+    final isSpecial = isCyberpunk || isSweetie;
+    final specialNeon = isSweetie ? AppTheme.sweetieHotPink : AppTheme.cyberNeon;
+    final specialBg = isSweetie ? AppTheme.sweetieBg : AppTheme.cyberBg;
+    final specialCard = isSweetie ? AppTheme.sweetieCard : AppTheme.cyberCard;
 
     if (!isDesktop) {
       return _buildMobileScaffold();
     }
 
+    // 桌面主背景色
+    final desktopBg = isSpecial
+        ? (isSweetie ? const Color(0xFFFAE8F0) : const Color(0xFF08080F))
+        : isDark
+            ? const Color(0xFF0C0C0E)
+            : const Color(0xFFF1F3F6);
+    // 工作区面板色
+    final panelColor = isSpecial
+        ? specialCard
+        : isDark
+            ? const Color(0xFF1A1A1F)
+            : Colors.white;
+    // 工作区内容底色
+    final contentBg = isSpecial
+        ? specialBg
+        : isDark
+            ? const Color(0xFF111114)
+            : const Color(0xFFF9FAFB);
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF1F3F6),
+      backgroundColor: desktopBg,
       body: Listener(
         behavior: HitTestBehavior.translucent,
         onPointerDown: (event) {
@@ -1087,16 +1146,26 @@ class _MainNavigationState extends State<MainNavigation> {
                     setState(() => _isSidebarExpanded = !_isSidebarExpanded);
                   },
                   onLogoutTap: _logout,
+                  onSettingsTap: () {
+                    setState(() => _showSettings = true);
+                  },
                 ),
                 const SizedBox(width: 20),
                 Expanded(
                   child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: panelColor,
                       borderRadius: BorderRadius.circular(34),
+                      border: isSpecial
+                          ? Border.all(
+                              color: specialNeon.withValues(alpha: 0.1),
+                            )
+                          : null,
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF111827).withValues(alpha: 0.06),
+                          color: isSpecial
+                              ? specialNeon.withValues(alpha: 0.04)
+                              : const Color(0xFF111827).withValues(alpha: isDark ? 0.2 : 0.06),
                           blurRadius: 28,
                           offset: const Offset(0, 18),
                         ),
@@ -1107,17 +1176,27 @@ class _MainNavigationState extends State<MainNavigation> {
                       child: Column(
                         children: [
                           ShellTopBar(
-                            title: _sectionTitle(),
-                            sectionIcon: _sectionIcon(),
-                            onBack: _shouldShowTopBarBackButton()
-                                ? _handleTopBarBack
-                                : null,
-                            actions: _buildTopActions(),
+                            title: _showSettings
+                                ? S.of(context).settingsTitle
+                                : _sectionTitle(),
+                            sectionIcon: _showSettings
+                                ? Icons.settings_outlined
+                                : _sectionIcon(),
+                            onBack: _showSettings
+                                ? () => setState(() => _showSettings = false)
+                                : _shouldShowTopBarBackButton()
+                                    ? _handleTopBarBack
+                                    : null,
+                            actions: _showSettings
+                                ? const []
+                                : _buildTopActions(),
                           ),
                           Expanded(
                             child: ColoredBox(
-                              color: const Color(0xFFF9FAFB),
-                              child: _buildDesktopContent(),
+                              color: contentBg,
+                              child: _showSettings
+                                  ? const SettingsPage(embedded: true)
+                                  : _buildDesktopContent(),
                             ),
                           ),
                         ],
@@ -1136,7 +1215,15 @@ class _MainNavigationState extends State<MainNavigation> {
   Widget _buildMobileScaffold() {
     final authProvider = Provider.of<auth_provider.AuthProvider>(context);
     final user = authProvider.user;
-    final mobileTopActions = _buildMobileTopActions();
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final themeMode = context.watch<ThemeProvider>().themeMode;
+    final isCyberpunk = themeMode == AppThemeMode.cyberpunk;
+    final isSweetieMobile = themeMode == AppThemeMode.sweetiePro;
+    final isSpecialMobile = isCyberpunk || isSweetieMobile;
+    final specialNeonMobile = isSweetieMobile ? AppTheme.sweetieHotPink : AppTheme.cyberNeon;
+    final specialBgMobile = isSweetieMobile ? AppTheme.sweetieBg : AppTheme.cyberBg;
+    final specialCardMobile = isSweetieMobile ? AppTheme.sweetieCard : AppTheme.cyberCard;    final mobileTopActions = _buildMobileTopActions();
     final currentPage = AnimatedSwitcher(
       duration: DesignSystem.durationNormal,
       switchInCurve: DesignSystem.easeOutQuart,
@@ -1144,17 +1231,33 @@ class _MainNavigationState extends State<MainNavigation> {
       child: _buildMobileCurrentPage(),
     );
 
+    final mobileBg = isSpecialMobile
+        ? specialBgMobile
+        : isDark
+            ? const Color(0xFF0C0C0E)
+            : const Color(0xFFF1F3F6);
+    final appBarBg = isSpecialMobile
+        ? specialCardMobile
+        : isDark
+            ? const Color(0xFF1A1A1F)
+            : Colors.white;
+    final appBarBorder = isSpecialMobile
+        ? specialNeonMobile.withValues(alpha: 0.1)
+        : isDark
+            ? const Color(0xFF2A2A30)
+            : DesignSystem.neutral200;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF1F3F6),
+      backgroundColor: mobileBg,
       extendBody: true,
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(56),
         child: Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
+          decoration: BoxDecoration(
+            color: appBarBg,
             border: Border(
               bottom: BorderSide(
-                color: DesignSystem.neutral200,
+                color: appBarBorder,
                 width: 1,
               ),
             ),
@@ -1185,8 +1288,12 @@ class _MainNavigationState extends State<MainNavigation> {
         ),
       ),
       body: DecoratedBox(
-        decoration: const BoxDecoration(
-          color: Color(0xFFF9FAFB),
+        decoration: BoxDecoration(
+          color: isSpecialMobile
+              ? specialBgMobile
+              : isDark
+                  ? const Color(0xFF111114)
+                  : const Color(0xFFF9FAFB),
         ),
         child: currentPage,
       ),
@@ -1205,21 +1312,21 @@ class _MainNavigationState extends State<MainNavigation> {
             };
           });
         },
-        items: const [
+        items: [
           BovaBottomNavItem(
             icon: BovaIcons.homeOutline,
             activeIcon: BovaIcons.homeFilled,
-            label: '发现',
+            label: S.of(context).mobileNavDiscover,
           ),
           BovaBottomNavItem(
             icon: BovaIcons.playerOutline,
             activeIcon: BovaIcons.playerFilled,
-            label: '播放',
+            label: S.of(context).mobileNavPlayer,
           ),
           BovaBottomNavItem(
             icon: BovaIcons.libraryOutline,
             activeIcon: BovaIcons.libraryFilled,
-            label: '媒体库',
+            label: S.of(context).mobileNavLibrary,
           ),
         ],
       ),

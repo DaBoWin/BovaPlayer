@@ -2,8 +2,12 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../../l10n/generated/app_localizations.dart';
+import '../providers/theme_provider.dart';
+import '../theme/app_theme.dart';
 import '../theme/design_system.dart';
 
 class ShellTopBar extends StatelessWidget {
@@ -28,13 +32,43 @@ class ShellTopBar extends StatelessWidget {
         !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux);
     final showWindowControls =
         !kIsWeb && (Platform.isWindows || Platform.isLinux);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final themeMode = context.watch<ThemeProvider>().themeMode;
+    final isCyberpunk = themeMode == AppThemeMode.cyberpunk;
+    final isSweetieBar = themeMode == AppThemeMode.sweetiePro;
+    final isSpecialBar = isCyberpunk || isSweetieBar;
+    final specialNeonBar = isSweetieBar ? AppTheme.sweetieHotPink : AppTheme.cyberNeon;
+    final specialCardBar = isSweetieBar ? AppTheme.sweetieCard : AppTheme.cyberCard;
+
+    final barBg = isSpecialBar
+        ? specialCardBar
+        : isDark
+            ? const Color(0xFF1A1A1F)
+            : Colors.white;
+    final borderColor = isSpecialBar
+        ? specialNeonBar.withValues(alpha: 0.1)
+        : isDark
+            ? const Color(0xFF2A2A30)
+            : const Color(0xFFF0F1F4);
+    final accentColor = isSpecialBar ? specialNeonBar : theme.colorScheme.primary;
+    final iconBoxBg = isSpecialBar
+        ? specialNeonBar.withValues(alpha: 0.08)
+        : isDark
+            ? const Color(0xFF222228)
+            : Colors.white;
+    final iconBoxBorder = isSpecialBar
+        ? specialNeonBar.withValues(alpha: 0.2)
+        : isDark
+            ? const Color(0xFF2A2A30)
+            : DesignSystem.neutral200;
 
     return Container(
       height: 84,
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(
+        color: barBg,
         border: Border(
-          bottom: BorderSide(color: Color(0xFFF0F1F4)),
+          bottom: BorderSide(color: borderColor),
         ),
       ),
       child: GestureDetector(
@@ -51,12 +85,12 @@ class ShellTopBar extends StatelessWidget {
               if (onBack != null) ...[
                 IconButton(
                   onPressed: onBack,
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.arrow_back_ios_new_rounded,
-                    color: DesignSystem.neutral700,
+                    color: theme.iconTheme.color,
                     size: 18,
                   ),
-                  tooltip: 'Back',
+                  tooltip: S.of(context).actionBack,
                 ),
                 const SizedBox(width: 6),
               ],
@@ -64,14 +98,21 @@ class ShellTopBar extends StatelessWidget {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: iconBoxBg,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: DesignSystem.neutral200),
-                  boxShadow: DesignSystem.shadowSm,
+                  border: Border.all(color: iconBoxBorder),
+                  boxShadow: isSpecialBar
+                      ? [
+                          BoxShadow(
+                            color: specialNeonBar.withValues(alpha: 0.06),
+                            blurRadius: 8,
+                          ),
+                        ]
+                      : DesignSystem.shadowSm,
                 ),
                 child: Icon(
                   sectionIcon,
-                  color: const Color(0xFFE11D48),
+                  color: accentColor,
                   size: 20,
                 ),
               ),
@@ -83,11 +124,11 @@ class ShellTopBar extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 28,
                         fontWeight: DesignSystem.weightSemibold,
-                        color: DesignSystem.neutral900,
-                        letterSpacing: -0.8,
+                        color: theme.colorScheme.onSurface,
+                        letterSpacing: isSpecialBar ? 0.5 : -0.8,
                         height: 1.0,
                       ),
                     ),
@@ -97,9 +138,9 @@ class ShellTopBar extends StatelessWidget {
                         subtitle!,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: DesignSystem.textSm,
-                          color: DesignSystem.neutral400,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
                         ),
                       ),
                     ],
@@ -178,12 +219,45 @@ class _DesktopWindowControlsState extends State<_DesktopWindowControls>
 
   @override
   Widget build(BuildContext context) {
+    final l = S.of(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final themeMode = context.watch<ThemeProvider>().themeMode;
+    final isCyberpunk = themeMode == AppThemeMode.cyberpunk;
+    final isSweetieWin = themeMode == AppThemeMode.sweetiePro;
+    final isSpecialWin = isCyberpunk || isSweetieWin;
+    final specialNeonWin = isSweetieWin ? AppTheme.sweetieHotPink : AppTheme.cyberNeon;
+
+    final iconColor = isSpecialWin
+        ? specialNeonWin.withValues(alpha: 0.6)
+        : isDark
+            ? const Color(0xFF8888A0)
+            : DesignSystem.neutral700;
+    final hoverBg = isSpecialWin
+        ? specialNeonWin.withValues(alpha: 0.1)
+        : isDark
+            ? const Color(0xFF2A2A30)
+            : const Color(0xFFF4F5F7);
+    final hoverIconColor = isSpecialWin
+        ? specialNeonWin
+        : isDark
+            ? const Color(0xFFF0F0F2)
+            : DesignSystem.neutral900;
+    final closeColor = isCyberpunk
+        ? AppTheme.cyberPink
+        : isSweetieWin
+            ? AppTheme.sweetieHotPink
+            : theme.colorScheme.primary;
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         _WindowActionButton(
           icon: Icons.minimize_rounded,
-          tooltip: '最小化',
+          tooltip: l.windowMinimize,
+          iconColor: iconColor,
+          hoverColor: hoverBg,
+          hoverIconColor: hoverIconColor,
           onPressed: () => windowManager.minimize(),
         ),
         const SizedBox(width: 8),
@@ -191,15 +265,18 @@ class _DesktopWindowControlsState extends State<_DesktopWindowControls>
           icon: _isMaximized
               ? Icons.filter_none_rounded
               : Icons.crop_square_rounded,
-          tooltip: _isMaximized ? '还原' : '最大化',
+          tooltip: _isMaximized ? l.windowRestore : l.windowMaximize,
+          iconColor: iconColor,
+          hoverColor: hoverBg,
+          hoverIconColor: hoverIconColor,
           onPressed: _toggleMaximize,
         ),
         const SizedBox(width: 8),
         _WindowActionButton(
           icon: Icons.close_rounded,
-          tooltip: '关闭',
-          hoverColor: const Color(0xFFE11D48),
-          iconColor: const Color(0xFFE11D48),
+          tooltip: l.windowClose,
+          hoverColor: closeColor,
+          iconColor: closeColor,
           hoverIconColor: Colors.white,
           onPressed: () => windowManager.close(),
         ),
@@ -213,9 +290,9 @@ class _WindowActionButton extends StatefulWidget {
     required this.icon,
     required this.tooltip,
     required this.onPressed,
-    this.iconColor = DesignSystem.neutral700,
-    this.hoverColor = const Color(0xFFF4F5F7),
-    this.hoverIconColor = DesignSystem.neutral900,
+    required this.iconColor,
+    required this.hoverColor,
+    required this.hoverIconColor,
   });
 
   final IconData icon;

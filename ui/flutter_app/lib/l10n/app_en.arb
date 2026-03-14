@@ -1,0 +1,804 @@
+{
+  "@@locale": "en",
+
+  "appTitle": "BovaPlayer",
+
+  "discoverTrendingNow": "Trending Now",
+  "discoverTrendingNowSub": "The titles getting the most attention today",
+  "discoverPopularMovies": "Popular Movies",
+  "discoverPopularMoviesSub": "Big-screen picks with broad appeal",
+  "discoverPopularTV": "Popular TV",
+  "discoverPopularTVSub": "Series people keep coming back to",
+  "discoverTrendingMovies": "Trending Movies",
+  "discoverTrendingMoviesSub": "Today's biggest movie momentum",
+  "discoverNowPlaying": "Now Playing",
+  "discoverNowPlayingSub": "Movies currently rolling out worldwide",
+  "discoverMovies": "Discover Movies",
+  "discoverMoviesSub": "High-popularity films surfaced from TMDB Discover",
+  "discoverTrendingShows": "Trending Shows",
+  "discoverTrendingShowsSub": "Series that are surging right now",
+  "discoverPopularTVShows": "Popular TV",
+  "discoverPopularTVShowsSub": "Broad-appeal TV picks from TMDB",
+  "discoverTV": "Discover TV",
+  "discoverTVSub": "Fresh series surfaced by popularity",
+
+  "playerLoading": "Loading...",
+  "playerFilePickError": "File pick failed: {error}",
+  "@playerFilePickError": {
+    "placeholders": { "error": { "type": "String" } }
+  },
+  "playerPlayFailed": "Playback failed: {error}",
+  "@playerPlayFailed": {
+    "placeholders": { "error": { "type": "String" } }
+  },
+  "playerRetry": "Retry",
+  "playerNoVideo": "No video selected",
+  "playerNoVideoHint": "Click the folder icon at top right to select a video",
+  "playerSelectFile": "Select Video File",
+
+  "navHome": "Home",
+  "navMovies": "Movies",
+  "navShows": "Shows",
+  "navPlayer": "Player",
+  "navMediaLibrary": "Media Library",
+  "navAccount": "Account",
+
+  "mobileNavDiscover": "Discover",
+  "mobileNavPlayer": "Player",
+  "mobileNavLibrary": "Library",
+
+  "sidebarCollapse": "Collapse",
+  "sidebarExpand": "Expand",
+  "sidebarSignOut": "Sign out",
+
+  "profileGreeting": "Hi, {name}",
+  "@profileGreeting": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "profileGuest": "Guest",
+  "profileDiscovering": "Discovering",
+  "profileWatching": "Watching",
+  "profileBrowsing": "Browsing",
+  "profileManagingAccount": "Managing account",
+
+  "actionSearch": "Search",
+  "actionBookmarks": "Bookmarks",
+  "actionNotifications": "Notifications",
+  "actionRefreshSync": "Refresh & Sync",
+  "actionSearchMedia": "Search media",
+  "actionBack": "Back",
+
+  "exitAppTitle": "Exit App",
+  "exitAppMessage": "Are you sure you want to exit BovaPlayer?",
+  "cancel": "Cancel",
+  "exit": "Exit",
+  "confirm": "Confirm",
+  "delete": "Delete",
+  "save": "Save",
+  "saved": "Saved",
+  "bookmarkSave": "Save",
+  "bookmarkSaved": "Saved",
+  "add": "Add",
+  "edit": "Edit",
+  "retry": "Retry",
+
+  "comingSoon": "{label} is coming next.",
+  "@comingSoon": {
+    "placeholders": {
+      "label": { "type": "String" }
+    }
+  },
+
+  "addEmbyServer": "Emby Server",
+  "addSmbShare": "SMB Share",
+  "addFtpServer": "FTP Server",
+
+  "selectLibrary": "Select library to enter",
+
+  "discoverNotFoundInLibrary": "Could not find \"{title}\" in connected Emby libraries",
+  "@discoverNotFoundInLibrary": {
+    "placeholders": {
+      "title": { "type": "String" }
+    }
+  },
+  "bookmarkAdded": "Bookmarked: {title}",
+  "@bookmarkAdded": {
+    "placeholders": {
+      "title": { "type": "String" }
+    }
+  },
+  "bookmarkRemoved": "Removed bookmark: {title}",
+  "@bookmarkRemoved": {
+    "placeholders": {
+      "title": { "type": "String" }
+    }
+  },
+  "bookmarkSaveFailed": "Failed to save bookmark, please try again",
+  "quickPlayFailed": "Quick play failed, please try again",
+
+  "discoverOpen": "Open",
+  "discoverFeatured": "Featured",
+  "discoverHotWall": "Hot Wall",
+  "discoverHotWallSubtitle": "A live grid of high-interest titles pulled from TMDB.",
+  "discoverTmdbCredentials": "{title} needs TMDB credentials",
+  "@discoverTmdbCredentials": {
+    "placeholders": {
+      "title": { "type": "String" }
+    }
+  },
+  "discoverTmdbCredentialsHint": "Add `TMDB_READ_ACCESS_TOKEN` or `TMDB_API_KEY` to `ui/flutter_app/.env` to load live posters, trending picks and featured backdrops.",
+  "discoverSearchResultsFor": "Results for \"{query}\"",
+  "@discoverSearchResultsFor": {
+    "placeholders": {
+      "query": { "type": "String" }
+    }
+  },
+  "discoverExplore": "Explore",
+  "discoverUnableToLoad": "Unable to load discover feed",
+  "discoverTryAgain": "Try again",
+  "discoverSearchHint": "Search movies and shows from TMDB",
+  "discoverSearchGuide": "Type a title to search TMDB and jump straight into your libraries.",
+  "discoverTmdbNotConfigured": "TMDB not configured",
+  "discoverTmdbNotConfiguredHint": "Add your TMDB token first to use search.",
+  "discoverStartSearching": "Start searching",
+  "discoverSearchExploreHint": "Find a movie or show, then Explore or quick-play it from your matched libraries.",
+  "discoverNoResults": "No results",
+  "discoverNoResultsHint": "Try another title, original name, or shorter keyword.",
+  "discoverNoBookmarks": "No bookmarks yet",
+  "discoverNoBookmarksHint": "Save titles from the featured hero or search results and they will show up here.",
+  "discoverBookmarkCount": "{count} saved titles ready for Explore or quick play.",
+  "@discoverBookmarkCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "discoverExpandSources": "Expand {count} more sources",
+  "@discoverExpandSources": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "discoverLatencyGood": "Good",
+  "discoverLatencyMedium": "Medium",
+  "discoverLatencySlow": "Slow",
+  "discoverLatencyUnreachable": "Unreachable",
+
+  "embyServers": "Emby Servers",
+  "embyServersDesc": "Manage your Emby connections in the media library workspace.",
+  "embyNoServers": "No servers added yet",
+  "embyNoServersHint": "Tap the button in the top-right to add an Emby server. Your media library will be displayed here after connection.",
+  "embyNoServersHintMobile": "Tap the button above to add an Emby server",
+  "embyEditServer": "Edit Server",
+  "embyAddServer": "Add Server",
+  "embyServerName": "Name",
+  "embyServerNameHint": "My Emby",
+  "embyServerAddress": "Server Address",
+  "embyUsername": "Username",
+  "embyPassword": "Password",
+  "embyLoginFailed": "Login failed: wrong username or password",
+  "embyConnectionFailed": "Connection failed: {error}",
+  "@embyConnectionFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "embyUser": "User: {name}",
+  "@embyUser": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "embyBackToLibrary": "Back to media library",
+  "embyRefresh": "Refresh",
+  "embyContinueWatching": "Continue Watching",
+  "embyShowAll": "Show all",
+  "embyLatestAdded": "Latest added",
+  "embyNameSort": "Name",
+  "embyYearSort": "Year",
+  "embyRatingSort": "Rating",
+  "embyItemCount": "{count} items",
+  "@embyItemCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "embyNoContent": "No content",
+  "embyNoContentHint": "No media items to display in this directory.",
+  "embySeason": "Season",
+  "embyEpisodeCount": "{count} episodes",
+  "@embyEpisodeCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "embyDurationHoursMinutes": "{hours}h{minutes}m",
+  "@embyDurationHoursMinutes": {
+    "placeholders": {
+      "hours": { "type": "int" },
+      "minutes": { "type": "int" }
+    }
+  },
+  "embyDurationMinutes": "{minutes}m",
+  "@embyDurationMinutes": {
+    "placeholders": {
+      "minutes": { "type": "int" }
+    }
+  },
+  "embyPlay": "Play",
+  "embyFavorite": "Favorite",
+  "embyDetails": "Details",
+  "embyPlaybackOptions": "Playback Options",
+  "embyVideoFormat": "Video Format",
+  "embyAudioFormat": "Audio Format",
+  "embyStreamInfo": "Audio/Video/Subtitle Info",
+  "embyVideo": "Video",
+  "embyAudio": "Audio",
+  "embySubtitle": "Subtitles",
+  "embyFillAllFields": "Please fill all required fields",
+  "embySwitchServer": "Switch server",
+  "embyAddServerTooltip": "Add server",
+  "embyExitApp": "Exit App",
+  "embyExitAppConfirm": "Are you sure you want to exit the app?",
+  "embyPageLoadFailed": "Page load failed",
+  "embySortTooltip": "Sort",
+  "embyListView": "List view",
+  "embyGridView": "Grid view",
+  "embyHome": "Home",
+  "embyBrowseSubtitle": "Browse your media catalog by Emby directory.",
+  "embyContinueBrowse": "Continue browsing your media catalog.",
+  "embyBack": "Back",
+  "embyEpisodeLabel": "Episode {number}",
+  "@embyEpisodeLabel": {
+    "placeholders": {
+      "number": { "type": "int" }
+    }
+  },
+  "embyStreamTitle": "Title",
+  "embyStreamLanguage": "Language",
+  "embyStreamCodec": "Codec",
+  "embyStreamProfile": "Profile",
+  "embyStreamLevel": "Level",
+  "embyStreamResolution": "Resolution",
+  "embyStreamAspectRatio": "Aspect Ratio",
+  "embyStreamInterlaced": "Interlaced",
+  "embyStreamFrameRate": "Frame Rate",
+  "embyStreamBitrate": "Bitrate",
+  "embyStreamVideoRange": "Video Range",
+  "embyStreamColorPrimaries": "Color Primaries",
+  "embyStreamColorSpace": "Color Space",
+  "embyStreamColorTransfer": "Color Transfer",
+  "embyStreamBitDepth": "Bit Depth",
+  "embyStreamPixelFormat": "Pixel Format",
+  "embyStreamRefFrames": "Reference Frames",
+  "embyStreamChannelLayout": "Channel Layout",
+  "embyStreamChannels": "Channels",
+  "embyStreamSampleRate": "Sample Rate",
+  "embyStreamDefault": "Default",
+  "embyStreamEmbeddedTitle": "Embedded Title",
+  "embyStreamForced": "Forced",
+  "embyYes": "Yes",
+  "embyNo": "No",
+  "embyType": "Type",
+  "embyYear": "Year",
+  "embyRating": "Rating",
+  "embyRuntime": "Runtime",
+  "embyScore": "Score",
+  "embyOriginalTitle": "Original Title",
+  "embyUnknown": "Unknown",
+  "embyMediaContent": "Media Content",
+  "embyPlaybackUrlFailed": "Unable to get playback URL",
+
+  "mediaSourceList": "Media Source List",
+  "mediaSourceCount": "{count} items",
+  "@mediaSourceCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "mediaSourceLoading": "Loading media sources...",
+  "mediaSourceEmpty": "No media sources yet",
+  "mediaSourceEmptyHint": "Add Emby, SMB or FTP from the top-right, and your media sources will be listed here.",
+  "mediaSourceAdd": "Add Media Source",
+  "mediaSourceEdit": "Edit Media Source",
+  "mediaSourceDelete": "Delete Media Source",
+  "mediaSourceDeleteConfirm": "Are you sure you want to delete \"{name}\"?",
+  "@mediaSourceDeleteConfirm": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "mediaSourceSelectProtocol": "Select a protocol to configure a new content source.",
+  "mediaSourceEmbyDesc": "Connect to media service and metadata",
+  "mediaSourceSmbDesc": "Add LAN shared directory",
+  "mediaSourceFtpDesc": "Access remote file server",
+  "mediaSourceHostAddress": "Host Address",
+  "mediaSourcePort": "Port",
+  "mediaSourceShareName": "Share Name",
+  "mediaSourceShareNameHint": "e.g. share, movies",
+  "mediaSourceWorkgroup": "Workgroup",
+  "mediaSourceSavePassword": "Save password",
+  "mediaSourceNameHint": "e.g. Home Server",
+  "mediaSourceFillRequired": "Please fill all required fields",
+  "mediaSourceEnterShareName": "Please enter share name",
+  "mediaSourceConnectionFailed": "Connection failed",
+  "mediaSourceLoginFailed": "Login failed, check server address and credentials",
+  "mediaSourceAddSuccess": "Added successfully",
+  "mediaSourceUpdateSuccess": "Updated successfully",
+  "mediaSourceDeleteSuccess": "Deleted successfully",
+  "mediaSourceDeleteFailed": "Delete failed: {error}",
+  "@mediaSourceDeleteFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "mediaSourceLoadFailed": "Load failed: {error}",
+  "@mediaSourceLoadFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "mediaSourceSyncComplete": "Sync complete",
+  "mediaSourcePleaseLogin": "Please login first",
+  "mediaSourceEnableSync": "Please enable cloud sync in account page",
+  "mediaSourceNoActive": "No active media source",
+  "mediaSourceFileUnsupported": "This file type is not supported yet",
+  "mediaSourcePlayFailed": "Playback failed: {error}",
+  "@mediaSourcePlayFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+
+  "browserRefreshDir": "Refresh directory",
+  "browserCurrentPath": "Current path: {path}",
+  "@browserCurrentPath": {
+    "placeholders": {
+      "path": { "type": "String" }
+    }
+  },
+  "browserRootDir": "Root",
+  "browserLoadingDir": "Loading directory...",
+  "browserLoadFailed": "Directory load failed",
+  "browserReload": "Reload",
+  "browserDirEmpty": "Directory is empty",
+  "browserDirEmptyHint": "No files or folders to display in this directory.",
+  "browserFolder": "Folder",
+  "browserClickToEnter": "Click to enter",
+  "browserBackToLibrary": "Back to media library",
+
+  "mediaTypeEmbyService": "Media service and metadata management",
+  "mediaTypeSmbShare": "LAN shared directory browsing",
+  "mediaTypeFtpServer": "Remote file server access",
+  "mediaTypeFolder": "Folder",
+  "mediaTypeVideo": "Video",
+  "mediaTypeAudio": "Audio",
+  "mediaTypeSubtitle": "Subtitle",
+  "mediaTypeFile": "File",
+  "mediaTypeUsernameNotSet": "Username not set",
+  "mediaTypeUser": "User {name}",
+  "@mediaTypeUser": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "mediaTypeShareNotSet": "Share name not set",
+  "mediaTypeShare": "Share {name}",
+  "@mediaTypeShare": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "mediaTypeAnonymous": "Anonymous access",
+
+  "accountCenter": "Account Center",
+  "accountRefreshInfo": "Refresh account info",
+  "accountNoInfo": "Account info unavailable",
+  "accountNoInfoHint": "Please re-login or go back and try again.",
+  "accountGoBack": "Go back",
+  "accountAvatarUpdated": "Avatar updated",
+  "accountAvatarSaveFailed": "Save failed: {error}",
+  "@accountAvatarSaveFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "accountRefreshed": "Account data refreshed",
+  "accountRefreshFailed": "Refresh failed, please try again later",
+
+  "accountTypeFree": "Free",
+  "accountTypePro": "Pro Member",
+  "accountTypeLifetime": "Lifetime Member",
+
+  "accountLabelFree": "Current Plan",
+  "accountLabelPro": "Pro Access",
+  "accountLabelLifetime": "Lifetime Access",
+
+  "accountPlanFree": "Current Plan",
+  "accountPlanPro": "Membership",
+  "accountPlanLifetime": "Lifetime",
+
+  "accountDescFree": "Local playback, library management and basic services are ready.",
+  "accountDescPro": "Cross-device sync, more device quota and premium experience enabled.",
+  "accountDescLifetime": "All Pro features included, no renewal needed.",
+
+  "accountFeatureLocalPlayback": "Local playback",
+  "accountFeatureLibraryManagement": "Library management",
+  "accountFeatureBasicService": "Basic service",
+  "accountFeatureCloudSync": "Cloud sync",
+  "accountFeatureMoreDevices": "More devices",
+  "accountFeatureAdvancedWorkspace": "Advanced workspace",
+  "accountFeaturePriorityAccess": "Priority access",
+  "accountFeatureUnlimitedDevices": "Unlimited devices",
+  "accountFeatureLargerQuota": "Larger quota",
+  "accountFeatureNoRenewal": "No renewal",
+
+  "accountRegisteredAt": "Registered",
+  "accountLastUpdate": "Last update",
+  "accountCloudSync": "Cloud sync",
+  "accountSyncEnabled": "Enabled",
+  "accountSyncDisabled": "Disabled",
+
+  "accountUsage": "Usage",
+  "accountUsageDescription": "Current usage of servers, devices and storage quota.",
+  "accountUsageServers": "Servers",
+  "accountUsageDevices": "Devices",
+  "accountUsageStorage": "Storage",
+  "accountUsageUnlimited": "Unlimited",
+
+  "accountSyncTitle": "Cloud Sync",
+  "accountSyncEnabledDesc": "Media servers and config data synced securely",
+  "accountSyncDisabledProDesc": "Enter password to enable encrypted sync",
+  "accountSyncDisabledFreeDesc": "Upgrade to enable cross-device sync",
+  "accountEnableSync": "Enable Cloud Sync",
+  "accountViewUpgrade": "View Upgrade Plans",
+
+  "accountAdminTools": "Admin Tools",
+  "accountAdminDesc": "Manage redemption codes and backend config.",
+  "accountRedemptionManagement": "Redemption Codes",
+  "accountRedemptionDesc": "Generate, view and manage redemption codes",
+
+  "accountUpgradeTitle": "Membership Upgrade",
+  "accountUpgradeToLifetime": "Upgrade to Lifetime",
+  "accountUpgradeToPro": "Upgrade to Pro",
+  "accountUpgradeLifetimeDesc": "One-time upgrade, keep premium sync and more device quota.",
+  "accountUpgradeProDesc": "Unlock cross-device sync, more premium features and higher quota.",
+  "accountViewLifetimePlan": "View Lifetime Plan",
+  "accountViewProPlan": "View Pro Plan",
+
+  "accountLogout": "Sign Out",
+  "accountLogoutDesc": "After signing out, local sync password will be cleared, re-login required.",
+  "accountLogoutConfirmTitle": "Confirm Sign Out",
+  "accountLogoutConfirmMessage": "After signing out, local sync password will be cleared.",
+  "accountLogoutButton": "Sign Out",
+
+  "accountEnableSyncTitle": "Enable Cloud Sync",
+  "accountEnableSyncMessage": "Enter your password to verify and enable encrypted sync.",
+  "accountPasswordLabel": "Password",
+  "accountPasswordHint": "Enter password",
+  "accountPasswordRequired": "Please enter password",
+  "accountEnableSyncButton": "Enable Now",
+  "accountSyncEnabledSuccess": "Cloud sync enabled",
+  "accountSyncEnableFailed": "Password incorrect or enable failed, please try again",
+  "accountExpiresAt": "Expires: {date}",
+  "@accountExpiresAt": {
+    "placeholders": {
+      "date": { "type": "String" }
+    }
+  },
+  "accountUsernameNotSet": "Username not set",
+  "accountLifetimeRightsTitle": "BovaPlayer\nLifetime Access",
+  "accountLifetimeChip": "Lifetime",
+  "accountVip": "VIP",
+
+  "windowMinimize": "Minimize",
+  "windowMaximize": "Maximize",
+  "windowRestore": "Restore",
+  "windowClose": "Close",
+
+  "settingsTitle": "Settings",
+  "settingsLanguage": "Language",
+  "settingsTheme": "Theme",
+  "settingsThemeLight": "Light",
+  "settingsThemeDark": "Dark",
+  "settingsThemeCyberpunk": "Cyberpunk",
+  "settingsThemeCyberpunkPro": "Cyberpunk Pro",
+  "settingsAppearance": "Appearance",
+  "settingsLanguageEn": "English",
+  "settingsLanguageZh": "Chinese (Simplified)",
+
+  "authLoginTitle": "Sign In",
+  "authLoginSubtitle": "Enter email and password, or sign in with GitHub.",
+  "authEmailLabel": "Email Address",
+  "authPasswordLabel": "Password",
+  "authPasswordHint": "Enter your password",
+  "authForgotPassword": "Forgot password?",
+  "authLoginButton": "Sign In",
+  "authOrThirdParty": "or sign in with",
+  "authGitHubLogin": "Sign in with GitHub",
+  "authNoAccount": "Don't have an account?",
+  "authRegisterNow": "Register now",
+  "authLoginSuccess": "Login successful!",
+  "authLoginFailed": "Login failed",
+  "authGitHubLoginFailed": "GitHub login failed",
+  "authInvalidEmail": "Please enter a valid email address",
+  "authEnterPassword": "Please enter password",
+
+  "authRegisterTitle": "Create Account",
+  "authRegisterHeading": "Create your account",
+  "authRegisterSubtitle": "Register to enable media sync, purchase plans, and manage your workspace.",
+  "authRegisterDesc": "Fill in basic info to get started. Username can be adjusted later in Account Center.",
+  "authRegisterFactSync": "Cloud sync",
+  "authRegisterFactSyncValue": "Available after registration",
+  "authRegisterFactRights": "Rights management",
+  "authRegisterFactRightsValue": "Upgrade & redeem supported",
+  "authRegisterFactSecurity": "Account security",
+  "authRegisterFactSecurityValue": "Email verification",
+  "authUsernameLabel": "Username (optional)",
+  "authUsernameHint": "Enter your username",
+  "authConfirmPasswordLabel": "Confirm Password",
+  "authConfirmPasswordHint": "Enter password again",
+  "authPasswordMinLength": "Password must be at least 8 characters",
+  "authPasswordHintRegister": "At least 8 chars, letters and numbers recommended",
+  "authPasswordMismatch": "Passwords do not match",
+  "authRegisterButton": "Register",
+  "authHasAccount": "Already have an account?",
+  "authLoginNow": "Sign in now",
+  "authRegisterSuccess": "Registration successful! Please check your email for verification.",
+  "authRegisterFailed": "Registration failed",
+  "authRegisterTooFrequent": "Too many requests, please wait 45 seconds",
+  "authRegisterDbError": "Database configuration error, contact admin",
+  "authRegisterEmailTaken": "This email is already registered",
+
+  "authForgotTitle": "Reset Password",
+  "authForgotCheckEmail": "Check your email",
+  "authForgotSubtitleSent": "Email has been sent. Complete password reset from your inbox, then log in again.",
+  "authForgotSubtitleForm": "Enter your registration email and we will send a reset link.",
+  "authForgotFactEmailStatus": "Email status",
+  "authForgotFactEmailSent": "Sent",
+  "authForgotFactNextStep": "Next step",
+  "authForgotFactNextStepValue": "Check inbox & click link",
+  "authForgotFactEmailVerify": "Email verification",
+  "authForgotFactRequired": "Required",
+  "authForgotFactResetMethod": "Reset method",
+  "authForgotFactResetViaEmail": "Email link",
+  "authForgotSendLink": "Send Reset Link",
+  "authForgotFormDesc": "Enter your registration email, we will send a password reset link.",
+  "authForgotRemembered": "Remember your password?",
+  "authForgotBackToLogin": "Back to login",
+  "authForgotEmailSentTitle": "Email Sent",
+  "authForgotEmailSentDesc": "We have sent a password reset link to {email}. Please check your inbox.",
+  "@authForgotEmailSentDesc": {
+    "placeholders": {
+      "email": { "type": "String" }
+    }
+  },
+  "authForgotReturnLogin": "Back to login",
+  "authForgotResend": "Resend",
+  "authForgotSendFailed": "Send failed",
+
+  "authRedeemFailed": "Redemption failed: {error}",
+  "@authRedeemFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "authGenerateFailed": "Generation failed: {error}",
+  "@authGenerateFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "authQueryFailed": "Query failed: {error}",
+  "@authQueryFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+
+  "pricingTitle": "Membership Plans",
+  "pricingChoosePlan": "Choose the right plan for you",
+  "pricingHeroDesc": "Account, benefits and upgrade flow are unified in one workspace. You can upgrade directly or enter a redemption code first.",
+  "pricingCrossDeviceSync": "Cross-device sync",
+  "pricingDeviceQuota": "Device quota",
+  "pricingCloudStorage": "Cloud storage",
+  "pricingPlanFree": "Community Free",
+  "pricingPlanFreePrice": "¥0",
+  "pricingPlanFreePeriod": "Free forever",
+  "pricingPlanFreeDesc": "Ideal for lightweight use and local playback, retaining the most basic core capabilities.",
+  "pricingPlanFreeCta": "Current Plan",
+  "pricingPlanFreeFeature1": "Up to 10 servers",
+  "pricingPlanFreeFeature2": "Up to 2 devices",
+  "pricingPlanFreeFeature3": "100 MB cloud storage",
+  "pricingPlanFreeFeature4": "Basic playback",
+  "pricingPlanFreeFeature5": "Community support",
+  "pricingPlanPro": "Pro",
+  "pricingPlanProPrice": "¥6.9",
+  "pricingPlanProPeriod": "/ month",
+  "pricingPlanProDesc": "The go-to plan for multi-device, multi-library and cross-device sync.",
+  "pricingPlanProCta": "Upgrade to Pro",
+  "pricingPlanProFeature1": "Unlimited servers",
+  "pricingPlanProFeature2": "Up to 5 devices",
+  "pricingPlanProFeature3": "1 GB cloud storage",
+  "pricingPlanProFeature4": "Advanced playback",
+  "pricingPlanProFeature5": "Priority support",
+  "pricingPlanProFeature6": "GitHub sync",
+  "pricingPlanLifetime": "Lifetime",
+  "pricingPlanLifetimePrice": "¥69",
+  "pricingPlanLifetimePeriod": "One-time payment",
+  "pricingPlanLifetimeDesc": "Buy once, unlock premium sync, full quota and future updates permanently.",
+  "pricingPlanLifetimeCta": "Unlock Lifetime",
+  "pricingPlanLifetimeFeature1": "Unlimited servers",
+  "pricingPlanLifetimeFeature2": "Unlimited devices",
+  "pricingPlanLifetimeFeature3": "5 GB cloud storage",
+  "pricingPlanLifetimeFeature4": "All premium features",
+  "pricingPlanLifetimeFeature5": "Lifetime updates",
+  "pricingPlanLifetimeFeature6": "Priority support",
+  "pricingPlanLifetimeFeature7": "GitHub sync",
+  "pricingRecommended": "Recommended",
+  "pricingCurrentPlan": "Current Plan",
+  "pricingFeatureComparison": "Feature Comparison",
+  "pricingFeatureComparisonDesc": "Quickly compare core capabilities of each plan in one table.",
+  "pricingServerCount": "Servers",
+  "pricingDeviceCount": "Devices",
+  "pricingGitHubSync": "GitHub Sync",
+  "pricingPrioritySupport": "Priority Support",
+  "pricingLifetimeUpdates": "Lifetime Updates",
+  "pricingSupported": "Supported",
+  "pricingUnlimited": "Unlimited",
+  "pricingFaq": "FAQ",
+  "pricingFaqDesc": "Most frequently asked questions before purchasing or redeeming.",
+  "pricingFaqQ1": "How soon does it take effect after purchase?",
+  "pricingFaqA1": "Account benefits update immediately after payment or redemption. Re-enter the account page to see the latest status.",
+  "pricingFaqQ2": "Can I enter a redemption code first?",
+  "pricingFaqA2": "Yes. Enter the code directly in the purchase confirmation popup, and the system will try to redeem it first.",
+  "pricingFaqQ3": "What's the difference between Pro and Lifetime?",
+  "pricingFaqA3": "Pro is better for monthly subscription and continuous use; Lifetime is better for long-term power users with one-time unlock.",
+  "pricingConfirmPurchase": "Confirm Purchase",
+  "pricingHaveRedemptionCode": "Have a redemption code?",
+  "pricingRedemptionCode": "Redemption Code",
+  "pricingRedeem": "Redeem",
+  "pricingGoPay": "Go Pay",
+  "pricingProMonthly": "Pro (Monthly)",
+  "pricingProMonthlyPrice": "¥6.9 / month",
+  "pricingLifetimeOnce": "¥69 (one-time)",
+  "pricingRedeemSuccess": "Redeemed Successfully",
+  "pricingAccountUpdated": "Account benefits have been updated.",
+  "pricingOk": "OK",
+  "pricingRedeemFailed": "Redemption failed",
+  "pricingRedeemError": "Redemption failed: {error}",
+  "@pricingRedeemError": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+
+  "danmakuSettings": "Danmaku Settings",
+  "danmakuShowDanmaku": "Show Danmaku",
+  "danmakuOpacity": "Opacity",
+  "danmakuFontSize": "Font Size",
+  "danmakuSpeed": "Danmaku Speed",
+  "danmakuDisplayArea": "Display Area",
+  "danmakuFullScreen": "Full screen",
+  "danmakuThreeQuarters": "3/4 screen",
+  "danmakuHalfScreen": "Half screen",
+  "danmakuQuarterScreen": "1/4 screen",
+  "danmakuUnknownVideo": "Unknown video",
+  "danmakuCount": "{count} danmaku total",
+  "@danmakuCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "danmakuUpgradeToPro": "Upgrade to Pro",
+  "danmakuUpgradeDesc": "Danmaku feature is only available for Pro and Lifetime users.\n\nAfter upgrading:\n• Real-time danmaku display\n• Custom danmaku settings\n• Cloud sync\n• More advanced features",
+  "danmakuViewPlans": "View Plans",
+  "danmakuUpgradeUnlock": "Upgrade to Pro to unlock danmaku",
+  "danmakuUpgrade": "Upgrade",
+
+  "netBrowserTitle": "Network Browser",
+  "netBrowserLoadConnectionsFailed": "Failed to load connections: {error}",
+  "@netBrowserLoadConnectionsFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "netBrowserConnectionFailed": "Connection failed",
+  "netBrowserConnectionError": "Connection failed: {error}",
+  "@netBrowserConnectionError": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "netBrowserLoadDirFailed": "Failed to load directory: {error}",
+  "@netBrowserLoadDirFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "netBrowserPlayFailed": "Playback failed: {error}",
+  "@netBrowserPlayFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "netBrowserNoConnections": "No connections yet\nTap + at bottom right to add",
+  "netBrowserDirEmpty": "Directory is empty",
+  "netBrowserRetry": "Retry",
+  "netBrowserAddConnection": "Add Connection",
+  "netBrowserProtocol": "Protocol",
+  "netBrowserName": "Name",
+  "netBrowserHost": "Host",
+  "netBrowserPort": "Port",
+  "netBrowserUsername": "Username",
+  "netBrowserPassword": "Password",
+  "netBrowserShareName": "Share Name",
+  "netBrowserShareHint": "e.g. share, movies",
+  "netBrowserWorkgroup": "Workgroup",
+  "netBrowserWorkgroupHint": "Default: WORKGROUP",
+  "netBrowserSavePassword": "Save password",
+  "netBrowserEnterName": "Please enter name",
+  "netBrowserEnterHost": "Please enter host",
+  "netBrowserEnterPort": "Please enter port",
+  "netBrowserEnterShareName": "Please enter share name",
+
+  "redemptionTitle": "Redemption Code Management",
+  "redemptionHeroTitle": "Manage Redemption Codes",
+  "redemptionHeroDesc": "Unified view of code status, type, expiry and generation entry. Consistent with account workspace style.",
+  "redemptionGenerateTooltip": "Generate code",
+  "redemptionFilterAll": "All",
+  "redemptionFilterUnused": "Unused",
+  "redemptionFilterUsed": "Used",
+  "redemptionFilterExpired": "Expired",
+  "redemptionLoadFailed": "Failed to load",
+  "redemptionLoadError": "Failed to load: {error}",
+  "@redemptionLoadError": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "redemptionEmpty": "No redemption codes",
+  "redemptionEmptyHint": "Tap the plus icon at top right to generate new codes.",
+  "redemptionStatusUsed": "Used",
+  "redemptionStatusExpired": "Expired",
+  "redemptionStatusAvailable": "Available",
+  "redemptionTypePro": "Pro",
+  "redemptionTypeLifetime": "Lifetime",
+  "redemptionCopyTooltip": "Copy code",
+  "redemptionCopied": "Copied code",
+  "redemptionCreatedAt": "Created at",
+  "redemptionExpiresAt": "Expires at",
+  "redemptionUsedBy": "Used by",
+  "redemptionUsedAt": "Used at",
+  "redemptionGenerateTitle": "Generate Codes",
+  "redemptionGenerateDesc": "Select benefit type and fill in quantity, validity days and notes.",
+  "redemptionGenerateCount": "Quantity",
+  "redemptionGenerateCountHint": "1-100",
+  "redemptionProDuration": "Pro validity days",
+  "redemptionProDurationHint": "e.g. 30, 90, 365",
+  "redemptionCodeExpiry": "Code expiry days",
+  "redemptionCodeExpiryHint": "Valid for how many days after generation",
+  "redemptionNote": "Note (optional)",
+  "redemptionNoteHint": "e.g. For event users",
+  "redemptionGenerate": "Generate",
+  "redemptionGenerateSuccess": "Successfully generated {count} codes",
+  "@redemptionGenerateSuccess": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "redemptionCopiedCode": "Copied: {code}",
+  "@redemptionCopiedCode": {
+    "placeholders": {
+      "code": { "type": "String" }
+    }
+  },
+  "redemptionGenerateFailed": "Generation failed",
+  "redemptionGenerateError": "Generation failed: {error}",
+  "@redemptionGenerateError": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  }
+}

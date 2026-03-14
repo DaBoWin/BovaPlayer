@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/design_system.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../widgets/custom_app_bar.dart';
 import '../models/tmdb_media_item.dart';
 import '../services/discover_library_resolver_service.dart';
@@ -52,11 +53,13 @@ class DiscoverBookmarksPage extends StatelessWidget {
   }
 
   Widget _buildBody(BuildContext context, List<TmdbMediaItem> bookmarks) {
+    final l = S.of(context);
+    final scheme = Theme.of(context).colorScheme;
+
     if (bookmarks.isEmpty) {
-      return const DiscoverEmptyState(
-        title: 'No bookmarks yet',
-        subtitle:
-            'Save titles from the featured hero or search results and they will show up here.',
+      return DiscoverEmptyState(
+        title: l.discoverNoBookmarks,
+        subtitle: l.discoverNoBookmarksHint,
       );
     }
 
@@ -70,10 +73,10 @@ class DiscoverBookmarksPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${bookmarks.length} saved titles ready for Explore or quick play.',
-                  style: const TextStyle(
+                  l.discoverBookmarkCount(bookmarks.length),
+                  style: TextStyle(
                     fontSize: DesignSystem.textBase,
-                    color: DesignSystem.neutral500,
+                    color: scheme.onSurface.withValues(alpha: 0.5),
                   ),
                 ),
               ],
@@ -105,9 +108,9 @@ class DiscoverBookmarksPage extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         DiscoverSearchActionChip(
-                          label: 'Explore',
+                          label: l.discoverExplore,
                           icon: Icons.arrow_forward_rounded,
-                          accentColor: const Color(0xFF111827),
+                          accentColor: scheme.onSurface,
                           onTap: () => onExploreItem(item),
                         ),
                         ..._buildQuickPlayButtons(item).expand(
@@ -137,18 +140,20 @@ class DiscoverBookmarksPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+
     return ValueListenableBuilder<List<TmdbMediaItem>>(
       valueListenable: bookmarksListenable,
       builder: (context, bookmarks, _) {
         if (embedded) {
           return ColoredBox(
-            color: const Color(0xFFF9FAFB),
+            color: bg,
             child: _buildBody(context, bookmarks),
           );
         }
 
         return Scaffold(
-          backgroundColor: const Color(0xFFF9FAFB),
+          backgroundColor: bg,
           appBar: const CustomAppBar(title: 'Bookmarks'),
           body: _buildBody(context, bookmarks),
         );

@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../../../core/providers/theme_provider.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/design_system.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../widgets/custom_app_bar.dart';
 import '../controllers/discover_search_controller.dart';
 import '../models/tmdb_media_item.dart';
@@ -82,6 +86,10 @@ class _DiscoverSearchPageState extends State<DiscoverSearchPage> {
     return AnimatedBuilder(
       animation: animation,
       builder: (context, _) {
+        final scheme = Theme.of(context).colorScheme;
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final l = S.of(context);
+
         return CustomScrollView(
           physics: const BouncingScrollPhysics(),
           slivers: [
@@ -94,17 +102,21 @@ class _DiscoverSearchPageState extends State<DiscoverSearchPage> {
                     Container(
                       height: 56,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: scheme.surface,
                         borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: DesignSystem.neutral200),
+                        border: Border.all(
+                          color: isDark
+                              ? scheme.outline.withValues(alpha: 0.15)
+                              : DesignSystem.neutral200,
+                        ),
                         boxShadow: DesignSystem.shadowSm,
                       ),
                       child: Row(
                         children: [
                           const SizedBox(width: 14),
-                          const Icon(
+                          Icon(
                             Icons.search_rounded,
-                            color: DesignSystem.neutral500,
+                            color: scheme.onSurface.withValues(alpha: 0.5),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
@@ -113,8 +125,8 @@ class _DiscoverSearchPageState extends State<DiscoverSearchPage> {
                               autofocus: true,
                               onChanged: _controller.updateQuery,
                               onSubmitted: (_) => _controller.searchNow(),
-                              decoration: const InputDecoration(
-                                hintText: 'Search movies and shows from TMDB',
+                              decoration: InputDecoration(
+                                hintText: l.discoverSearchHint,
                                 border: InputBorder.none,
                               ),
                             ),
@@ -134,11 +146,11 @@ class _DiscoverSearchPageState extends State<DiscoverSearchPage> {
                     const SizedBox(height: 18),
                     Text(
                       _controller.query.isEmpty
-                          ? 'Type a title to search TMDB and jump straight into your libraries.'
-                          : 'Results for “${_controller.query}”',
-                      style: const TextStyle(
+                          ? l.discoverSearchGuide
+                          : l.discoverSearchResultsFor(_controller.query),
+                      style: TextStyle(
                         fontSize: DesignSystem.textBase,
-                        color: DesignSystem.neutral500,
+                        color: scheme.onSurface.withValues(alpha: 0.5),
                         height: 1.45,
                       ),
                     ),
@@ -147,36 +159,36 @@ class _DiscoverSearchPageState extends State<DiscoverSearchPage> {
               ),
             ),
             if (!_controller.isConfigured)
-              const SliverFillRemaining(
+              SliverFillRemaining(
                 hasScrollBody: false,
                 child: DiscoverEmptyState(
-                  title: 'TMDB not configured',
-                  subtitle: 'Add your TMDB token first to use search.',
+                  title: l.discoverTmdbNotConfigured,
+                  subtitle: l.discoverTmdbNotConfiguredHint,
                 ),
               )
             else if (_controller.query.isEmpty)
-              const SliverFillRemaining(
+              SliverFillRemaining(
                 hasScrollBody: false,
                 child: DiscoverEmptyState(
-                  title: 'Start searching',
-                  subtitle:
-                      'Find a movie or show, then Explore or quick-play it from your matched libraries.',
+                  title: l.discoverStartSearching,
+                  subtitle: l.discoverSearchExploreHint,
                 ),
               )
             else if (_controller.isLoading)
-              const SliverFillRemaining(
+              SliverFillRemaining(
                 hasScrollBody: false,
                 child: Center(
-                  child: CircularProgressIndicator(color: Color(0xFFE11D48)),
+                  child: CircularProgressIndicator(
+                    color: scheme.primary,
+                  ),
                 ),
               )
             else if (_controller.results.isEmpty)
-              const SliverFillRemaining(
+              SliverFillRemaining(
                 hasScrollBody: false,
                 child: DiscoverEmptyState(
-                  title: 'No results',
-                  subtitle:
-                      'Try another title, original name, or shorter keyword.',
+                  title: l.discoverNoResults,
+                  subtitle: l.discoverNoResultsHint,
                 ),
               )
             else
@@ -209,9 +221,9 @@ class _DiscoverSearchPageState extends State<DiscoverSearchPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               DiscoverSearchActionChip(
-                                label: 'Explore',
+                                label: l.discoverExplore,
                                 icon: Icons.arrow_forward_rounded,
-                                accentColor: const Color(0xFF111827),
+                                accentColor: scheme.onSurface,
                                 onTap: () => widget.onExploreItem(item),
                               ),
                               ..._buildQuickPlayButtons(item).expand(
@@ -243,15 +255,17 @@ class _DiscoverSearchPageState extends State<DiscoverSearchPage> {
 
   @override
   Widget build(BuildContext context) {
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+
     if (widget.embedded) {
       return ColoredBox(
-        color: const Color(0xFFF9FAFB),
+        color: bg,
         child: _buildBody(),
       );
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF9FAFB),
+      backgroundColor: bg,
       appBar: const CustomAppBar(title: 'Search'),
       body: _buildBody(),
     );
@@ -278,6 +292,9 @@ class DiscoverSearchActionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -285,9 +302,13 @@ class DiscoverSearchActionChip extends StatelessWidget {
             maxWidth == null ? null : BoxConstraints(maxWidth: maxWidth!),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: scheme.surface,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: DesignSystem.neutral200),
+          border: Border.all(
+            color: isDark
+                ? scheme.outline.withValues(alpha: 0.15)
+                : DesignSystem.neutral200,
+          ),
         ),
         child: Row(
           mainAxisSize: maxWidth == null ? MainAxisSize.min : MainAxisSize.max,
@@ -299,10 +320,10 @@ class DiscoverSearchActionChip extends StatelessWidget {
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: DesignSystem.textSm,
                   fontWeight: DesignSystem.weightSemibold,
-                  color: DesignSystem.neutral900,
+                  color: scheme.onSurface,
                 ),
               ),
             ),
@@ -329,6 +350,9 @@ class DiscoverEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accent = _resolveAccent(context);
+    final scheme = Theme.of(context).colorScheme;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -339,23 +363,23 @@ class DiscoverEmptyState extends StatelessWidget {
               width: 72,
               height: 72,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: scheme.surface,
                 borderRadius: BorderRadius.circular(22),
                 boxShadow: DesignSystem.shadowSm,
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.search_rounded,
-                color: Color(0xFFE11D48),
+                color: accent,
                 size: 28,
               ),
             ),
             const SizedBox(height: 18),
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 26,
                 fontWeight: DesignSystem.weightSemibold,
-                color: DesignSystem.neutral900,
+                color: scheme.onSurface,
                 letterSpacing: -0.7,
               ),
             ),
@@ -365,9 +389,9 @@ class DiscoverEmptyState extends StatelessWidget {
               child: Text(
                 subtitle,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: DesignSystem.textBase,
-                  color: DesignSystem.neutral500,
+                  color: scheme.onSurface.withValues(alpha: 0.5),
                   height: 1.55,
                 ),
               ),
@@ -377,4 +401,12 @@ class DiscoverEmptyState extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Shared accent color resolver for discover search widgets.
+Color _resolveAccent(BuildContext context) {
+  final mode = context.read<ThemeProvider>().themeMode;
+  if (mode == AppThemeMode.cyberpunk) return AppTheme.cyberNeon;
+  if (mode == AppThemeMode.sweetiePro) return AppTheme.sweetieHotPink;
+  return Theme.of(context).colorScheme.primary;
 }

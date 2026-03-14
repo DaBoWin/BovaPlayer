@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:video_player/video_player.dart';
 import 'core/theme/app_theme.dart';
+import 'l10n/generated/app_localizations.dart';
 
 class PlayerScreen extends StatefulWidget {
   const PlayerScreen({super.key});
@@ -49,9 +50,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
         });
       }
     } catch (e) {
-      debugPrint('[PlayerScreen] 文件选择错误: $e');
+      debugPrint('[PlayerScreen] File pick error: $e');
       setState(() {
-        _errorMessage = '文件选择失败: $e';
+        _errorMessage = S.of(context).playerFilePickError(e.toString());
         _isLoading = false;
       });
     }
@@ -59,12 +60,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Future<void> _playFile(String filePath) async {
     try {
-      debugPrint('[PlayerScreen] 准备播放文件: $filePath');
+      debugPrint('[PlayerScreen] Playing file: $filePath');
 
-      // 释放旧的控制器
       await _controller?.dispose();
 
-      // 创建新的控制器
       _controller = VideoPlayerController.file(File(filePath));
 
       await _controller!.initialize();
@@ -77,11 +76,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
         _errorMessage = null;
       });
 
-      debugPrint('[PlayerScreen] 播放成功');
+      debugPrint('[PlayerScreen] Playback started');
     } catch (e) {
-      debugPrint('[PlayerScreen] 播放失败: $e');
+      debugPrint('[PlayerScreen] Playback failed: $e');
       setState(() {
-        _errorMessage = '播放失败: $e';
+        _errorMessage = S.of(context).playerPlayFailed(e.toString());
         _isLoading = false;
         _hasVideo = false;
       });
@@ -90,24 +89,27 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
-      appBar: null, // 使用 MainNavigation 的统一 AppBar
+      backgroundColor: scheme.surface,
+      appBar: null,
       body: _buildBody(),
     );
   }
 
   Widget _buildBody() {
+    final scheme = Theme.of(context).colorScheme;
+
     if (_isLoading) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(color: Colors.deepPurple),
-            SizedBox(height: 16),
+            CircularProgressIndicator(color: scheme.primary),
+            const SizedBox(height: 16),
             Text(
-              '加载中...',
-              style: TextStyle(color: Colors.white54, fontSize: 14),
+              S.of(context).playerLoading,
+              style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.5), fontSize: 14),
             ),
           ],
         ),
@@ -119,20 +121,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline, color: Colors.redAccent, size: 64),
+            Icon(Icons.error_outline, color: scheme.error, size: 64),
             const SizedBox(height: 16),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 32),
               child: Text(
                 _errorMessage!,
-                style: const TextStyle(color: Colors.redAccent, fontSize: 14),
+                style: TextStyle(color: scheme.error, fontSize: 14),
                 textAlign: TextAlign.center,
               ),
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
               icon: const Icon(Icons.refresh),
-              label: const Text('重试'),
+              label: Text(S.of(context).playerRetry),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.buttonAccent,
                 foregroundColor: Colors.white,
@@ -154,32 +156,32 @@ class _PlayerScreenState extends State<PlayerScreen> {
               height: 120,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppTheme.buttonAccent.withValues(alpha: 0.14),
+                color: scheme.primary.withValues(alpha: 0.14),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.video_library_outlined,
                 size: 60,
-                color: Color(0xFFF9A8D4),
+                color: scheme.primary.withValues(alpha: 0.6),
               ),
             ),
             const SizedBox(height: 24),
-            const Text(
-              '还没有选择视频',
+            Text(
+              S.of(context).playerNoVideo,
               style: TextStyle(
-                color: Colors.white,
+                color: scheme.onSurface,
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              '点击右上角文件夹图标选择视频',
-              style: TextStyle(color: Colors.white38, fontSize: 14),
+            Text(
+              S.of(context).playerNoVideoHint,
+              style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.38), fontSize: 14),
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
               icon: const Icon(Icons.folder_open),
-              label: const Text('选择视频文件'),
+              label: Text(S.of(context).playerSelectFile),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.buttonAccent,
                 foregroundColor: Colors.white,
@@ -193,22 +195,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
       );
     }
 
-    // 显示视频播放器
+    // Video player view
     return Column(
       children: [
-        // 文件名
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(12),
-          color: const Color(0xFF16213E),
+          color: scheme.surfaceContainerHighest,
           child: Text(
             _currentFile,
-            style: const TextStyle(color: Colors.white, fontSize: 14),
+            style: TextStyle(color: scheme.onSurface, fontSize: 14),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
         ),
-        // 视频播放器
         Expanded(
           child: Center(
             child: AspectRatio(
@@ -217,7 +217,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 alignment: Alignment.center,
                 children: [
                   VideoPlayer(_controller!),
-                  // 简单的播放/暂停控制
                   Positioned(
                     bottom: 16,
                     child: Row(

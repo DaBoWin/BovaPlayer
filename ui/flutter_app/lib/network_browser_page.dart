@@ -6,6 +6,7 @@ import 'services/ftp_service.dart';
 import 'services/smb_service.dart';
 import 'services/local_proxy_server.dart';
 import 'player_window/desktop_player_window.dart';
+import 'l10n/generated/app_localizations.dart';
 
 class NetworkBrowserPage extends StatefulWidget {
   const NetworkBrowserPage({super.key});
@@ -46,7 +47,7 @@ class _NetworkBrowserPageState extends State<NetworkBrowserPage> {
     try {
       await _proxyServer.start();
     } catch (e) {
-      print('[NetworkBrowser] 启动代理服务器失败: $e');
+      print('[NetworkBrowser] Failed to start proxy server: $e');
     }
   }
 
@@ -60,7 +61,7 @@ class _NetworkBrowserPageState extends State<NetworkBrowserPage> {
       });
     } catch (e) {
       setState(() {
-        _errorMessage = '加载连接失败: $e';
+        _errorMessage = S.of(context).netBrowserLoadConnectionsFailed(e.toString());
         _isLoading = false;
       });
     }
@@ -90,13 +91,13 @@ class _NetworkBrowserPageState extends State<NetworkBrowserPage> {
         await _loadDirectory('/');
       } else {
         setState(() {
-          _errorMessage = '连接失败';
+          _errorMessage = S.of(context).netBrowserConnectionFailed;
           _isLoading = false;
         });
       }
     } catch (e) {
       setState(() {
-        _errorMessage = '连接失败: $e';
+        _errorMessage = S.of(context).netBrowserConnectionError(e.toString());
         _isLoading = false;
       });
     }
@@ -124,7 +125,7 @@ class _NetworkBrowserPageState extends State<NetworkBrowserPage> {
       });
     } catch (e) {
       setState(() {
-        _errorMessage = '加载目录失败: $e';
+        _errorMessage = S.of(context).netBrowserLoadDirFailed(e.toString());
         _isLoading = false;
       });
     }
@@ -142,14 +143,12 @@ class _NetworkBrowserPageState extends State<NetworkBrowserPage> {
     if (_currentConnection == null) return;
 
     try {
-      // 生成代理 URL
       final proxyUrl =
           _proxyServer.createProxyUrl(_currentConnection!, file.path);
 
-      print('[NetworkBrowser] 播放视频: ${file.name}');
-      print('[NetworkBrowser] 代理 URL: $proxyUrl');
+      debugPrint('[NetworkBrowser] Playing video: ${file.name}');
+      debugPrint('[NetworkBrowser] Proxy URL: $proxyUrl');
 
-      // 打开播放器
       if (mounted) {
         await DesktopPlayerLauncher.openPlayer(
           context: context,
@@ -162,7 +161,7 @@ class _NetworkBrowserPageState extends State<NetworkBrowserPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('播放失败: $e'),
+            content: Text(S.of(context).netBrowserPlayFailed(e.toString())),
             backgroundColor: Colors.red,
           ),
         );
@@ -184,10 +183,11 @@ class _NetworkBrowserPageState extends State<NetworkBrowserPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = S.of(context);
     return Scaffold(
       appBar: AppBar(
         title: Text(_currentConnection == null
-            ? '网络浏览器'
+            ? l10n.netBrowserTitle
             : '${_currentConnection!.displayName} - $_currentPath'),
         actions: [
           if (_currentConnection != null)
@@ -215,6 +215,7 @@ class _NetworkBrowserPageState extends State<NetworkBrowserPage> {
   }
 
   Widget _buildBody() {
+    final l10n = S.of(context);
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -232,7 +233,7 @@ class _NetworkBrowserPageState extends State<NetworkBrowserPage> {
               onPressed: _currentConnection == null
                   ? _loadConnections
                   : () => _loadDirectory(_currentPath),
-              child: const Text('重试'),
+              child: Text(l10n.netBrowserRetry),
             ),
           ],
         ),
@@ -247,9 +248,10 @@ class _NetworkBrowserPageState extends State<NetworkBrowserPage> {
   }
 
   Widget _buildConnectionList() {
+    final l10n = S.of(context);
     if (_connections.isEmpty) {
-      return const Center(
-        child: Text('暂无连接\n点击右下角 + 添加'),
+      return Center(
+        child: Text(l10n.netBrowserNoConnections),
       );
     }
 
@@ -280,8 +282,9 @@ class _NetworkBrowserPageState extends State<NetworkBrowserPage> {
   }
 
   Widget _buildFileList() {
+    final l10n = S.of(context);
     if (_files.isEmpty) {
-      return const Center(child: Text('目录为空'));
+      return Center(child: Text(l10n.netBrowserDirEmpty));
     }
 
     return ListView.builder(
@@ -328,7 +331,6 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
   @override
   void initState() {
     super.initState();
-    // 监听协议变化，更新默认端口
     _updateDefaultPort();
   }
 
@@ -342,8 +344,9 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = S.of(context);
     return AlertDialog(
-      title: const Text('添加连接'),
+      title: Text(l10n.netBrowserAddConnection),
       content: Form(
         key: _formKey,
         child: SingleChildScrollView(
@@ -352,7 +355,7 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
             children: [
               DropdownButtonFormField<NetworkProtocol>(
                 value: _protocol,
-                decoration: const InputDecoration(labelText: '协议'),
+                decoration: InputDecoration(labelText: l10n.netBrowserProtocol),
                 items: const [
                   DropdownMenuItem(
                       value: NetworkProtocol.ftp, child: Text('FTP')),
@@ -368,48 +371,48 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
               ),
               TextFormField(
                 controller: _nameController,
-                decoration: const InputDecoration(labelText: '名称'),
-                validator: (v) => v?.isEmpty ?? true ? '请输入名称' : null,
+                decoration: InputDecoration(labelText: l10n.netBrowserName),
+                validator: (v) => v?.isEmpty ?? true ? l10n.netBrowserEnterName : null,
               ),
               TextFormField(
                 controller: _hostController,
-                decoration: const InputDecoration(labelText: '主机'),
-                validator: (v) => v?.isEmpty ?? true ? '请输入主机' : null,
+                decoration: InputDecoration(labelText: l10n.netBrowserHost),
+                validator: (v) => v?.isEmpty ?? true ? l10n.netBrowserEnterHost : null,
               ),
               TextFormField(
                 controller: _portController,
-                decoration: const InputDecoration(labelText: '端口'),
+                decoration: InputDecoration(labelText: l10n.netBrowserPort),
                 keyboardType: TextInputType.number,
-                validator: (v) => v?.isEmpty ?? true ? '请输入端口' : null,
+                validator: (v) => v?.isEmpty ?? true ? l10n.netBrowserEnterPort : null,
               ),
               TextFormField(
                 controller: _usernameController,
-                decoration: const InputDecoration(labelText: '用户名'),
+                decoration: InputDecoration(labelText: l10n.netBrowserUsername),
               ),
               TextFormField(
                 controller: _passwordController,
-                decoration: const InputDecoration(labelText: '密码'),
+                decoration: InputDecoration(labelText: l10n.netBrowserPassword),
                 obscureText: true,
               ),
               if (_protocol == NetworkProtocol.smb) ...[
                 TextFormField(
                   controller: _shareNameController,
-                  decoration: const InputDecoration(
-                    labelText: '共享名',
-                    hintText: '例如: share, movies',
+                  decoration: InputDecoration(
+                    labelText: l10n.netBrowserShareName,
+                    hintText: l10n.netBrowserShareHint,
                   ),
-                  validator: (v) => v?.isEmpty ?? true ? '请输入共享名' : null,
+                  validator: (v) => v?.isEmpty ?? true ? l10n.netBrowserEnterShareName : null,
                 ),
                 TextFormField(
                   controller: _workgroupController,
-                  decoration: const InputDecoration(
-                    labelText: '工作组',
-                    hintText: '默认: WORKGROUP',
+                  decoration: InputDecoration(
+                    labelText: l10n.netBrowserWorkgroup,
+                    hintText: l10n.netBrowserWorkgroupHint,
                   ),
                 ),
               ],
               CheckboxListTile(
-                title: const Text('保存密码'),
+                title: Text(l10n.netBrowserSavePassword),
                 value: _savePassword,
                 onChanged: (v) => setState(() => _savePassword = v!),
               ),
@@ -420,11 +423,11 @@ class _AddConnectionDialogState extends State<_AddConnectionDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('取消'),
+          child: Text(l10n.cancel),
         ),
         ElevatedButton(
           onPressed: _save,
-          child: const Text('保存'),
+          child: Text(l10n.save),
         ),
       ],
     );

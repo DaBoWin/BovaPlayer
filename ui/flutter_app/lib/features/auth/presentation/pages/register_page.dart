@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/bova_button.dart';
 import '../../../../core/widgets/bova_text_field.dart';
+import '../../../../l10n/generated/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/auth_workspace_shell.dart';
 
@@ -69,15 +70,15 @@ class _RegisterPageState extends State<RegisterPage>
     final confirmPassword = _confirmPasswordController.text;
 
     if (email.isEmpty || !email.contains('@')) {
-      _showSnackBar('请输入正确的邮箱地址', isError: true);
+      _showSnackBar(S.of(context).authInvalidEmail, isError: true);
       return false;
     }
     if (password.length < 8) {
-      _showSnackBar('密码至少需要 8 位字符', isError: true);
+      _showSnackBar(S.of(context).authPasswordMinLength, isError: true);
       return false;
     }
     if (password != confirmPassword) {
-      _showSnackBar('两次输入的密码不一致', isError: true);
+      _showSnackBar(S.of(context).authPasswordMismatch, isError: true);
       return false;
     }
     return true;
@@ -100,18 +101,19 @@ class _RegisterPageState extends State<RegisterPage>
     setState(() => _isLoading = false);
 
     if (success) {
-      _showSnackBar('注册成功！请查收验证邮件', isError: false);
+      _showSnackBar(S.of(context).authRegisterSuccess, isError: false);
       Navigator.pop(context);
       return;
     }
 
-    var errorMessage = authProvider.errorMessage ?? '注册失败';
+    final l10n = S.of(context);
+    var errorMessage = authProvider.errorMessage ?? l10n.authRegisterFailed;
     if (errorMessage.contains('45 seconds')) {
-      errorMessage = '请求过于频繁，请等待 45 秒后再试';
+      errorMessage = l10n.authRegisterTooFrequent;
     } else if (errorMessage.contains('row-level security')) {
-      errorMessage = '数据库配置错误，请联系管理员';
+      errorMessage = l10n.authRegisterDbError;
     } else if (errorMessage.contains('already registered')) {
-      errorMessage = '该邮箱已被注册';
+      errorMessage = l10n.authRegisterEmailTaken;
     }
     _showSnackBar(errorMessage, isError: true);
   }
@@ -132,15 +134,16 @@ class _RegisterPageState extends State<RegisterPage>
 
   @override
   Widget build(BuildContext context) {
+    final l10n = S.of(context);
     return AuthWorkspaceScaffold(
       eyebrow: 'Create Account',
-      title: '创建你的账户',
-      subtitle: '注册后即可开启媒体同步、购买会员方案并管理你的工作区配置。整体界面延续同一套暖中性色与玫红强调。',
+      title: l10n.authRegisterHeading,
+      subtitle: l10n.authRegisterSubtitle,
       icon: Icons.person_add_alt_rounded,
-      facts: const [
-        AuthWorkspaceFact(label: '云同步', value: '注册后可启用'),
-        AuthWorkspaceFact(label: '权益管理', value: '支持升级与兑换'),
-        AuthWorkspaceFact(label: '账号安全', value: '邮箱验证'),
+      facts: [
+        AuthWorkspaceFact(label: l10n.authRegisterFactSync, value: l10n.authRegisterFactSyncValue),
+        AuthWorkspaceFact(label: l10n.authRegisterFactRights, value: l10n.authRegisterFactRightsValue),
+        AuthWorkspaceFact(label: l10n.authRegisterFactSecurity, value: l10n.authRegisterFactSecurityValue),
       ],
       child: FadeTransition(
         opacity: _fadeAnimation,
@@ -150,18 +153,18 @@ class _RegisterPageState extends State<RegisterPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
-                  '注册新账户',
-                  style: TextStyle(
+                Text(
+                  l10n.authRegisterTitle,
+                  style: const TextStyle(
                     fontSize: DesignSystem.textXl,
                     fontWeight: DesignSystem.weightSemibold,
                     color: DesignSystem.neutral900,
                   ),
                 ),
                 const SizedBox(height: DesignSystem.space2),
-                const Text(
-                  '填写基础信息后即可开始使用。用户名可稍后在账户中心继续调整。',
-                  style: TextStyle(
+                Text(
+                  l10n.authRegisterDesc,
+                  style: const TextStyle(
                     fontSize: DesignSystem.textSm,
                     color: DesignSystem.neutral600,
                     height: 1.5,
@@ -170,15 +173,15 @@ class _RegisterPageState extends State<RegisterPage>
                 const SizedBox(height: DesignSystem.space5),
                 BovaTextField(
                   controller: _usernameController,
-                  label: '用户名（可选）',
-                  hint: '输入你的用户名',
+                  label: l10n.authUsernameLabel,
+                  hint: l10n.authUsernameHint,
                   prefixIcon: Icons.person_outline,
                   enabled: !_isLoading,
                 ),
                 const SizedBox(height: DesignSystem.space4),
                 BovaTextField(
                   controller: _emailController,
-                  label: '邮箱地址',
+                  label: l10n.authEmailLabel,
                   hint: 'your@email.com',
                   prefixIcon: Icons.email_outlined,
                   keyboardType: TextInputType.emailAddress,
@@ -187,8 +190,8 @@ class _RegisterPageState extends State<RegisterPage>
                 const SizedBox(height: DesignSystem.space4),
                 BovaTextField(
                   controller: _passwordController,
-                  label: '密码',
-                  hint: '至少 8 位，建议包含字母和数字',
+                  label: l10n.authPasswordLabel,
+                  hint: l10n.authPasswordHintRegister,
                   prefixIcon: Icons.lock_outlined,
                   obscureText: _obscurePassword,
                   enabled: !_isLoading,
@@ -208,8 +211,8 @@ class _RegisterPageState extends State<RegisterPage>
                 const SizedBox(height: DesignSystem.space4),
                 BovaTextField(
                   controller: _confirmPasswordController,
-                  label: '确认密码',
-                  hint: '再次输入密码',
+                  label: l10n.authConfirmPasswordLabel,
+                  hint: l10n.authConfirmPasswordHint,
                   prefixIcon: Icons.lock_outline_rounded,
                   obscureText: _obscureConfirmPassword,
                   enabled: !_isLoading,
@@ -229,7 +232,7 @@ class _RegisterPageState extends State<RegisterPage>
                 ),
                 const SizedBox(height: DesignSystem.space5),
                 BovaButton(
-                  text: '注册',
+                  text: l10n.authRegisterButton,
                   onPressed: _isLoading ? null : _handleRegister,
                   isLoading: _isLoading,
                   isFullWidth: true,
@@ -237,8 +240,8 @@ class _RegisterPageState extends State<RegisterPage>
                 ),
                 const SizedBox(height: DesignSystem.space5),
                 AuthWorkspaceFooterLink(
-                  label: '已有账号？',
-                  action: '立即登录',
+                  label: l10n.authHasAccount,
+                  action: l10n.authLoginNow,
                   enabled: !_isLoading,
                   onTap: () => Navigator.pop(context),
                 ),

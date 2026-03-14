@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/design_system.dart';
 import '../models/tmdb_media_item.dart';
 
+/// A poster card for discover section items. Text adapts to theme brightness.
 class DiscoverPosterCard extends StatefulWidget {
   const DiscoverPosterCard({
     super.key,
@@ -132,10 +133,10 @@ class _DiscoverPosterCardState extends State<DiscoverPosterCard> {
                     widget.item.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: DesignSystem.textLg,
                       fontWeight: DesignSystem.weightSemibold,
-                      color: DesignSystem.neutral900,
+                      color: Theme.of(context).colorScheme.onSurface,
                       letterSpacing: -0.4,
                       height: 1.05,
                     ),
@@ -145,9 +146,9 @@ class _DiscoverPosterCardState extends State<DiscoverPosterCard> {
                     metaParts.join(' • '),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: DesignSystem.textSm,
-                      color: DesignSystem.neutral500,
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
                       fontWeight: DesignSystem.weightMedium,
                       height: 1.15,
                     ),

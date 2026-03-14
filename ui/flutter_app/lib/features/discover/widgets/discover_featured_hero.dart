@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../../../core/providers/theme_provider.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/design_system.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../models/tmdb_media_item.dart';
 
 class DiscoverFeaturedHero extends StatelessWidget {
@@ -25,10 +29,13 @@ class DiscoverFeaturedHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = S.of(context);
+    final accent = _accent(context);
+
     final heroHeight = compactLayout ? 330.0 : 446.0;
     final contentMaxWidth = compactLayout ? 280.0 : 430.0;
     final titleSize = compactLayout ? 34.0 : 54.0;
-    final overviewLines = compactLayout ? 2 : 4;
+    final overviewLines = compactLayout ? 2 : 3;
     final contentPadding = compactLayout
         ? const EdgeInsets.fromLTRB(24, 24, 24, 22)
         : const EdgeInsets.fromLTRB(48, 38, 48, 34);
@@ -63,6 +70,7 @@ class DiscoverFeaturedHero extends StatelessWidget {
               )
             else
               _HeroFallback(item: item),
+            // Dark cinematic gradient overlay — works in all themes
             Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -95,14 +103,13 @@ class DiscoverFeaturedHero extends StatelessWidget {
                           vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color:
-                              const Color(0xFFE11D48).withValues(alpha: 0.92),
+                          color: accent.withValues(alpha: 0.92),
                           borderRadius:
                               BorderRadius.circular(DesignSystem.radiusFull),
                         ),
-                        child: const Text(
-                          'Featured',
-                          style: TextStyle(
+                        child: Text(
+                          l.discoverFeatured,
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: DesignSystem.textSm,
                             fontWeight: DesignSystem.weightSemibold,
@@ -186,24 +193,25 @@ class DiscoverFeaturedHero extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            icon:
-                                const Icon(Icons.play_arrow_rounded, size: 20),
-                            label: Text(compactLayout ? '打开' : 'Explore'),
+                            icon: const Icon(Icons.play_arrow_rounded,
+                                size: 20),
+                            label: Text(compactLayout
+                                ? l.discoverOpen
+                                : l.discoverExplore),
                           ),
                           if (!compactLayout)
                             OutlinedButton.icon(
                               onPressed: onSecondaryAction,
                               style: OutlinedButton.styleFrom(
-                                backgroundColor: secondaryActive
-                                    ? const Color(0xFFE11D48)
-                                    : Colors.white,
+                                backgroundColor:
+                                    secondaryActive ? accent : Colors.white,
                                 foregroundColor: secondaryActive
                                     ? Colors.white
                                     : const Color(0xFF111827),
                                 minimumSize: const Size(0, 44),
                                 side: BorderSide(
                                   color: secondaryActive
-                                      ? const Color(0xFFE11D48)
+                                      ? accent
                                       : Colors.white.withValues(alpha: 0.92),
                                 ),
                                 padding: const EdgeInsets.symmetric(
@@ -226,7 +234,8 @@ class DiscoverFeaturedHero extends StatelessWidget {
                                     : Icons.bookmark_border_rounded,
                                 size: 18,
                               ),
-                              label: Text(secondaryActive ? 'Saved' : 'Save'),
+                              label:
+                                  Text(secondaryActive ? S.of(context).bookmarkSaved : S.of(context).bookmarkSave),
                             ),
                         ],
                       ),
@@ -247,6 +256,13 @@ class DiscoverFeaturedHero extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Color _accent(BuildContext context) {
+    final mode = context.read<ThemeProvider>().themeMode;
+    if (mode == AppThemeMode.cyberpunk) return AppTheme.cyberNeon;
+    if (mode == AppThemeMode.sweetiePro) return AppTheme.sweetieHotPink;
+    return Theme.of(context).colorScheme.primary;
   }
 }
 

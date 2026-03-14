@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../controllers/danmaku_controller.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../auth/presentation/providers/auth_provider.dart';
 import '../../auth/presentation/pages/pricing_page.dart';
 
 /// 弹幕设置面板
 class DanmakuSettingsPanel extends StatefulWidget {
   final DanmakuController controller;
-  
+
   const DanmakuSettingsPanel({
     super.key,
     required this.controller,
@@ -19,13 +20,13 @@ class DanmakuSettingsPanel extends StatefulWidget {
 
 class _DanmakuSettingsPanelState extends State<DanmakuSettingsPanel> {
   bool _isPro = false;
-  
+
   @override
   void initState() {
     super.initState();
     _checkProStatus();
   }
-  
+
   void _checkProStatus() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -35,8 +36,9 @@ class _DanmakuSettingsPanelState extends State<DanmakuSettingsPanel> {
       });
     });
   }
-  
+
   void _showUpgradeDialog() {
+    final l10n = S.of(context);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -44,13 +46,13 @@ class _DanmakuSettingsPanelState extends State<DanmakuSettingsPanel> {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.star, color: Color(0xFFF59E0B), size: 24),
-            SizedBox(width: 8),
+            const Icon(Icons.star, color: Color(0xFFF59E0B), size: 24),
+            const SizedBox(width: 8),
             Text(
-              '升级到 Pro 版',
-              style: TextStyle(
+              l10n.danmakuUpgradeToPro,
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
@@ -58,9 +60,9 @@ class _DanmakuSettingsPanelState extends State<DanmakuSettingsPanel> {
             ),
           ],
         ),
-        content: const Text(
-          '弹幕功能仅限 Pro 版和永久版用户使用。\n\n升级后可享受：\n• 实时弹幕显示\n• 弹幕自定义设置\n• 云同步功能\n• 更多高级功能',
-          style: TextStyle(
+        content: Text(
+          l10n.danmakuUpgradeDesc,
+          style: const TextStyle(
             color: Colors.white70,
             fontSize: 14,
           ),
@@ -68,9 +70,9 @@ class _DanmakuSettingsPanelState extends State<DanmakuSettingsPanel> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text(
-              '取消',
-              style: TextStyle(color: Colors.white60),
+            child: Text(
+              l10n.cancel,
+              style: const TextStyle(color: Colors.white60),
             ),
           ),
           ElevatedButton(
@@ -89,15 +91,16 @@ class _DanmakuSettingsPanelState extends State<DanmakuSettingsPanel> {
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            child: const Text('查看方案'),
+            child: Text(l10n.danmakuViewPlans),
           ),
         ],
       ),
     );
   }
-  
+
   @override
   Widget build(BuildContext context) {
+    final l10n = S.of(context);
     return ListenableBuilder(
       listenable: widget.controller,
       builder: (context, _) {
@@ -116,9 +119,9 @@ class _DanmakuSettingsPanelState extends State<DanmakuSettingsPanel> {
                 children: [
                   const Icon(Icons.settings, color: Colors.white, size: 20),
                   const SizedBox(width: 8),
-                  const Text(
-                    '弹幕设置',
-                    style: TextStyle(
+                  Text(
+                    l10n.danmakuSettings,
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -133,12 +136,12 @@ class _DanmakuSettingsPanelState extends State<DanmakuSettingsPanel> {
                   ),
                 ],
               ),
-              
+
               const SizedBox(height: 20),
-              
+
               // 弹幕开关
               _buildSwitchItem(
-                '显示弹幕',
+                l10n.danmakuShowDanmaku,
                 widget.controller.config.enabled,
                 (value) {
                   if (!_isPro) {
@@ -148,12 +151,12 @@ class _DanmakuSettingsPanelState extends State<DanmakuSettingsPanel> {
                   }
                 },
               ),
-              
+
               const Divider(color: Colors.white24, height: 32),
-              
+
               // 透明度
               _buildSliderItem(
-                '透明度',
+                l10n.danmakuOpacity,
                 widget.controller.config.opacity,
                 0.0,
                 1.0,
@@ -165,12 +168,12 @@ class _DanmakuSettingsPanelState extends State<DanmakuSettingsPanel> {
                 valueFormatter: (v) => '${(v * 100).toInt()}%',
                 enabled: _isPro,
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               // 字体大小
               _buildSliderItem(
-                '字体大小',
+                l10n.danmakuFontSize,
                 widget.controller.config.fontSize,
                 12.0,
                 48.0,
@@ -182,12 +185,12 @@ class _DanmakuSettingsPanelState extends State<DanmakuSettingsPanel> {
                 valueFormatter: (v) => '${v.toInt()}',
                 enabled: _isPro,
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               // 速度
               _buildSliderItem(
-                '弹幕速度',
+                l10n.danmakuSpeed,
                 widget.controller.config.speed,
                 0.5,
                 2.0,
@@ -199,12 +202,12 @@ class _DanmakuSettingsPanelState extends State<DanmakuSettingsPanel> {
                 valueFormatter: (v) => '${v.toStringAsFixed(1)}x',
                 enabled: _isPro,
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               // 显示区域
               _buildSliderItem(
-                '显示区域',
+                l10n.danmakuDisplayArea,
                 widget.controller.config.displayArea,
                 0.25,
                 1.0,
@@ -214,16 +217,16 @@ class _DanmakuSettingsPanelState extends State<DanmakuSettingsPanel> {
                   }
                 },
                 valueFormatter: (v) {
-                  if (v >= 0.95) return '全屏';
-                  if (v >= 0.65) return '3/4屏';
-                  if (v >= 0.4) return '半屏';
-                  return '1/4屏';
+                  if (v >= 0.95) return l10n.danmakuFullScreen;
+                  if (v >= 0.65) return l10n.danmakuThreeQuarters;
+                  if (v >= 0.4) return l10n.danmakuHalfScreen;
+                  return l10n.danmakuQuarterScreen;
                 },
                 enabled: _isPro,
               ),
-              
+
               const SizedBox(height: 20),
-              
+
               // 弹幕信息
               if (widget.controller.hasDanmaku) ...[
                 Container(
@@ -236,7 +239,7 @@ class _DanmakuSettingsPanelState extends State<DanmakuSettingsPanel> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        widget.controller.currentVideoTitle ?? '未知视频',
+                        widget.controller.currentVideoTitle ?? l10n.danmakuUnknownVideo,
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 14,
@@ -245,7 +248,7 @@ class _DanmakuSettingsPanelState extends State<DanmakuSettingsPanel> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '共 ${widget.controller.danmakuList.length} 条弹幕',
+                        l10n.danmakuCount(widget.controller.danmakuList.length),
                         style: TextStyle(
                           color: Colors.white.withOpacity(0.7),
                           fontSize: 12,
@@ -255,7 +258,7 @@ class _DanmakuSettingsPanelState extends State<DanmakuSettingsPanel> {
                   ),
                 ),
               ],
-              
+
               // Pro 提示
               if (!_isPro) ...[
                 const SizedBox(height: 16),
@@ -277,10 +280,10 @@ class _DanmakuSettingsPanelState extends State<DanmakuSettingsPanel> {
                         size: 20,
                       ),
                       const SizedBox(width: 8),
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          '升级到 Pro 版解锁弹幕功能',
-                          style: TextStyle(
+                          l10n.danmakuUpgradeUnlock,
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 13,
                           ),
@@ -295,9 +298,9 @@ class _DanmakuSettingsPanelState extends State<DanmakuSettingsPanel> {
                             borderRadius: BorderRadius.circular(6),
                           ),
                         ),
-                        child: const Text(
-                          '升级',
-                          style: TextStyle(
+                        child: Text(
+                          l10n.danmakuUpgrade,
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -314,7 +317,7 @@ class _DanmakuSettingsPanelState extends State<DanmakuSettingsPanel> {
       },
     );
   }
-  
+
   Widget _buildSwitchItem(String label, bool value, ValueChanged<bool> onChanged) {
     return Row(
       children: [
@@ -334,7 +337,7 @@ class _DanmakuSettingsPanelState extends State<DanmakuSettingsPanel> {
       ],
     );
   }
-  
+
   Widget _buildSliderItem(
     String label,
     double value,

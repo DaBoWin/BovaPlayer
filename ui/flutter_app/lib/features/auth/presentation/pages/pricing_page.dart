@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/bova_button.dart';
 import '../../../../core/widgets/bova_text_field.dart';
+import '../../../../l10n/generated/app_localizations.dart';
 import '../providers/auth_provider.dart';
 
 const Color _pricingAccent = Color(0xFFE11D48);
@@ -23,66 +24,66 @@ class PricingPage extends StatefulWidget {
 class _PricingPageState extends State<PricingPage> {
   final ScrollController _scrollController = ScrollController();
 
-  List<_PlanSpec> get _plans => const [
+  List<_PlanSpec> _buildPlans(S l10n) => [
         _PlanSpec(
           id: 'free',
-          title: '社区免费版',
-          price: '¥0',
-          period: '永久免费',
+          title: l10n.pricingPlanFree,
+          price: l10n.pricingPlanFreePrice,
+          period: l10n.pricingPlanFreePeriod,
           badge: 'Starter',
           icon: Icons.person_outline,
           accent: DesignSystem.neutral700,
           accentSoft: DesignSystem.neutral100,
-          description: '适合轻量使用与本地播放体验，保留最基础的核心能力。',
-          cta: '当前套餐',
+          description: l10n.pricingPlanFreeDesc,
+          cta: l10n.pricingPlanFreeCta,
           features: [
-            '最多 10 个服务器',
-            '最多 2 个设备',
-            '100 MB 云存储',
-            '基础播放功能',
-            '社区支持',
+            l10n.pricingPlanFreeFeature1,
+            l10n.pricingPlanFreeFeature2,
+            l10n.pricingPlanFreeFeature3,
+            l10n.pricingPlanFreeFeature4,
+            l10n.pricingPlanFreeFeature5,
           ],
         ),
         _PlanSpec(
           id: 'pro_monthly',
-          title: 'Pro 版',
-          price: '¥6.9',
-          period: '/ 月',
+          title: l10n.pricingPlanPro,
+          price: l10n.pricingPlanProPrice,
+          period: l10n.pricingPlanProPeriod,
           badge: 'Most Popular',
           icon: Icons.workspace_premium_outlined,
-          accent: Color(0xFFA21CAF),
-          accentSoft: Color(0xFFFAF5FF),
-          description: '给多设备、多媒体库与跨端同步准备的主力方案。',
-          cta: '升级到 Pro',
+          accent: const Color(0xFFA21CAF),
+          accentSoft: const Color(0xFFFAF5FF),
+          description: l10n.pricingPlanProDesc,
+          cta: l10n.pricingPlanProCta,
           isFeatured: true,
           features: [
-            '无限服务器',
-            '最多 5 个设备',
-            '1 GB 云存储',
-            '高级播放功能',
-            '优先支持',
-            'GitHub 同步',
+            l10n.pricingPlanProFeature1,
+            l10n.pricingPlanProFeature2,
+            l10n.pricingPlanProFeature3,
+            l10n.pricingPlanProFeature4,
+            l10n.pricingPlanProFeature5,
+            l10n.pricingPlanProFeature6,
           ],
         ),
         _PlanSpec(
           id: 'lifetime',
-          title: '永久版',
-          price: '¥69',
-          period: '一次性付费',
+          title: l10n.pricingPlanLifetime,
+          price: l10n.pricingPlanLifetimePrice,
+          period: l10n.pricingPlanLifetimePeriod,
           badge: 'Best Value',
           icon: Icons.auto_awesome_outlined,
           accent: DesignSystem.accent700,
-          accentSoft: Color(0xFFFFFBEB),
-          description: '一次购买，长期解锁高级同步、完整配额与后续更新。',
-          cta: '解锁永久版',
+          accentSoft: const Color(0xFFFFFBEB),
+          description: l10n.pricingPlanLifetimeDesc,
+          cta: l10n.pricingPlanLifetimeCta,
           features: [
-            '无限服务器',
-            '无限设备',
-            '5 GB 云存储',
-            '所有高级功能',
-            '终身更新',
-            '优先支持',
-            'GitHub 同步',
+            l10n.pricingPlanLifetimeFeature1,
+            l10n.pricingPlanLifetimeFeature2,
+            l10n.pricingPlanLifetimeFeature3,
+            l10n.pricingPlanLifetimeFeature4,
+            l10n.pricingPlanLifetimeFeature5,
+            l10n.pricingPlanLifetimeFeature6,
+            l10n.pricingPlanLifetimeFeature7,
           ],
         ),
       ];
@@ -115,9 +116,11 @@ class _PricingPageState extends State<PricingPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = S.of(context);
     final isMobile = _isMobile(context);
     final user = context.watch<AuthProvider>().user;
     final currentPlanId = _currentPlanId(user);
+    final plans = _buildPlans(l10n);
 
     return Scaffold(
       backgroundColor: _pricingCanvas,
@@ -133,9 +136,9 @@ class _PricingPageState extends State<PricingPage> {
           ),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          '会员方案',
-          style: TextStyle(
+        title: Text(
+          l10n.pricingTitle,
+          style: const TextStyle(
             fontSize: DesignSystem.textLg,
             fontWeight: DesignSystem.weightSemibold,
             color: DesignSystem.neutral900,
@@ -151,15 +154,15 @@ class _PricingPageState extends State<PricingPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _buildHero(),
+                _buildHero(l10n),
                 const SizedBox(height: DesignSystem.space5),
                 isMobile
-                    ? _buildMobileLayout(currentPlanId)
-                    : _buildDesktopLayout(currentPlanId),
+                    ? _buildMobileLayout(plans, currentPlanId, l10n)
+                    : _buildDesktopLayout(plans, currentPlanId, l10n),
                 const SizedBox(height: DesignSystem.space5),
-                _buildFeatureComparison(currentPlanId),
+                _buildFeatureComparison(plans, currentPlanId, l10n),
                 const SizedBox(height: DesignSystem.space5),
-                _buildFAQ(),
+                _buildFAQ(l10n),
               ],
             ),
           ),
@@ -168,7 +171,7 @@ class _PricingPageState extends State<PricingPage> {
     );
   }
 
-  Widget _buildHero() {
+  Widget _buildHero(S l10n) {
     return _buildPanel(
       padding: EdgeInsets.zero,
       child: Container(
@@ -208,9 +211,9 @@ class _PricingPageState extends State<PricingPage> {
                 ),
               ),
               const SizedBox(height: DesignSystem.space4),
-              const Text(
-                '选择适合你的套餐',
-                style: TextStyle(
+              Text(
+                l10n.pricingChoosePlan,
+                style: const TextStyle(
                   fontSize: 32,
                   fontWeight: DesignSystem.weightBold,
                   color: DesignSystem.neutral900,
@@ -219,22 +222,22 @@ class _PricingPageState extends State<PricingPage> {
                 ),
               ),
               const SizedBox(height: DesignSystem.space3),
-              const Text(
-                '账户、权益与升级流程统一到同一套工作区界面里。你可以直接升级，也可以先输入兑换码。',
-                style: TextStyle(
+              Text(
+                l10n.pricingHeroDesc,
+                style: const TextStyle(
                   fontSize: DesignSystem.textSm,
                   color: DesignSystem.neutral600,
                   height: 1.6,
                 ),
               ),
               const SizedBox(height: DesignSystem.space4),
-              const Wrap(
+              Wrap(
                 spacing: DesignSystem.space3,
                 runSpacing: DesignSystem.space3,
                 children: [
-                  _HeroStat(label: '跨设备同步', value: 'Included'),
-                  _HeroStat(label: '设备额度', value: 'Up to Unlimited'),
-                  _HeroStat(label: '云存储', value: '100 MB → 5 GB'),
+                  _HeroStat(label: l10n.pricingCrossDeviceSync, value: 'Included'),
+                  _HeroStat(label: l10n.pricingDeviceQuota, value: 'Up to Unlimited'),
+                  _HeroStat(label: l10n.pricingCloudStorage, value: '100 MB → 5 GB'),
                 ],
               ),
             ],
@@ -244,37 +247,37 @@ class _PricingPageState extends State<PricingPage> {
     );
   }
 
-  Widget _buildMobileLayout(String currentPlanId) {
+  Widget _buildMobileLayout(List<_PlanSpec> plans, String currentPlanId, S l10n) {
     final cardWidth = MediaQuery.of(context).size.width - 40;
     return SizedBox(
       height: 560,
       child: ListView.separated(
         controller: _scrollController,
         scrollDirection: Axis.horizontal,
-        itemCount: _plans.length,
+        itemCount: plans.length,
         separatorBuilder: (_, __) => const SizedBox(width: DesignSystem.space4),
         itemBuilder: (context, index) => SizedBox(
           width: cardWidth,
-          child: _buildPricingCard(_plans[index], currentPlanId),
+          child: _buildPricingCard(plans[index], currentPlanId, l10n),
         ),
       ),
     );
   }
 
-  Widget _buildDesktopLayout(String currentPlanId) {
+  Widget _buildDesktopLayout(List<_PlanSpec> plans, String currentPlanId, S l10n) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (int index = 0; index < _plans.length; index++) ...[
-          Expanded(child: _buildPricingCard(_plans[index], currentPlanId)),
-          if (index != _plans.length - 1)
+        for (int index = 0; index < plans.length; index++) ...[
+          Expanded(child: _buildPricingCard(plans[index], currentPlanId, l10n)),
+          if (index != plans.length - 1)
             const SizedBox(width: DesignSystem.space4),
         ],
       ],
     );
   }
 
-  Widget _buildPricingCard(_PlanSpec plan, String currentPlanId) {
+  Widget _buildPricingCard(_PlanSpec plan, String currentPlanId, S l10n) {
     final isCurrentPlan = plan.id == currentPlanId;
     final buttonEnabled = !isCurrentPlan && plan.id != 'free';
 
@@ -351,9 +354,9 @@ class _PricingPageState extends State<PricingPage> {
                         DesignSystem.radiusFull,
                       ),
                     ),
-                    child: const Text(
-                      '推荐',
-                      style: TextStyle(
+                    child: Text(
+                      l10n.pricingRecommended,
+                      style: const TextStyle(
                         fontSize: DesignSystem.textXs,
                         fontWeight: DesignSystem.weightSemibold,
                         color: Colors.white,
@@ -437,7 +440,7 @@ class _PricingPageState extends State<PricingPage> {
             const Spacer(),
             const SizedBox(height: DesignSystem.space3),
             BovaButton(
-              text: isCurrentPlan ? '当前套餐' : plan.cta,
+              text: isCurrentPlan ? l10n.pricingCurrentPlan : plan.cta,
               icon: isCurrentPlan ? Icons.check_rounded : plan.icon,
               onPressed: buttonEnabled
                   ? () => _handlePurchase(context, plan.id)
@@ -453,28 +456,28 @@ class _PricingPageState extends State<PricingPage> {
     );
   }
 
-  Widget _buildFeatureComparison(String currentPlanId) {
+  Widget _buildFeatureComparison(List<_PlanSpec> plans, String currentPlanId, S l10n) {
     return _buildPanel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildSectionHeader(
             icon: Icons.table_chart_outlined,
-            title: '功能对比',
-            subtitle: '用同一张表快速对比不同方案的核心能力。',
+            title: l10n.pricingFeatureComparison,
+            subtitle: l10n.pricingFeatureComparisonDesc,
           ),
           const SizedBox(height: DesignSystem.space5),
           ClipRRect(
             borderRadius: BorderRadius.circular(DesignSystem.radiusLg),
             child: Column(
               children: [
-                _buildComparisonHeader(currentPlanId),
-                _buildComparisonRow('服务器数量', const ['10', '无限', '无限']),
-                _buildComparisonRow('设备数量', const ['2', '5', '无限']),
-                _buildComparisonRow('云存储', const ['100 MB', '1 GB', '5 GB']),
-                _buildComparisonRow('GitHub 同步', const ['—', '支持', '支持']),
-                _buildComparisonRow('优先支持', const ['—', '支持', '支持']),
-                _buildComparisonRow('终身更新', const ['—', '—', '支持'],
+                _buildComparisonHeader(plans, currentPlanId),
+                _buildComparisonRow(l10n.pricingServerCount, ['10', l10n.pricingUnlimited, l10n.pricingUnlimited]),
+                _buildComparisonRow(l10n.pricingDeviceCount, ['2', '5', l10n.pricingUnlimited]),
+                _buildComparisonRow(l10n.pricingCloudStorage, const ['100 MB', '1 GB', '5 GB']),
+                _buildComparisonRow(l10n.pricingGitHubSync, ['—', l10n.pricingSupported, l10n.pricingSupported]),
+                _buildComparisonRow(l10n.pricingPrioritySupport, ['—', l10n.pricingSupported, l10n.pricingSupported]),
+                _buildComparisonRow(l10n.pricingLifetimeUpdates, ['—', '—', l10n.pricingSupported],
                     isLast: true),
               ],
             ),
@@ -484,10 +487,10 @@ class _PricingPageState extends State<PricingPage> {
     );
   }
 
-  Widget _buildComparisonHeader(String currentPlanId) {
+  Widget _buildComparisonHeader(List<_PlanSpec> plans, String currentPlanId) {
     final headers = [
       const SizedBox(),
-      for (final plan in _plans)
+      for (final plan in plans)
         _ComparisonCell(
           text: plan.title,
           emphasized: plan.id == currentPlanId || plan.isFeatured,
@@ -553,27 +556,18 @@ class _PricingPageState extends State<PricingPage> {
     );
   }
 
-  Widget _buildFAQ() {
+  Widget _buildFAQ(S l10n) {
     return _buildPanel(
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _FaqHeader(),
-          SizedBox(height: DesignSystem.space5),
-          _FaqItem(
-            question: '购买后多久生效？',
-            answer: '支付或兑换成功后会立刻更新账号权益，重新进入账户页即可看到最新状态。',
-          ),
-          SizedBox(height: DesignSystem.space3),
-          _FaqItem(
-            question: '可以先输入兑换码吗？',
-            answer: '可以。在购买确认弹窗里直接输入兑换码，系统会优先尝试兑换。',
-          ),
-          SizedBox(height: DesignSystem.space3),
-          _FaqItem(
-            question: 'Pro 和永久版区别是什么？',
-            answer: 'Pro 更适合月度订阅与持续使用；永久版更适合长期主力使用，权益一次性解锁。',
-          ),
+          _FaqHeader(l10n: l10n),
+          const SizedBox(height: DesignSystem.space5),
+          _FaqItem(question: l10n.pricingFaqQ1, answer: l10n.pricingFaqA1),
+          const SizedBox(height: DesignSystem.space3),
+          _FaqItem(question: l10n.pricingFaqQ2, answer: l10n.pricingFaqA2),
+          const SizedBox(height: DesignSystem.space3),
+          _FaqItem(question: l10n.pricingFaqQ3, answer: l10n.pricingFaqA3),
         ],
       ),
     );
@@ -647,6 +641,7 @@ class _PricingPageState extends State<PricingPage> {
   }
 
   Future<void> _handlePurchase(BuildContext context, String plan) async {
+    final l10n = S.of(context);
     final codeController = TextEditingController();
     final paymentUrl = _getPaymentUrl(plan);
 
@@ -676,10 +671,10 @@ class _PricingPageState extends State<PricingPage> {
               ),
             ),
             const SizedBox(width: DesignSystem.space3),
-            const Expanded(
+            Expanded(
               child: Text(
-                '确认购买',
-                style: TextStyle(
+                l10n.pricingConfirmPurchase,
+                style: const TextStyle(
                   color: DesignSystem.neutral900,
                   fontWeight: DesignSystem.weightSemibold,
                   fontSize: DesignSystem.textLg,
@@ -695,7 +690,7 @@ class _PricingPageState extends State<PricingPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '${_getPlanName(plan)} · ${_getPlanPrice(plan)}',
+                '${_getPlanName(plan, l10n)} · ${_getPlanPrice(plan, l10n)}',
                 style: const TextStyle(
                   fontSize: DesignSystem.textSm,
                   color: DesignSystem.neutral600,
@@ -713,9 +708,9 @@ class _PricingPageState extends State<PricingPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      '有兑换码？',
-                      style: TextStyle(
+                    Text(
+                      l10n.pricingHaveRedemptionCode,
+                      style: const TextStyle(
                         fontSize: DesignSystem.textSm,
                         fontWeight: DesignSystem.weightSemibold,
                         color: DesignSystem.neutral900,
@@ -724,7 +719,7 @@ class _PricingPageState extends State<PricingPage> {
                     const SizedBox(height: DesignSystem.space2),
                     BovaTextField(
                       controller: codeController,
-                      label: '兑换码',
+                      label: l10n.pricingRedemptionCode,
                       hint: 'BOVA-XXXX-XXXX-XXXX',
                       prefixIcon: Icons.confirmation_number_outlined,
                     ),
@@ -737,9 +732,9 @@ class _PricingPageState extends State<PricingPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, null),
-            child: const Text(
-              '取消',
-              style: TextStyle(color: DesignSystem.neutral600),
+            child: Text(
+              l10n.cancel,
+              style: const TextStyle(color: DesignSystem.neutral600),
             ),
           ),
           FilledButton(
@@ -756,7 +751,7 @@ class _PricingPageState extends State<PricingPage> {
               ),
             ),
             child: Text(
-              codeController.text.trim().isNotEmpty ? '兑换' : '去支付',
+              codeController.text.trim().isNotEmpty ? l10n.pricingRedeem : l10n.pricingGoPay,
             ),
           ),
         ],
@@ -774,6 +769,7 @@ class _PricingPageState extends State<PricingPage> {
   }
 
   Future<void> _redeemCode(String code) async {
+    final l10n = S.of(context);
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -797,15 +793,15 @@ class _PricingPageState extends State<PricingPage> {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(DesignSystem.radiusXl),
             ),
-            title: const Text(
-              '兑换成功',
-              style: TextStyle(
+            title: Text(
+              l10n.pricingRedeemSuccess,
+              style: const TextStyle(
                 color: DesignSystem.neutral900,
                 fontWeight: DesignSystem.weightSemibold,
               ),
             ),
             content: Text(
-              result['message'] ?? '账号权益已更新。',
+              result['message'] ?? l10n.pricingAccountUpdated,
               style: const TextStyle(
                 color: DesignSystem.neutral600,
                 height: 1.5,
@@ -818,7 +814,7 @@ class _PricingPageState extends State<PricingPage> {
                   backgroundColor: _pricingAccent,
                   foregroundColor: Colors.white,
                 ),
-                child: const Text('确定'),
+                child: Text(l10n.pricingOk),
               ),
             ],
           ),
@@ -828,7 +824,7 @@ class _PricingPageState extends State<PricingPage> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(result['message'] ?? '兑换失败'),
+            content: Text(result['message'] ?? l10n.pricingRedeemFailed),
             backgroundColor: DesignSystem.error,
           ),
         );
@@ -838,7 +834,7 @@ class _PricingPageState extends State<PricingPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('兑换失败: $error'),
+          content: Text(l10n.pricingRedeemError(error.toString())),
           backgroundColor: DesignSystem.error,
         ),
       );
@@ -857,25 +853,25 @@ class _PricingPageState extends State<PricingPage> {
     return 'https://payment.bovaplayer.com/checkout?plan=$plan';
   }
 
-  String _getPlanName(String plan) {
+  String _getPlanName(String plan, S l10n) {
     switch (plan) {
       case 'pro_monthly':
-        return 'Pro 版（月付）';
+        return l10n.pricingProMonthly;
       case 'lifetime':
-        return '永久版';
+        return l10n.pricingPlanLifetime;
       default:
-        return '社区免费版';
+        return l10n.pricingPlanFree;
     }
   }
 
-  String _getPlanPrice(String plan) {
+  String _getPlanPrice(String plan, S l10n) {
     switch (plan) {
       case 'pro_monthly':
-        return '¥6.9 / 月';
+        return l10n.pricingProMonthlyPrice;
       case 'lifetime':
-        return '¥69（一次性）';
+        return l10n.pricingLifetimeOnce;
       default:
-        return '¥0';
+        return l10n.pricingPlanFreePrice;
     }
   }
 
@@ -960,7 +956,9 @@ class _ComparisonCell extends StatelessWidget {
 }
 
 class _FaqHeader extends StatelessWidget {
-  const _FaqHeader();
+  const _FaqHeader({required this.l10n});
+
+  final S l10n;
 
   @override
   Widget build(BuildContext context) {
@@ -980,22 +978,22 @@ class _FaqHeader extends StatelessWidget {
           ),
         ),
         const SizedBox(width: DesignSystem.space3),
-        const Expanded(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '常见问题',
-                style: TextStyle(
+                l10n.pricingFaq,
+                style: const TextStyle(
                   fontSize: DesignSystem.textBase,
                   fontWeight: DesignSystem.weightSemibold,
                   color: DesignSystem.neutral900,
                 ),
               ),
-              SizedBox(height: 4),
+              const SizedBox(height: 4),
               Text(
-                '购买与兑换前最常被问到的几个问题。',
-                style: TextStyle(
+                l10n.pricingFaqDesc,
+                style: const TextStyle(
                   fontSize: DesignSystem.textSm,
                   color: DesignSystem.neutral600,
                   height: 1.5,

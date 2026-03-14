@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../l10n/generated/app_localizations.dart';
 import '../models/discover_latency_tier.dart';
 
 class DiscoverLatencyIndicator extends StatelessWidget {
@@ -15,7 +16,10 @@ class DiscoverLatencyIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tier = DiscoverLatencyTierResolver.fromMs(latencyMs);
-    final tooltip = latencyMs == null ? '连接不可达' : '$latencyMs ms';
+    final l = S.of(context);
+    final tooltip = latencyMs == null
+        ? l.discoverLatencyUnreachable
+        : '$latencyMs ms';
     final width = compact ? 12.0 : 14.0;
     final height = compact ? 12.0 : 14.0;
     final color = switch (tier) {

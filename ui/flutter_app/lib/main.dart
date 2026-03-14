@@ -9,8 +9,13 @@ import 'package:window_manager/window_manager.dart';
 import 'package:provider/provider.dart';
 import 'native_bridge.dart';
 
+// i18n
+import 'l10n/generated/app_localizations.dart';
+
 // 云同步功能
 import 'core/config/env_config.dart';
+import 'core/providers/locale_provider.dart';
+import 'core/providers/theme_provider.dart';
 import 'features/auth/domain/services/auth_service.dart';
 import 'features/auth/data/repositories/auth_repository_impl.dart';
 import 'features/auth/presentation/providers/auth_provider.dart'
@@ -142,20 +147,39 @@ class BovaPlayerApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) => auth_provider.AuthProvider(authService),
         ),
+        ChangeNotifierProvider(create: (_) => LocaleProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
       ],
-      child: MaterialApp(
-        title: 'BovaPlayer',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.lightTheme,
-        darkTheme: AppTheme.darkTheme,
-        themeMode: ThemeMode.light,
-        home: const AuthWrapper(),
-        routes: {
-          '/login': (context) => const LoginPageRedesign(),
-          '/register': (context) => const RegisterPage(),
-          '/forgot-password': (context) => const ForgotPasswordPage(),
-          '/account': (context) => const AccountPage(),
-          '/main': (context) => const MainNavigation(),
+      child: Consumer3<ThemeProvider, LocaleProvider, auth_provider.AuthProvider>(
+        builder: (context, themeProvider, localeProvider, authProvider, _) {
+          final hasProAccess = authProvider.user?.isPro ?? false;
+          final authReady = authProvider.state != auth_provider.AuthState.initial &&
+              authProvider.state != auth_provider.AuthState.loading;
+          if (authReady &&
+              ThemeProvider.isProTheme(themeProvider.themeMode) &&
+              !hasProAccess) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              themeProvider.ensureThemeAccess(hasProAccess: hasProAccess);
+            });
+          }
+
+          final themeData = AppTheme.themeFor(themeProvider.themeMode);
+          return MaterialApp(
+            title: 'BovaPlayer',
+            debugShowCheckedModeBanner: false,
+            theme: themeData,
+            locale: localeProvider.locale,
+            localizationsDelegates: S.localizationsDelegates,
+            supportedLocales: S.supportedLocales,
+            home: const AuthWrapper(),
+            routes: {
+              '/login': (context) => const LoginPageRedesign(),
+              '/register': (context) => const RegisterPage(),
+              '/forgot-password': (context) => const ForgotPasswordPage(),
+              '/account': (context) => const AccountPage(),
+              '/main': (context) => const MainNavigation(),
+            },
+          );
         },
       ),
     );
