@@ -1043,8 +1043,10 @@ class _MainNavigationState extends State<MainNavigation> {
 
   List<Widget> _buildMobileTopActions() {
     final l = S.of(context);
+    final actions = <Widget>[];
+
     if (_currentSection == _AppSection.library) {
-      return [
+      actions.addAll([
         _TopActionButton(
           icon: BovaIcons.refreshOutline,
           onTap: () => _mediaLibraryKey.currentState?.refreshAndSync(),
@@ -1055,33 +1057,95 @@ class _MainNavigationState extends State<MainNavigation> {
         ),
         const SizedBox(width: 8),
         _buildAddButton(),
-      ];
+      ]);
+    } else if (_currentSection != _AppSection.player &&
+        _currentSection != _AppSection.account) {
+      actions.addAll([
+        _TopActionButton(
+          icon: BovaIcons.searchOutline,
+          onTap: _openDiscoverSearch,
+          tooltip: l.actionSearch,
+          size: 40,
+          iconSize: 19,
+          radius: 14,
+        ),
+        const SizedBox(width: 8),
+        _TopActionButton(
+          icon: BovaIcons.bookmarkOutline,
+          onTap: _openDiscoverBookmarks,
+          tooltip: l.actionBookmarks,
+          size: 40,
+          iconSize: 19,
+          radius: 14,
+        ),
+      ]);
     }
 
-    if (_currentSection == _AppSection.player ||
-        _currentSection == _AppSection.account) {
-      return const [];
+    if (actions.isNotEmpty) {
+      actions.add(const SizedBox(width: 8));
     }
+    actions.add(_buildMobileOverflowMenu());
+    return actions;
+  }
 
-    return [
-      _TopActionButton(
-        icon: BovaIcons.searchOutline,
-        onTap: _openDiscoverSearch,
-        tooltip: l.actionSearch,
-        size: 40,
-        iconSize: 19,
-        radius: 14,
+  Widget _buildMobileOverflowMenu() {
+    final l = S.of(context);
+
+    return PopupMenuButton<String>(
+      tooltip: 'More',
+      icon: const Icon(
+        Icons.more_horiz_rounded,
+        color: Color(0xFFE11D48),
+        size: 20,
       ),
-      const SizedBox(width: 8),
-      _TopActionButton(
-        icon: BovaIcons.bookmarkOutline,
-        onTap: _openDiscoverBookmarks,
-        tooltip: l.actionBookmarks,
-        size: 40,
-        iconSize: 19,
-        radius: 14,
+      style: ButtonStyle(
+        backgroundColor: WidgetStateProperty.all(Colors.white),
+        shape: WidgetStateProperty.all(
+          RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: const BorderSide(color: Color(0xFFF0F1F4)),
+          ),
+        ),
+        fixedSize: WidgetStateProperty.all(const Size(40, 40)),
+        padding: WidgetStateProperty.all(EdgeInsets.zero),
       ),
-    ];
+      onSelected: (value) async {
+        switch (value) {
+          case 'account':
+            await Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AccountPage()),
+            );
+            break;
+          case 'settings':
+            await Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SettingsPage()),
+            );
+            break;
+        }
+      },
+      itemBuilder: (context) => [
+        PopupMenuItem<String>(
+          value: 'account',
+          child: Row(
+            children: [
+              const Icon(Icons.person_outline_rounded, size: 18),
+              const SizedBox(width: 10),
+              Text(l.navAccount),
+            ],
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'settings',
+          child: Row(
+            children: [
+              const Icon(Icons.settings_outlined, size: 18),
+              const SizedBox(width: 10),
+              Text(l.settingsTitle),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   @override
