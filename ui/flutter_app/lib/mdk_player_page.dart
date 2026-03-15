@@ -79,6 +79,8 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> with WindowListener {
   DateTime _lastSpeedCheck = DateTime.now();
   bool _isDragging = false;
   double _dragPosition = 0;
+  bool _showProgressHover = false;
+  double _hoverProgressPosition = 0;
   int _selectedTextTrack = -1;
   List<Map<String, dynamic>> _textTracks = [];
 
@@ -1261,7 +1263,7 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> with WindowListener {
             const Spacer(),
             _buildCenterControls(),
             const Spacer(),
-            _buildProgressBar(),
+            _buildInteractiveProgressBar(),
             _buildBottomBar(),
           ],
         ),
@@ -1539,6 +1541,243 @@ class _MdkPlayerPageState extends State<MdkPlayerPage> with WindowListener {
                           ),
                         ),
                       ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(width: 16),
+          Text(
+            _formatDuration(duration),
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInteractiveProgressBar() {
+    final position = _controller?.value.position ?? Duration.zero;
+    final duration = _controller?.value.duration ?? Duration.zero;
+
+    double progressBarPositionFromDx(
+      double localDx,
+      double totalWidth,
+      double maxMs,
+    ) {
+      if (totalWidth <= 0 || maxMs <= 0) return 0;
+      return ((localDx / totalWidth) * maxMs).clamp(0.0, maxMs).toDouble();
+    }
+
+    void monitorSeekPlayback() {
+      _bufferingTimer?.cancel();
+      var lastPosition = -1;
+      var stuckCount = 0;
+
+      _bufferingTimer = Timer.periodic(
+        const Duration(milliseconds: 300),
+        (timer) {
+          if (!mounted || _controller == null) {
+            timer.cancel();
+            _bufferingTimer = null;
+            return;
+          }
+
+          final currentPos = _controller!.value.position.inSeconds;
+          if (lastPosition == -1) {
+            lastPosition = currentPos;
+            return;
+          }
+
+          if ((currentPos - lastPosition).abs() > 0) {
+            if (_forceShowBuffering) {
+              setState(() => _forceShowBuffering = false);
+            }
+            timer.cancel();
+            _bufferingTimer = null;
+          } else {
+            stuckCount++;
+            if (stuckCount >= 2 && !_forceShowBuffering) {
+              setState(() => _forceShowBuffering = true);
+            }
+          }
+
+          lastPosition = currentPos;
+        },
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      child: Row(
+        children: [
+          Text(
+            _isDragging
+                ? _formatDuration(Duration(milliseconds: _dragPosition.toInt()))
+                : _formatDuration(position),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final totalWidth = constraints.maxWidth;
+                final maxMs = duration.inMilliseconds.toDouble();
+                final currentMs = _isDragging
+                    ? _dragPosition
+                    : position.inMilliseconds.toDouble();
+                final progress =
+                    maxMs > 0 ? (currentMs / maxMs).clamp(0.0, 1.0) : 0.0;
+                final previewMs =
+                    _isDragging ? _dragPosition : _hoverProgressPosition;
+
+                return MouseRegion(
+                  onHover: (event) {
+                    if (_isDragging || maxMs <= 0) return;
+                    setState(() {
+                      _showProgressHover = true;
+                      _hoverProgressPosition = progressBarPositionFromDx(
+                        event.localPosition.dx,
+                        totalWidth,
+                        maxMs,
+                      );
+                    });
+                  },
+                  onExit: (_) {
+                    if (_isDragging) return;
+                    setState(() => _showProgressHover = false);
+                  },
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTapDown: (details) {
+                      if (maxMs <= 0) return;
+                      final targetPosition = Duration(
+                        milliseconds: progressBarPositionFromDx(
+                          details.localPosition.dx,
+                          totalWidth,
+                          maxMs,
+                        ).toInt(),
+                      );
+                      _controller?.seekTo(targetPosition);
+                      monitorSeekPlayback();
+                      _startHideTimer();
+                    },
+                    onHorizontalDragStart: (details) {
+                      _hideTimer?.cancel();
+                      final dragPosition = progressBarPositionFromDx(
+                        details.localPosition.dx,
+                        totalWidth,
+                        maxMs,
+                      );
+                      setState(() {
+                        _isDragging = true;
+                        _showProgressHover = true;
+                        _dragPosition = dragPosition;
+                        _hoverProgressPosition = dragPosition;
+                      });
+                    },
+                    onHorizontalDragUpdate: (details) {
+                      if (maxMs <= 0) return;
+                      final dragPosition = progressBarPositionFromDx(
+                        details.localPosition.dx,
+                        totalWidth,
+                        maxMs,
+                      );
+                      setState(() {
+                        _dragPosition = dragPosition;
+                        _hoverProgressPosition = dragPosition;
+                      });
+                    },
+                    onHorizontalDragEnd: (details) {
+                      final targetPosition =
+                          Duration(milliseconds: _dragPosition.toInt());
+
+                      setState(() {
+                        _isDragging = false;
+                        _showProgressHover = false;
+                      });
+
+                      _controller?.seekTo(targetPosition);
+                      monitorSeekPlayback();
+                      _startHideTimer();
+                    },
+                    child: Container(
+                      height: 48,
+                      alignment: Alignment.center,
+                      child: Stack(
+                        alignment: Alignment.centerLeft,
+                        clipBehavior: Clip.none,
+                        children: [
+                          if (_showProgressHover && maxMs > 0)
+                            Positioned(
+                              left: ((previewMs / maxMs) * totalWidth)
+                                      .clamp(0.0, totalWidth) -
+                                  30,
+                              top: -30,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withOpacity(0.82),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  _formatDuration(
+                                    Duration(milliseconds: previewMs.toInt()),
+                                  ),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontFamily: 'monospace',
+                                  ),
+                                ),
+                              ),
+                            ),
+                          Container(
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                          ),
+                          FractionallySizedBox(
+                            widthFactor: progress,
+                            child: Container(
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).primaryColor,
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            left:
+                                ((progress * totalWidth) - 8).clamp(-8.0, totalWidth - 8),
+                            child: Container(
+                              width: 16,
+                              height: 16,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.3),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 1),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 );

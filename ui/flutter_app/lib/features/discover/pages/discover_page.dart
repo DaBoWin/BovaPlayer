@@ -47,6 +47,7 @@ class DiscoverPage extends StatefulWidget {
 
 class _DiscoverPageState extends State<DiscoverPage> {
   late final DiscoverController _controller;
+  String? _lastLocaleCode;
 
   @override
   void initState() {
@@ -61,6 +62,16 @@ class _DiscoverPageState extends State<DiscoverPage> {
     if (oldWidget.feed != widget.feed) {
       _controller.load(widget.feed, force: true);
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final localeCode = Localizations.localeOf(context).languageCode;
+    if (_lastLocaleCode != null && _lastLocaleCode != localeCode) {
+      _controller.load(widget.feed, force: true);
+    }
+    _lastLocaleCode = localeCode;
   }
 
   @override

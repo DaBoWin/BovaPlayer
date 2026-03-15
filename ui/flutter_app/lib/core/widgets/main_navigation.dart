@@ -1148,6 +1148,72 @@ class _MainNavigationState extends State<MainNavigation> {
     );
   }
 
+  Future<void> _showMobileQuickMenu() async {
+    final l = S.of(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return Container(
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1A1A1F) : Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF111827).withValues(alpha: 0.14),
+                blurRadius: 24,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 42,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 14),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                _MobileQuickAction(
+                  icon: Icons.person_outline_rounded,
+                  label: l.navAccount,
+                  onTap: () async {
+                    Navigator.of(sheetContext).pop();
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const AccountPage()),
+                    );
+                  },
+                ),
+                const SizedBox(height: 10),
+                _MobileQuickAction(
+                  icon: Icons.settings_outlined,
+                  label: l.settingsTitle,
+                  onTap: () async {
+                    Navigator.of(sheetContext).pop();
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const SettingsPage()),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<auth_provider.AuthProvider>(context);
@@ -1369,12 +1435,18 @@ class _MainNavigationState extends State<MainNavigation> {
         },
         onTap: (index) {
           setState(() {
+            if (index == 3) {
+              return;
+            }
             _currentSection = switch (index) {
               1 => _AppSection.player,
               2 => _AppSection.library,
               _ => _AppSection.discover,
             };
           });
+          if (index == 3) {
+            _showMobileQuickMenu();
+          }
         },
         items: [
           BovaBottomNavItem(
@@ -1392,7 +1464,62 @@ class _MainNavigationState extends State<MainNavigation> {
             activeIcon: BovaIcons.libraryFilled,
             label: S.of(context).mobileNavLibrary,
           ),
+          const BovaBottomNavItem(
+            icon: Icons.add_circle_outline_rounded,
+            activeIcon: Icons.add_circle_rounded,
+            label: '+',
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _MobileQuickAction extends StatelessWidget {
+  const _MobileQuickAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.72),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, color: theme.colorScheme.primary, size: 22),
+              const SizedBox(width: 12),
+              Text(
+                label,
+                style: TextStyle(
+                  color: theme.colorScheme.onSurface,
+                  fontSize: DesignSystem.textBase,
+                  fontWeight: DesignSystem.weightSemibold,
+                ),
+              ),
+              const Spacer(),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.35),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

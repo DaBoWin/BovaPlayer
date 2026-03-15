@@ -1,8 +1,8 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-/// 环境配置
-///
-/// 管理应用的环境变量和配置
+import '../providers/locale_provider.dart';
+
+/// Environment config.
 class EnvConfig {
   static String get supabaseUrl => dotenv.get('SUPABASE_URL', fallback: '');
   static String get supabaseAnonKey =>
@@ -39,10 +39,17 @@ class EnvConfig {
         'TMDB_IMAGE_BASE_URL',
         fallback: 'https://image.tmdb.org/t/p/',
       );
-  static String get tmdbLanguage =>
-      dotenv.get('TMDB_LANGUAGE', fallback: 'en-US');
+  static String get tmdbLanguage {
+    final appLanguage = LocaleProvider.currentLanguageCode;
+    if (appLanguage == 'zh') return 'zh-CN';
+    if (appLanguage == 'en') return 'en-US';
 
-  /// 打印配置信息（仅开发环境）
+    final fallback = dotenv.get('TMDB_LANGUAGE', fallback: 'en-US').trim();
+    if (fallback == 'zh' || fallback == 'zh-CN') return 'zh-CN';
+    if (fallback == 'en' || fallback == 'en-US') return 'en-US';
+    return fallback.isEmpty ? 'en-US' : fallback;
+  }
+
   static void printConfig() {
     if (!isDevelopment) return;
 
@@ -52,7 +59,8 @@ class EnvConfig {
     print('Enable Logging: $enableLogging');
     print('Enable Analytics: $enableAnalytics');
     print(
-        'TMDB Configured: ${tmdbReadAccessToken.isNotEmpty || tmdbApiKey.isNotEmpty}');
+      'TMDB Configured: ${tmdbReadAccessToken.isNotEmpty || tmdbApiKey.isNotEmpty}',
+    );
     print('================================');
   }
 }

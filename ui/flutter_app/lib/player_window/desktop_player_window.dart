@@ -211,7 +211,7 @@ WindowOptions mainWindowOptions() => const WindowOptions(
       size: Size(1280, 800),
       minimumSize: Size(800, 600),
       center: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: Color(0xFFF1F3F6),
       skipTaskbar: false,
       titleBarStyle: TitleBarStyle.hidden,
       title: 'BovaPlayer',
