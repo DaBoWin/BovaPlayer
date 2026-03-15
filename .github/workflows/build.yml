@@ -38,6 +38,8 @@ jobs:
           SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_DEBUG=false
           TMDB_READ_ACCESS_TOKEN=${{ secrets.TMDB_READ_ACCESS_TOKEN }}
+          TMDB_BASE_URL=${{ secrets.TMDB_BASE_URL }}
+          TMDB_IMAGE_BASE_URL=${{ secrets.TMDB_IMAGE_BASE_URL }}
           "@ | Out-File -FilePath .env -Encoding utf8
 
       - name: Build Windows (Flutter)
@@ -85,6 +87,8 @@ jobs:
           SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_DEBUG=false
           TMDB_READ_ACCESS_TOKEN=${{ secrets.TMDB_READ_ACCESS_TOKEN }}
+          TMDB_BASE_URL=${{ secrets.TMDB_BASE_URL }}
+          TMDB_IMAGE_BASE_URL=${{ secrets.TMDB_IMAGE_BASE_URL }}
           EOF
 
       - name: Build macOS (Flutter)
@@ -160,6 +164,8 @@ jobs:
           SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_DEBUG=false
           TMDB_READ_ACCESS_TOKEN=${{ secrets.TMDB_READ_ACCESS_TOKEN }}
+          TMDB_BASE_URL=${{ secrets.TMDB_BASE_URL }}
+          TMDB_IMAGE_BASE_URL=${{ secrets.TMDB_IMAGE_BASE_URL }}
           EOF
 
       - name: Flutter 依赖安装
