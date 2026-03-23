@@ -10,6 +10,20 @@ import {
 } from '../lib/payment.js';
 import { createAdminClient, requireUser } from '../lib/supabase.js';
 
+function extractRedirectUrlFromHtml(html: string, baseUrl: string): string {
+  const match = html.match(/window\.location\.replace\(\s*['\"]([^'\"]+)['\"]\s*\)/i);
+  const redirectPath = match?.[1]?.trim();
+  if (!redirectPath) {
+    return '';
+  }
+
+  try {
+    return new URL(redirectPath, baseUrl).toString();
+  } catch {
+    return redirectPath;
+  }
+}
+
 export async function createPaymentOrder(req: Request, res: Response) {
   try {
     const user = await requireUser(req.header('Authorization'));
@@ -76,11 +90,24 @@ export async function createPaymentOrder(req: Request, res: Response) {
       });
     }
 
-    const paymentUrl = String(
+    let paymentUrl = String(
       gatewayJson.payurl ?? gatewayJson.pay_url ?? gatewayJson.payment_url ?? '',
     ).trim();
-    const qrCodeUrl = String(gatewayJson.qrcode ?? gatewayJson.qr_code ?? '').trim();
+    let qrCodeUrl = String(gatewayJson.qrcode ?? gatewayJson.qr_code ?? '').trim();
     const providerOrderId = String(gatewayJson.trade_no ?? gatewayJson.order_id ?? '').trim();
+
+    if (!paymentUrl) {
+      const redirectUrl = extractRedirectUrlFromHtml(
+        gatewayText,
+        gatewayResponse.url || config.yipayApiUrl,
+      );
+      if (redirectUrl) {
+        paymentUrl = redirectUrl;
+        if (!qrCodeUrl && /\/pay\/qrcode\//i.test(redirectUrl)) {
+          qrCodeUrl = redirectUrl;
+        }
+      }
+    }
 
     if (!paymentUrl) {
       return res.status(502).json({
