@@ -1,0 +1,11 @@
+services:
+  payment-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bovaplayer-payment-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8787:8787"

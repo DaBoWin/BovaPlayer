@@ -1,0 +1,13 @@
+# This is an example configuration file
+# To learn more, see the full config.yaml reference: https://docs.continue.dev/reference
+
+name: OpenAI Config
+version: 1.0.0
+schema: v1
+
+models:
+  - name: gpt-5.4
+    provider: openai
+    model: gpt-5.4
+    apiBase: https://api.dabo.im/v1
+    apiKey: sk-Cd32FR74plGuabsBssrXdZR2KZsoJTNd6YqhyEFVBindd77H

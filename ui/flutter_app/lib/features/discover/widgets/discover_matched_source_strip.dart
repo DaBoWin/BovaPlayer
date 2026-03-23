@@ -8,7 +8,7 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../services/discover_library_resolver_service.dart';
 import 'discover_latency_indicator.dart';
 
-class DiscoverMatchedSourceStrip extends StatelessWidget {
+class DiscoverMatchedSourceStrip extends StatefulWidget {
   const DiscoverMatchedSourceStrip({
     super.key,
     required this.matches,
@@ -18,41 +18,71 @@ class DiscoverMatchedSourceStrip extends StatelessWidget {
   });
 
   final List<DiscoverLibraryMatch> matches;
-  final ValueChanged<DiscoverLibraryMatch> onTap;
+  final Future<void> Function(DiscoverLibraryMatch match) onTap;
   final double height;
   final double chipMaxWidth;
 
   @override
+  State<DiscoverMatchedSourceStrip> createState() =>
+      _DiscoverMatchedSourceStripState();
+}
+
+class _DiscoverMatchedSourceStripState
+    extends State<DiscoverMatchedSourceStrip> {
+  bool _isCoolingDown = false;
+  static const Duration _cooldownDuration = Duration(milliseconds: 1200);
+
+  Future<void> _handleTap(DiscoverLibraryMatch match) async {
+    if (_isCoolingDown) return;
+    setState(() => _isCoolingDown = true);
+    try {
+      await widget.onTap(match);
+    } finally {
+      if (mounted) {
+        Future<void>.delayed(_cooldownDuration, () {
+          if (!mounted) return;
+          setState(() => _isCoolingDown = false);
+        });
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (matches.isEmpty) {
+    if (widget.matches.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    final primaryMatch = matches.first;
-    final hasMore = matches.length > 1;
+    final primaryMatch = widget.matches.first;
+    final hasMore = widget.matches.length > 1;
 
     return SizedBox(
       width: double.infinity,
-      height: height,
-      child: Row(
-        children: [
-          Expanded(
-            child: _DiscoverSourceChip(
-              label: primaryMatch.source.name,
-              latencyMs: primaryMatch.responseTimeMs,
-              maxWidth: chipMaxWidth,
-              onTap: () => onTap(primaryMatch),
+      height: widget.height,
+      child: Opacity(
+        opacity: _isCoolingDown ? 0.68 : 1,
+        child: Row(
+          children: [
+            Expanded(
+              child: _DiscoverSourceChip(
+                label: primaryMatch.source.name,
+                latencyMs: primaryMatch.responseTimeMs,
+                maxWidth: widget.chipMaxWidth,
+                isCoolingDown: _isCoolingDown,
+                onTap: () => _handleTap(primaryMatch),
+              ),
             ),
-          ),
-          if (hasMore) ...[
-            const SizedBox(width: 8),
-            _DiscoverSourceMenuButton(
-              matches: matches,
-              hiddenCount: matches.length - 1,
-              onSelected: onTap,
-            ),
+            if (hasMore) ...[
+              const SizedBox(width: 8),
+              _DiscoverSourceMenuButton(
+                matches: widget.matches,
+                hiddenCount: widget.matches.length - 1,
+                isCoolingDown: _isCoolingDown,
+                onSelected: _handleTap,
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -64,12 +94,14 @@ class _DiscoverSourceChip extends StatefulWidget {
     required this.latencyMs,
     required this.maxWidth,
     required this.onTap,
+    required this.isCoolingDown,
   });
 
   final String label;
   final int? latencyMs;
   final double maxWidth;
   final VoidCallback onTap;
+  final bool isCoolingDown;
 
   @override
   State<_DiscoverSourceChip> createState() => _DiscoverSourceChipState();
@@ -83,26 +115,34 @@ class _DiscoverSourceChipState extends State<_DiscoverSourceChip> {
     final accent = _resolveAccent(context);
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final chipBg = isDark ? scheme.surface : Colors.white.withValues(alpha: 0.98);
+    final chipBg = widget.isCoolingDown
+        ? (isDark
+            ? scheme.surfaceContainerHighest.withValues(alpha: 0.78)
+            : scheme.surfaceContainerHighest.withValues(alpha: 0.92))
+        : (isDark ? scheme.surface : Colors.white.withValues(alpha: 0.98));
     final chipBorder = isDark
         ? scheme.outline.withValues(alpha: 0.15)
         : DesignSystem.neutral200.withValues(alpha: 0.92);
-    final shadowColor = isDark
-        ? Colors.black.withValues(alpha: 0.20)
-        : const Color(0xFF111827);
+    final shadowColor =
+        isDark ? Colors.black.withValues(alpha: 0.20) : const Color(0xFF111827);
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: widget.onTap,
+        onTap: widget.isCoolingDown ? null : widget.onTap,
         behavior: HitTestBehavior.opaque,
         child: AnimatedContainer(
           duration: DesignSystem.durationFast,
           curve: DesignSystem.easeOutQuart,
           transform: Matrix4.identity()
-            ..translateByDouble(0.0, _isHovered ? -1.0 : 0.0, 0.0, 1.0),
+            ..translateByDouble(
+              0.0,
+              _isHovered && !widget.isCoolingDown ? -1.0 : 0.0,
+              0.0,
+              1.0,
+            ),
           constraints: BoxConstraints(
             maxWidth: widget.maxWidth,
           ),
@@ -111,7 +151,7 @@ class _DiscoverSourceChipState extends State<_DiscoverSourceChip> {
             color: chipBg,
             borderRadius: BorderRadius.circular(DesignSystem.radiusFull),
             border: Border.all(color: chipBorder),
-            boxShadow: _isHovered
+            boxShadow: _isHovered && !widget.isCoolingDown
                 ? [
                     BoxShadow(
                       color: shadowColor.withValues(alpha: 0.08),
@@ -133,7 +173,9 @@ class _DiscoverSourceChipState extends State<_DiscoverSourceChip> {
               Icon(
                 Icons.play_circle_fill_rounded,
                 size: 15,
-                color: accent,
+                color: widget.isCoolingDown
+                    ? scheme.onSurface.withValues(alpha: 0.52)
+                    : accent,
               ),
               const SizedBox(width: 7),
               Expanded(
@@ -144,7 +186,9 @@ class _DiscoverSourceChipState extends State<_DiscoverSourceChip> {
                   style: TextStyle(
                     fontSize: DesignSystem.textSm,
                     fontWeight: DesignSystem.weightSemibold,
-                    color: scheme.onSurface,
+                    color: scheme.onSurface.withValues(
+                      alpha: widget.isCoolingDown ? 0.62 : 1,
+                    ),
                     letterSpacing: -0.15,
                     height: 1,
                   ),
@@ -168,11 +212,13 @@ class _DiscoverSourceMenuButton extends StatefulWidget {
     required this.matches,
     required this.hiddenCount,
     required this.onSelected,
+    required this.isCoolingDown,
   });
 
   final List<DiscoverLibraryMatch> matches;
   final int hiddenCount;
-  final ValueChanged<DiscoverLibraryMatch> onSelected;
+  final Future<void> Function(DiscoverLibraryMatch match) onSelected;
+  final bool isCoolingDown;
 
   @override
   State<_DiscoverSourceMenuButton> createState() =>
@@ -188,12 +234,17 @@ class _DiscoverSourceMenuButtonState extends State<_DiscoverSourceMenuButton> {
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final l = S.of(context);
-    final chipBg = isDark ? scheme.surface : Colors.white;
+    final chipBg = widget.isCoolingDown
+        ? scheme.surfaceContainerHighest.withValues(alpha: 0.78)
+        : (isDark ? scheme.surface : Colors.white);
     final accentBorder = accent.withValues(alpha: 0.25);
 
     return PopupMenuButton<DiscoverLibraryMatch>(
+      enabled: !widget.isCoolingDown,
       tooltip: l.discoverExpandSources(widget.hiddenCount),
-      onSelected: widget.onSelected,
+      onSelected: (match) {
+        widget.onSelected(match);
+      },
       color: scheme.surface,
       elevation: 10,
       offset: const Offset(0, 8),
@@ -226,7 +277,12 @@ class _DiscoverSourceMenuButtonState extends State<_DiscoverSourceMenuButton> {
           duration: DesignSystem.durationFast,
           curve: DesignSystem.easeOutQuart,
           transform: Matrix4.identity()
-            ..translateByDouble(0.0, _isHovered ? -1.0 : 0.0, 0.0, 1.0),
+            ..translateByDouble(
+              0.0,
+              _isHovered && !widget.isCoolingDown ? -1.0 : 0.0,
+              0.0,
+              1.0,
+            ),
           constraints: const BoxConstraints(
             minWidth: 26,
             minHeight: 26,
@@ -238,7 +294,7 @@ class _DiscoverSourceMenuButtonState extends State<_DiscoverSourceMenuButton> {
             border: Border.all(
               color: accentBorder,
             ),
-            boxShadow: _isHovered
+            boxShadow: _isHovered && !widget.isCoolingDown
                 ? [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.08),
@@ -260,7 +316,9 @@ class _DiscoverSourceMenuButtonState extends State<_DiscoverSourceMenuButton> {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: DesignSystem.weightSemibold,
-                color: accent,
+                color: widget.isCoolingDown
+                    ? scheme.onSurface.withValues(alpha: 0.52)
+                    : accent,
                 height: 1,
                 letterSpacing: -0.1,
               ),

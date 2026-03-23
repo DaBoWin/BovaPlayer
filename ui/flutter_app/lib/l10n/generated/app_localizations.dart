@@ -535,6 +535,54 @@ abstract class S {
   /// **'Quick play failed, please try again'**
   String get quickPlayFailed;
 
+  /// No description provided for @followSeriesStart.
+  ///
+  /// In en, this message translates to:
+  /// **'Follow'**
+  String get followSeriesStart;
+
+  /// No description provided for @followSeriesActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Following'**
+  String get followSeriesActive;
+
+  /// No description provided for @followSeriesCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Unfollow'**
+  String get followSeriesCancel;
+
+  /// No description provided for @followSeriesUpdated.
+  ///
+  /// In en, this message translates to:
+  /// **'New episode'**
+  String get followSeriesUpdated;
+
+  /// No description provided for @followSeriesStarted.
+  ///
+  /// In en, this message translates to:
+  /// **'Started following: {title}'**
+  String followSeriesStarted(String title);
+
+  /// No description provided for @followSeriesCanceled.
+  ///
+  /// In en, this message translates to:
+  /// **'Stopped following: {title}'**
+  String followSeriesCanceled(String title);
+
+  /// No description provided for @followSeriesUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'No Emby series available for following'**
+  String get followSeriesUnavailable;
+
+  /// No description provided for @discoverBookmarksSortedByUpdates.
+  ///
+  /// In en, this message translates to:
+  /// **'Followed shows with new episodes are shown first.'**
+  String get discoverBookmarksSortedByUpdates;
+
   /// No description provided for @discoverOpen.
   ///
   /// In en, this message translates to:

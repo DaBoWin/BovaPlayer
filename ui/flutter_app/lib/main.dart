@@ -20,6 +20,9 @@ import 'features/auth/domain/services/auth_service.dart';
 import 'features/auth/data/repositories/auth_repository_impl.dart';
 import 'features/auth/presentation/providers/auth_provider.dart'
     as auth_provider;
+import 'features/billing/data/repositories/billing_repository_impl.dart';
+import 'features/billing/domain/services/billing_service.dart';
+import 'features/billing/presentation/providers/billing_provider.dart';
 import 'features/auth/presentation/pages/login_page_redesign.dart';
 import 'features/auth/presentation/pages/register_page.dart';
 import 'features/auth/presentation/pages/forgot_password_page.dart';
@@ -94,8 +97,8 @@ Future<void> main() async {
         : mainWindowOptions();
     windowManager.waitUntilReadyToShow(windowOptions, () async {
       if (playerPayload != null) {
-        await windowManager.setResizable(false);
-        await windowManager.setMaximizable(false);
+        await windowManager.setResizable(true);
+        await windowManager.setMaximizable(true);
       }
       await windowManager.show();
       await windowManager.focus();
@@ -107,12 +110,10 @@ Future<void> main() async {
     await registerMainWindowChannel();
     onWindowsChanged.listen((_) async {
       final windows = await WindowController.getAll();
-      final summary = windows
-          .map((window) {
-            final parsed = AppWindowArguments.tryParse(window.arguments);
-            return '${window.windowId}:${parsed?.type ?? 'unknown'}';
-          })
-          .join(', ');
+      final summary = windows.map((window) {
+        final parsed = AppWindowArguments.tryParse(window.arguments);
+        return '${window.windowId}:${parsed?.type ?? 'unknown'}';
+      }).join(', ');
       print('[Main] windows changed -> count=${windows.length} [$summary]');
       if (windows.length == 1) {
         await ensureMainWindowInteractive('windows changed immediate');
@@ -141,20 +142,27 @@ class BovaPlayerApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final authRepository = AuthRepositoryImpl();
     final authService = AuthService(authRepository);
+    final billingRepository = BillingRepositoryImpl();
+    final billingService = BillingService(billingRepository);
 
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(
           create: (_) => auth_provider.AuthProvider(authService),
         ),
+        ChangeNotifierProvider(
+          create: (_) => BillingProvider(billingService),
+        ),
         ChangeNotifierProvider(create: (_) => LocaleProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
       ],
-      child: Consumer3<ThemeProvider, LocaleProvider, auth_provider.AuthProvider>(
+      child:
+          Consumer3<ThemeProvider, LocaleProvider, auth_provider.AuthProvider>(
         builder: (context, themeProvider, localeProvider, authProvider, _) {
           final hasProAccess = authProvider.user?.isPro ?? false;
-          final authReady = authProvider.state != auth_provider.AuthState.initial &&
-              authProvider.state != auth_provider.AuthState.loading;
+          final authReady =
+              authProvider.state != auth_provider.AuthState.initial &&
+                  authProvider.state != auth_provider.AuthState.loading;
           if (authReady &&
               ThemeProvider.isProTheme(themeProvider.themeMode) &&
               !hasProAccess) {

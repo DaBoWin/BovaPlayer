@@ -5,6 +5,9 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/bova_button.dart';
 import '../../../../core/widgets/bova_text_field.dart';
+import '../../../../features/billing/domain/entities/billing_plan.dart';
+import '../../../../features/billing/domain/entities/payment_status.dart';
+import '../../../../features/billing/presentation/providers/billing_provider.dart';
 import '../../../../l10n/generated/app_localizations.dart';
 import '../providers/auth_provider.dart';
 
@@ -437,8 +440,7 @@ class _PricingPageState extends State<PricingPage> {
                 ),
               ),
             ),
-            const Spacer(),
-            const SizedBox(height: DesignSystem.space3),
+            const SizedBox(height: DesignSystem.space5),
             BovaButton(
               text: isCurrentPlan ? l10n.pricingCurrentPlan : plan.cta,
               icon: isCurrentPlan ? Icons.check_rounded : plan.icon,
@@ -643,7 +645,6 @@ class _PricingPageState extends State<PricingPage> {
   Future<void> _handlePurchase(BuildContext context, String plan) async {
     final l10n = S.of(context);
     final codeController = TextEditingController();
-    final paymentUrl = _getPaymentUrl(plan);
 
     final result = await showDialog<String>(
       context: context,
@@ -764,25 +765,19 @@ class _PricingPageState extends State<PricingPage> {
     if (result.startsWith('redeem:')) {
       await _redeemCode(result.substring(7));
     } else if (result == 'pay') {
-      await _launchPaymentUrl(paymentUrl);
+      await _startPaymentFlow(plan);
     }
   }
 
   Future<void> _redeemCode(String code) async {
     final l10n = S.of(context);
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(
-        child: CircularProgressIndicator(color: _pricingAccent),
-      ),
-    );
+    _showBlockingLoading();
 
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final result = await authProvider.redeemCode(code);
 
-      if (mounted) Navigator.pop(context);
+      _dismissBlockingLoading();
 
       if (result['success'] == true) {
         if (!mounted) return;
@@ -830,13 +825,137 @@ class _PricingPageState extends State<PricingPage> {
         );
       }
     } catch (error) {
-      if (mounted) Navigator.pop(context);
+      _dismissBlockingLoading();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(l10n.pricingRedeemError(error.toString())),
           backgroundColor: DesignSystem.error,
         ),
+      );
+    }
+  }
+
+  Future<void> _startPaymentFlow(String planId) async {
+    final l10n = S.of(context);
+    final billingPlan = BillingPlan.tryParse(planId);
+    if (billingPlan == null || billingPlan == BillingPlan.free) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(l10n.pricingRedeemFailed),
+          backgroundColor: DesignSystem.error,
+        ),
+      );
+      return;
+    }
+
+    final billingProvider = Provider.of<BillingProvider>(context, listen: false);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+    _showBlockingLoading();
+
+    try {
+      final order = await billingProvider.createOrder(plan: billingPlan);
+
+      _dismissBlockingLoading();
+
+      final launched = await _launchPaymentUrl(order.paymentUrl);
+      if (!launched) {
+        billingProvider.clearState();
+        if (!mounted) return;
+        await _showPaymentStatusDialog(
+          title: '无法打开支付页面',
+          message: '订单已创建，但未能自动打开支付链接。你可以重试打开支付页，或稍后前往账户中心查看订阅状态。',
+          confirmText: '重试打开',
+          onConfirm: () => _launchPaymentUrl(order.paymentUrl),
+        );
+        return;
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('已打开支付页面，请完成支付后返回应用等待确认'),
+          backgroundColor: DesignSystem.success,
+        ),
+      );
+
+      _showBlockingLoading(message: '等待支付确认...');
+
+      final status = await billingProvider.waitForPayment(orderId: order.id);
+
+      _dismissBlockingLoading();
+
+      if (status.isPaid) {
+        await authProvider.refreshUser();
+        billingProvider.clearState();
+        if (!mounted) return;
+        await _showPaymentStatusDialog(
+          title: '支付成功',
+          message: status.message?.trim().isNotEmpty == true
+              ? status.message!
+              : '订阅权益已刷新，你现在可以在账户中心查看最新会员状态。',
+          confirmText: '查看账户',
+          onConfirm: _openAccountCenter,
+        );
+        return;
+      }
+
+      if (!mounted) return;
+      switch (status.state) {
+        case PaymentOrderState.pending:
+        case PaymentOrderState.unknown:
+          await _showPaymentStatusDialog(
+            title: '暂未确认支付结果',
+            message: status.message?.trim().isNotEmpty == true
+                ? status.message!
+                : '支付结果还没有同步完成。你可以稍后前往账户中心查看订阅状态，若已扣款通常会在短时间内生效。',
+            confirmText: '查看账户',
+            onConfirm: _openAccountCenter,
+          );
+          break;
+        case PaymentOrderState.failed:
+          await _showPaymentStatusDialog(
+            title: '支付失败',
+            message: status.message?.trim().isNotEmpty == true
+                ? status.message!
+                : '支付未完成，请稍后重试。',
+            confirmText: '重新打开支付页',
+            onConfirm: () => _launchPaymentUrl(order.paymentUrl),
+          );
+          break;
+        case PaymentOrderState.cancelled:
+          await _showPaymentStatusDialog(
+            title: '支付已取消',
+            message: status.message?.trim().isNotEmpty == true
+                ? status.message!
+                : '你已取消本次支付，如需继续开通可以重新打开支付页面。',
+            confirmText: '重新打开支付页',
+            onConfirm: () => _launchPaymentUrl(order.paymentUrl),
+          );
+          break;
+        case PaymentOrderState.expired:
+          await _showPaymentStatusDialog(
+            title: '支付已过期',
+            message: status.message?.trim().isNotEmpty == true
+                ? status.message!
+                : '当前订单已过期，请重新发起下单。',
+            confirmText: '我知道了',
+          );
+          break;
+        case PaymentOrderState.paid:
+          break;
+      }
+
+      billingProvider.clearState();
+    } catch (error) {
+      _dismissBlockingLoading();
+      billingProvider.clearState();
+      if (!mounted) return;
+      await _showPaymentStatusDialog(
+        title: '支付流程失败',
+        message: '创建订单或查询支付状态时出现异常：$error',
+        confirmText: '我知道了',
       );
     }
   }
@@ -849,8 +968,109 @@ class _PricingPageState extends State<PricingPage> {
     return 'free';
   }
 
-  String _getPaymentUrl(String plan) {
-    return 'https://payment.bovaplayer.com/checkout?plan=$plan';
+  void _showBlockingLoading({String message = '处理中...'}) {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(DesignSystem.radiusXl),
+          ),
+          content: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(color: _pricingAccent),
+              ),
+              const SizedBox(width: DesignSystem.space4),
+              Flexible(
+                child: Text(
+                  message,
+                  style: const TextStyle(
+                    fontSize: DesignSystem.textSm,
+                    color: DesignSystem.neutral700,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _dismissBlockingLoading() {
+    if (!mounted) return;
+    final navigator = Navigator.of(context, rootNavigator: true);
+    if (navigator.canPop()) {
+      navigator.pop();
+    }
+  }
+
+  Future<void> _showPaymentStatusDialog({
+    required String title,
+    required String message,
+    required String confirmText,
+    Future<void> Function()? onConfirm,
+  }) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(DesignSystem.radiusXl),
+        ),
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: DesignSystem.neutral900,
+            fontWeight: DesignSystem.weightSemibold,
+          ),
+        ),
+        content: Text(
+          message,
+          style: const TextStyle(
+            color: DesignSystem.neutral600,
+            height: 1.5,
+          ),
+        ),
+        actions: [
+          if (onConfirm != null)
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text(
+                '关闭',
+                style: TextStyle(color: DesignSystem.neutral600),
+              ),
+            ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              if (onConfirm != null) {
+                await onConfirm();
+              }
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: _pricingAccent,
+              foregroundColor: Colors.white,
+            ),
+            child: Text(confirmText),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openAccountCenter() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushNamed('/account');
   }
 
   String _getPlanName(String plan, S l10n) {
@@ -875,11 +1095,12 @@ class _PricingPageState extends State<PricingPage> {
     }
   }
 
-  Future<void> _launchPaymentUrl(String url) async {
+  Future<bool> _launchPaymentUrl(String url) async {
     final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!await canLaunchUrl(uri)) {
+      return false;
     }
+    return launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 }
 

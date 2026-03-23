@@ -309,16 +309,23 @@ class _StandardPlanCard extends StatelessWidget {
         ],
     };
 
+    final isFree = user.accountType == AccountType.free;
     final gradientColors = c.isDark || c.isSpecial
         ? [c.panel, c.panel.withValues(alpha: 0.85)]
         : switch (user.accountType) {
-            AccountType.free => [const Color(0xFFFFFFFF), const Color(0xFFF9F6FA)],
+            AccountType.free => [const Color(0xFFFFF7FB), const Color(0xFFFFE8F3)],
             AccountType.pro => [const Color(0xFFFFFCFE), const Color(0xFFFAF4FB)],
             AccountType.lifetime => [const Color(0xFFFFFEFC), const Color(0xFFF8F2E8)],
           };
 
-    final borderColor = palette.base.withValues(alpha: 0.16);
+    final borderColor = isFree
+        ? palette.deep.withValues(alpha: 0.18)
+        : palette.base.withValues(alpha: 0.16);
     final headlineColor = palette.text;
+    final iconTileColor = isFree ? const Color(0xFFFFF1F7) : c.overlayWhiteStrong;
+    final featurePanelColor = isFree ? const Color(0xFFFFF8FB) : c.overlayWhiteMedium;
+    final titleColor = isFree ? const Color(0xFF2B1220) : c.textPrimary;
+    final descriptionColor = isFree ? const Color(0xFF7A6570) : c.textSecondary;
 
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 332),
@@ -344,149 +351,373 @@ class _StandardPlanCard extends StatelessWidget {
           ),
           child: Padding(
             padding: const EdgeInsets.all(DesignSystem.space5),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 52,
-                      height: 52,
+            child: isFree
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(30),
+                    child: Container(
+                      constraints: const BoxConstraints(minHeight: 250),
                       decoration: BoxDecoration(
-                        color: c.overlayWhiteStrong,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: DesignSystem.neutral900.withValues(alpha: 0.05),
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [Color(0xFFFFFCFE), Color(0xFFFFE7F2)],
                         ),
+                        border: Border.all(
+                          color: palette.deep.withValues(alpha: 0.14),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: palette.deep.withValues(alpha: 0.10),
+                            blurRadius: 24,
+                            offset: const Offset(0, 12),
+                          ),
+                        ],
                       ),
-                      child: Icon(palette.icon, color: headlineColor, size: 22),
-                    ),
-                    const SizedBox(width: DesignSystem.space3),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Stack(
                         children: [
-                          Text(
-                            eyebrow,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: DesignSystem.weightSemibold,
-                              color: c.textTertiary,
-                              letterSpacing: 0.4,
+                          Positioned(
+                            right: -28,
+                            top: -18,
+                            child: Container(
+                              width: 164,
+                              height: 164,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: palette.base.withValues(alpha: 0.18),
+                              ),
                             ),
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            title,
-                            style: TextStyle(
-                              fontSize: DesignSystem.textXl,
-                              fontWeight: DesignSystem.weightBold,
-                              color: c.textPrimary,
-                              letterSpacing: -0.5,
+                          Positioned(
+                            left: -12,
+                            bottom: -42,
+                            child: Container(
+                              width: 130,
+                              height: 130,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: palette.base.withValues(alpha: 0.10),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            left: 28,
+                            top: 20,
+                            child: IgnorePointer(
+                              child: Text(
+                                'FREE',
+                                style: TextStyle(
+                                  fontSize: 84,
+                                  fontWeight: FontWeight.w800,
+                                  color: palette.deep.withValues(alpha: 0.08),
+                                  letterSpacing: -3,
+                                  height: 1,
+                                ),
+                              ),
+                            ),
+                          ),
+                          Positioned.fill(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    Colors.white.withValues(alpha: 0.30),
+                                    Colors.white.withValues(alpha: 0.02),
+                                    palette.base.withValues(alpha: 0.04),
+                                  ],
+                                  stops: const [0, 0.46, 1],
+                                ),
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(28, 28, 28, 24),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      width: 56,
+                                      height: 56,
+                                      decoration: BoxDecoration(
+                                        color: iconTileColor,
+                                        borderRadius: BorderRadius.circular(18),
+                                        border: Border.all(
+                                          color: palette.deep.withValues(alpha: 0.10),
+                                        ),
+                                      ),
+                                      child: Icon(
+                                        palette.icon,
+                                        color: headlineColor,
+                                        size: 24,
+                                      ),
+                                    ),
+                                    const SizedBox(width: DesignSystem.space3),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            eyebrow,
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: DesignSystem.weightSemibold,
+                                              color: c.textTertiary,
+                                              letterSpacing: 0.4,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            title,
+                                            style: TextStyle(
+                                              fontSize: 30,
+                                              fontWeight: DesignSystem.weightBold,
+                                              color: titleColor,
+                                              letterSpacing: -0.9,
+                                              height: 1.02,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: DesignSystem.space3,
+                                        vertical: DesignSystem.space2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFFFF9FC),
+                                        borderRadius: BorderRadius.circular(
+                                          DesignSystem.radiusFull,
+                                        ),
+                                        border: Border.all(color: borderColor),
+                                      ),
+                                      child: Text(
+                                        user.accountType.displayName,
+                                        style: TextStyle(
+                                          fontSize: DesignSystem.textXs,
+                                          fontWeight: DesignSystem.weightSemibold,
+                                          color: headlineColor,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: DesignSystem.space5),
+                                ConstrainedBox(
+                                  constraints: const BoxConstraints(maxWidth: 420),
+                                  child: Text(
+                                    description,
+                                    style: TextStyle(
+                                      fontSize: DesignSystem.textSm,
+                                      color: descriptionColor,
+                                      height: 1.6,
+                                      fontWeight: DesignSystem.weightMedium,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: DesignSystem.space5),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                                  decoration: BoxDecoration(
+                                    color: featurePanelColor,
+                                    borderRadius: BorderRadius.circular(
+                                      DesignSystem.radiusXl,
+                                    ),
+                                    border: Border.all(color: borderColor),
+                                  ),
+                                  child: Wrap(
+                                    spacing: DesignSystem.space4,
+                                    runSpacing: DesignSystem.space3,
+                                    children: features
+                                        .map(
+                                          (feature) => Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Container(
+                                                width: 6,
+                                                height: 6,
+                                                decoration: BoxDecoration(
+                                                  color: headlineColor.withValues(
+                                                    alpha: 0.78,
+                                                  ),
+                                                  shape: BoxShape.circle,
+                                                ),
+                                              ),
+                                              const SizedBox(
+                                                width: DesignSystem.space2,
+                                              ),
+                                              Text(
+                                                feature,
+                                                style: TextStyle(
+                                                  fontSize: DesignSystem.textSm,
+                                                  fontWeight:
+                                                      DesignSystem.weightMedium,
+                                                  color: c.textSecondary,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        )
+                                        .toList(),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: DesignSystem.space3,
-                        vertical: DesignSystem.space1,
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 52,
+                            height: 52,
+                            decoration: BoxDecoration(
+                              color: iconTileColor,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: DesignSystem.neutral900.withValues(alpha: 0.05),
+                              ),
+                            ),
+                            child: Icon(palette.icon, color: headlineColor, size: 22),
+                          ),
+                          const SizedBox(width: DesignSystem.space3),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  eyebrow,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: DesignSystem.weightSemibold,
+                                    color: c.textTertiary,
+                                    letterSpacing: 0.4,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  title,
+                                  style: TextStyle(
+                                    fontSize: DesignSystem.textXl,
+                                    fontWeight: DesignSystem.weightBold,
+                                    color: titleColor,
+                                    letterSpacing: -0.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: DesignSystem.space3,
+                              vertical: DesignSystem.space1,
+                            ),
+                            decoration: BoxDecoration(
+                              color: c.overlayWhiteStrong,
+                              borderRadius: BorderRadius.circular(
+                                DesignSystem.radiusFull,
+                              ),
+                              border: Border.all(color: borderColor),
+                            ),
+                            child: Text(
+                              user.accountType.displayName,
+                              style: TextStyle(
+                                fontSize: DesignSystem.textXs,
+                                fontWeight: DesignSystem.weightSemibold,
+                                color: headlineColor,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      decoration: BoxDecoration(
-                        color: c.overlayWhiteStrong,
-                        borderRadius: BorderRadius.circular(DesignSystem.radiusFull),
-                        border: Border.all(color: borderColor),
-                      ),
-                      child: Text(
-                        user.accountType.displayName,
+                      const SizedBox(height: DesignSystem.space4),
+                      Text(
+                        description,
                         style: TextStyle(
-                          fontSize: DesignSystem.textXs,
-                          fontWeight: DesignSystem.weightSemibold,
-                          color: headlineColor,
+                          fontSize: DesignSystem.textSm,
+                          color: descriptionColor,
+                          height: 1.6,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: DesignSystem.space4),
-                Text(
-                  description,
-                  style: TextStyle(
-                    fontSize: DesignSystem.textSm,
-                    color: c.textSecondary,
-                    height: 1.6,
-                  ),
-                ),
-                const SizedBox(height: DesignSystem.space4),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                  decoration: BoxDecoration(
-                    color: c.overlayWhiteMedium,
-                    borderRadius: BorderRadius.circular(DesignSystem.radiusXl),
-                    border: Border.all(color: borderColor),
-                  ),
-                  child: Wrap(
-                    spacing: DesignSystem.space4,
-                    runSpacing: DesignSystem.space3,
-                    children: features
-                        .map(
-                          (feature) => Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 5,
-                                height: 5,
-                                decoration: BoxDecoration(
-                                  color: headlineColor.withValues(alpha: 0.78),
-                                  shape: BoxShape.circle,
+                      const SizedBox(height: DesignSystem.space4),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                        decoration: BoxDecoration(
+                          color: featurePanelColor,
+                          borderRadius: BorderRadius.circular(DesignSystem.radiusXl),
+                          border: Border.all(color: borderColor),
+                        ),
+                        child: Wrap(
+                          spacing: DesignSystem.space4,
+                          runSpacing: DesignSystem.space3,
+                          children: features
+                              .map(
+                                (feature) => Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 5,
+                                      height: 5,
+                                      decoration: BoxDecoration(
+                                        color: headlineColor.withValues(alpha: 0.78),
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const SizedBox(width: DesignSystem.space2),
+                                    Text(
+                                      feature,
+                                      style: TextStyle(
+                                        fontSize: DesignSystem.textSm,
+                                        fontWeight: DesignSystem.weightMedium,
+                                        color: c.textSecondary,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
+                              )
+                              .toList(),
+                        ),
+                      ),
+                      if (user.accountType == AccountType.pro &&
+                          user.proExpiresAt != null) ...[
+                        const SizedBox(height: DesignSystem.space4),
+                        Container(
+                          padding: const EdgeInsets.all(DesignSystem.space4),
+                          decoration: BoxDecoration(
+                            color: c.overlayWhiteMedium,
+                            borderRadius: BorderRadius.circular(DesignSystem.radiusLg),
+                            border: Border.all(color: borderColor),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.schedule_outlined, size: 18, color: headlineColor),
                               const SizedBox(width: DesignSystem.space2),
                               Text(
-                                feature,
+                                l.accountExpiresAt(formatAccountDate(user.proExpiresAt!)),
                                 style: TextStyle(
                                   fontSize: DesignSystem.textSm,
                                   fontWeight: DesignSystem.weightMedium,
-                                  color: c.textSecondary,
+                                  color: headlineColor,
                                 ),
                               ),
                             ],
                           ),
-                        )
-                        .toList(),
-                  ),
-                ),
-                if (user.accountType == AccountType.pro &&
-                    user.proExpiresAt != null) ...[
-                  const SizedBox(height: DesignSystem.space4),
-                  Container(
-                    padding: const EdgeInsets.all(DesignSystem.space4),
-                    decoration: BoxDecoration(
-                      color: c.overlayWhiteMedium,
-                      borderRadius: BorderRadius.circular(DesignSystem.radiusLg),
-                      border: Border.all(color: borderColor),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.schedule_outlined, size: 18, color: headlineColor),
-                        const SizedBox(width: DesignSystem.space2),
-                        Text(
-                          l.accountExpiresAt(formatAccountDate(user.proExpiresAt!)),
-                          style: TextStyle(
-                            fontSize: DesignSystem.textSm,
-                            fontWeight: DesignSystem.weightMedium,
-                            color: headlineColor,
-                          ),
                         ),
                       ],
-                    ),
+                    ],
                   ),
-                ],
-              ],
-            ),
           ),
         ),
       ),

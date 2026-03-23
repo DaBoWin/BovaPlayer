@@ -245,6 +245,36 @@ class SEn extends S {
   String get quickPlayFailed => 'Quick play failed, please try again';
 
   @override
+  String get followSeriesStart => 'Follow';
+
+  @override
+  String get followSeriesActive => 'Following';
+
+  @override
+  String get followSeriesCancel => 'Unfollow';
+
+  @override
+  String get followSeriesUpdated => 'New episode';
+
+  @override
+  String followSeriesStarted(String title) {
+    return 'Started following: $title';
+  }
+
+  @override
+  String followSeriesCanceled(String title) {
+    return 'Stopped following: $title';
+  }
+
+  @override
+  String get followSeriesUnavailable =>
+      'No Emby series available for following';
+
+  @override
+  String get discoverBookmarksSortedByUpdates =>
+      'Followed shows with new episodes are shown first.';
+
+  @override
   String get discoverOpen => 'Open';
 
   @override

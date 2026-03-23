@@ -189,27 +189,63 @@ COMMENT ON COLUMN public.user_settings.github_repo IS 'GitHub 仓库名称（格
 CREATE TABLE IF NOT EXISTS public.subscriptions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-  
-  subscription_type VARCHAR(20) NOT NULL CHECK (subscription_type IN ('pro_monthly', 'pro_yearly', 'lifetime')),
-  status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'expired', 'cancelled', 'pending')),
-  
-  -- 支付信息
-  payment_method VARCHAR(50) CHECK (payment_method IN ('alipay', 'wechat', 'stripe', 'paypal')),
+
+  subscription_type VARCHAR(32) NOT NULL CHECK (
+    subscription_type IN (
+      'pro_monthly', 'pro_yearly', 'lifetime',
+      'redeem_pro', 'redeem_lifetime',
+      'manual_pro', 'manual_lifetime'
+    )
+  ),
+  status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('pending', 'active', 'expired', 'cancelled', 'failed')),
+
+  -- 来源 / 支付信息
+  payment_method VARCHAR(50) CHECK (payment_method IN ('alipay', 'wechat', 'stripe', 'paypal', 'redeem_code', 'manual')),
+  source_type VARCHAR(30) NOT NULL DEFAULT 'payment' CHECK (source_type IN ('payment', 'redeem_code', 'manual')),
+  source_id UUID,
+  merchant_order_id VARCHAR(255),
   transaction_id VARCHAR(255),
-  amount_cny DECIMAL(10,2) NOT NULL,
-  
+  amount_cny DECIMAL(10,2) NOT NULL DEFAULT 0,
+  currency VARCHAR(10) NOT NULL DEFAULT 'CNY',
+  metadata JSONB NOT NULL DEFAULT '{}',
+
   started_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   expires_at TIMESTAMP WITH TIME ZONE,
   cancelled_at TIMESTAMP WITH TIME ZONE,
-  
+
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.subscriptions IS '订阅记录和支付/兑换台账';
+COMMENT ON COLUMN public.subscriptions.amount_cny IS '支付金额（人民币）';
+COMMENT ON COLUMN public.subscriptions.source_type IS '来源类型: payment, redeem_code, manual';
+
+-- ============================================
+-- 9. 兑换日志表 (redemption_logs)
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.redemption_logs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  redemption_code_id UUID NOT NULL REFERENCES public.redemption_codes(id) ON DELETE CASCADE,
+  code TEXT NOT NULL,
+  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  subscription_id UUID REFERENCES public.subscriptions(id) ON DELETE SET NULL,
+
+  code_type VARCHAR(20) NOT NULL CHECK (code_type IN ('pro', 'lifetime')),
+  granted_account_type VARCHAR(20) NOT NULL CHECK (granted_account_type IN ('pro', 'lifetime')),
+  granted_duration_days INTEGER,
+  previous_account_type VARCHAR(20),
+  previous_expires_at TIMESTAMP WITH TIME ZONE,
+  new_expires_at TIMESTAMP WITH TIME ZONE,
+
+  metadata JSONB NOT NULL DEFAULT '{}',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-COMMENT ON TABLE public.subscriptions IS '订阅记录和支付历史';
-COMMENT ON COLUMN public.subscriptions.amount_cny IS '支付金额（人民币）';
+COMMENT ON TABLE public.redemption_logs IS '兑换码兑换日志，可追溯到订阅台账';
 
 -- ============================================
--- 9. 同步日志表 (sync_logs)
+-- 10. 同步日志表 (sync_logs)
 -- ============================================
 CREATE TABLE IF NOT EXISTS public.sync_logs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

@@ -14,20 +14,49 @@ class AccountUpgradeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = S.of(context);
+    final c = AccountColors.of(context);
     final isPro = user.accountType == AccountType.pro;
 
-    final gradient = isPro
-        ? DesignSystem.lifetimeGradient
-        : const LinearGradient(
-            colors: [DesignSystem.neutral900, DesignSystem.neutral700],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          );
+    final gradient = c.isDark || c.isSpecial
+        ? (isPro
+            ? DesignSystem.lifetimeGradient
+            : LinearGradient(
+                colors: [
+                  c.panel,
+                  c.panel.withValues(alpha: 0.88),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ))
+        : (isPro
+            ? DesignSystem.lifetimeGradient
+            : const LinearGradient(
+                colors: [Color(0xFFFFFCFE), Color(0xFFFFF1F7)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ));
+    final borderColor = isPro
+        ? Colors.transparent
+        : c.isDark || c.isSpecial
+            ? c.panelBorder
+            : const Color(0xFFFBCFE8);
+    final eyebrowColor = isPro
+        ? const Color(0xFFE7E5E4)
+        : c.textTertiary;
+    final titleColor = isPro ? Colors.white : c.textPrimary;
+    final descriptionColor = isPro
+        ? Colors.white.withValues(alpha: 0.82)
+        : c.textSecondary;
+    final buttonBackground = isPro ? Colors.transparent : const Color(0xFFE11D48);
+    const buttonForeground = Colors.white;
+    final buttonBorderColor = isPro
+        ? Colors.white.withValues(alpha: 0.44)
+        : const Color(0xFFE11D48);
 
     return AccountSurfacePanel(
       padding: EdgeInsets.zero,
       backgroundColor: Colors.transparent,
-      borderColor: Colors.transparent,
+      borderColor: borderColor,
       boxShadow: [
         BoxShadow(
           color: Colors.black.withValues(alpha: 0.06),
@@ -47,20 +76,20 @@ class AccountUpgradeCard extends StatelessWidget {
             children: [
               Text(
                 l.accountUpgradeTitle,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: DesignSystem.textXs,
                   fontWeight: DesignSystem.weightSemibold,
-                  color: Color(0xFFE7E5E4),
+                  color: eyebrowColor,
                   letterSpacing: 0.5,
                 ),
               ),
               const SizedBox(height: DesignSystem.space2),
               Text(
                 isPro ? l.accountUpgradeToLifetime : l.accountUpgradeToPro,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: DesignSystem.textLg,
                   fontWeight: DesignSystem.weightSemibold,
-                  color: Colors.white,
+                  color: titleColor,
                 ),
               ),
               const SizedBox(height: DesignSystem.space2),
@@ -70,7 +99,7 @@ class AccountUpgradeCard extends StatelessWidget {
                     : l.accountUpgradeProDesc,
                 style: TextStyle(
                   fontSize: DesignSystem.textSm,
-                  color: Colors.white.withValues(alpha: 0.82),
+                  color: descriptionColor,
                   height: 1.5,
                 ),
               ),
@@ -80,25 +109,23 @@ class AccountUpgradeCard extends StatelessWidget {
                 child: OutlinedButton.icon(
                   onPressed: () => Navigator.push(
                     context,
-                    MaterialPageRoute(
-                        builder: (_) => const PricingPage()),
+                    MaterialPageRoute(builder: (_) => const PricingPage()),
                   ),
-                  icon: Icon(
-                      isPro ? Icons.stars_outlined : Icons.upgrade),
-                  label: Text(isPro
-                      ? l.accountViewLifetimePlan
-                      : l.accountViewProPlan),
+                  icon: Icon(isPro ? Icons.stars_outlined : Icons.upgrade),
+                  label: Text(
+                    isPro ? l.accountViewLifetimePlan : l.accountViewProPlan,
+                  ),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: BorderSide(
-                      color: Colors.white.withValues(alpha: 0.44),
-                    ),
+                    backgroundColor: buttonBackground,
+                    foregroundColor: buttonForeground,
+                    side: BorderSide(color: buttonBorderColor),
                     padding: const EdgeInsets.symmetric(
                       vertical: DesignSystem.space4,
                     ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(
-                          DesignSystem.radiusFull),
+                        DesignSystem.radiusFull,
+                      ),
                     ),
                     textStyle: const TextStyle(
                       fontSize: DesignSystem.textBase,

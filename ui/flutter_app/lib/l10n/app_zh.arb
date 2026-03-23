@@ -86,6 +86,24 @@
   "bookmarkRemoved": "已移除书签：{title}",
   "bookmarkSaveFailed": "书签保存失败，请重试",
   "quickPlayFailed": "快速播放失败，请重试",
+  "followSeriesStart": "追剧",
+  "followSeriesActive": "追剧中",
+  "followSeriesCancel": "取消追剧",
+  "followSeriesUpdated": "新集",
+  "followSeriesStarted": "已开始追剧：{title}",
+  "@followSeriesStarted": {
+    "placeholders": {
+      "title": { "type": "String" }
+    }
+  },
+  "followSeriesCanceled": "已取消追剧：{title}",
+  "@followSeriesCanceled": {
+    "placeholders": {
+      "title": { "type": "String" }
+    }
+  },
+  "followSeriesUnavailable": "未找到可追剧的 Emby 剧集",
+  "discoverBookmarksSortedByUpdates": "已优先显示有新集的追剧收藏。",
 
   "discoverOpen": "打开",
   "discoverFeatured": "精选",

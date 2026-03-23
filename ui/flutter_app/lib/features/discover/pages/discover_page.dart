@@ -99,15 +99,18 @@ class _DiscoverPageState extends State<DiscoverPage> {
             return const SizedBox.shrink();
           }
 
+          final limitedMatches =
+              compact ? matches.take(3).toList(growable: false) : matches;
+
           if (compact) {
             return DiscoverMatchedSourceStrip(
-              matches: matches,
+              matches: limitedMatches,
               onTap: (match) => onQuickPlayMatch(item, match),
             );
           }
 
           final chips = [
-            for (final match in matches)
+            for (final match in limitedMatches)
               Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: _QuickPlayButton(
@@ -123,6 +126,132 @@ class _DiscoverPageState extends State<DiscoverPage> {
             spacing: 8,
             runSpacing: 8,
             children: chips.map((chip) => chip.child!).toList(growable: false),
+          );
+        },
+      ),
+    ];
+  }
+
+  List<Widget> _buildHeroQuickPlayButtons(TmdbMediaItem item) {
+    final resolver = widget.resolveLibraryMatches;
+    final onQuickPlayMatch = widget.onQuickPlayMatch;
+    if (resolver == null || onQuickPlayMatch == null) {
+      return const [];
+    }
+
+    return [
+      FutureBuilder<List<DiscoverLibraryMatch>>(
+        future: resolver(item),
+        builder: (context, snapshot) {
+          final matches = snapshot.data ?? const <DiscoverLibraryMatch>[];
+          if (matches.isEmpty) {
+            return const SizedBox.shrink();
+          }
+
+          final visibleMatches = matches.take(3).toList(growable: false);
+          final hiddenCount = matches.length > 3 ? matches.length - 3 : 0;
+          final l = S.of(context);
+          final scheme = Theme.of(context).colorScheme;
+
+          return Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final match in visibleMatches)
+                _QuickPlayButton(
+                  key: ValueKey('${_itemKey(item)}-${match.source.id}'),
+                  label: match.source.name,
+                  latencyMs: match.responseTimeMs,
+                  onTap: () => onQuickPlayMatch(item, match),
+                ),
+              if (hiddenCount > 0)
+                PopupMenuButton<DiscoverLibraryMatch>(
+                  tooltip: l.discoverExpandSources(hiddenCount),
+                  onSelected: (match) => onQuickPlayMatch(item, match),
+                  color: scheme.surface,
+                  elevation: 10,
+                  offset: const Offset(0, 8),
+                  constraints: const BoxConstraints(
+                    minWidth: 220,
+                    maxWidth: 260,
+                    maxHeight: 280,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    side: BorderSide(
+                      color: scheme.outline.withValues(alpha: 0.15),
+                    ),
+                  ),
+                  padding: EdgeInsets.zero,
+                  itemBuilder: (context) => [
+                    for (final match in matches.skip(3))
+                      PopupMenuItem<DiscoverLibraryMatch>(
+                        value: match,
+                        height: 44,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.play_circle_fill_rounded,
+                              size: 15,
+                              color: _resolveAccent(context),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                match.source.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: DesignSystem.textSm,
+                                  fontWeight: DesignSystem.weightSemibold,
+                                  color: scheme.onSurface,
+                                  letterSpacing: -0.15,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            DiscoverLatencyIndicator(
+                              latencyMs: match.responseTimeMs,
+                              compact: true,
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                  child: Container(
+                    constraints: const BoxConstraints(minHeight: 44),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 9,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? scheme.surface
+                          : Colors.white.withValues(alpha: 0.96),
+                      borderRadius:
+                          BorderRadius.circular(DesignSystem.radiusFull),
+                      border: Border.all(
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? scheme.outline.withValues(alpha: 0.15)
+                            : scheme.onSurface.withValues(alpha: 0.08),
+                      ),
+                    ),
+                    child: Text(
+                      '+$hiddenCount',
+                      style: TextStyle(
+                        fontSize: DesignSystem.textSm,
+                        fontWeight: DesignSystem.weightSemibold,
+                        color: scheme.onSurface,
+                        letterSpacing: -0.1,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           );
         },
       ),
@@ -228,8 +357,8 @@ class _DiscoverPageState extends State<DiscoverPage> {
                               : () => widget.onSaveItem!(featured),
                           secondaryActive:
                               widget.isBookmarked?.call(featured) ?? false,
-                          quickPlayButtons: _buildQuickPlayButtons(featured,
-                              compact: isMobile),
+                          quickPlayButtons:
+                              _buildHeroQuickPlayButtons(featured),
                         ),
                       ),
                     ),
@@ -310,7 +439,7 @@ class _QuickPlayButton extends StatefulWidget {
 
   final String label;
   final int? latencyMs;
-  final VoidCallback onTap;
+  final Future<void> Function() onTap;
 
   @override
   State<_QuickPlayButton> createState() => _QuickPlayButtonState();
@@ -318,13 +447,33 @@ class _QuickPlayButton extends StatefulWidget {
 
 class _QuickPlayButtonState extends State<_QuickPlayButton> {
   bool _isHovered = false;
+  bool _isCoolingDown = false;
+
+  Future<void> _handleTap() async {
+    if (_isCoolingDown) return;
+    setState(() => _isCoolingDown = true);
+    try {
+      await widget.onTap();
+    } finally {
+      if (mounted) {
+        Future<void>.delayed(const Duration(milliseconds: 1200), () {
+          if (!mounted) return;
+          setState(() => _isCoolingDown = false);
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final accent = _resolveAccent(context);
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final chipBg = isDark ? scheme.surface : Colors.white.withValues(alpha: 0.96);
+    final chipBg = _isCoolingDown
+        ? (isDark
+            ? scheme.surfaceContainerHighest.withValues(alpha: 0.78)
+            : scheme.surfaceContainerHighest.withValues(alpha: 0.92))
+        : (isDark ? scheme.surface : Colors.white.withValues(alpha: 0.96));
     final borderColor = isDark
         ? scheme.outline.withValues(alpha: 0.15)
         : scheme.onSurface.withValues(alpha: 0.08);
@@ -335,55 +484,68 @@ class _QuickPlayButtonState extends State<_QuickPlayButton> {
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: DesignSystem.durationFast,
-          curve: DesignSystem.easeOutQuart,
-          transform: Matrix4.identity()
-            ..translateByDouble(0.0, _isHovered ? -2.0 : 0.0, 0.0, 1.0),
-          constraints: const BoxConstraints(
-            maxWidth: 240,
-          ),
-          padding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 9,
-          ),
-          decoration: BoxDecoration(
-            color: chipBg,
-            borderRadius: BorderRadius.circular(DesignSystem.radiusFull),
-            border: Border.all(color: borderColor),
-            boxShadow: _isHovered
-                ? [
-                    BoxShadow(
-                      color: shadowColor,
-                      blurRadius: 18,
-                      offset: const Offset(0, 10),
-                    ),
-                  ]
-                : const [],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.play_circle_fill_rounded,
-                size: 16,
-                color: accent,
+      child: Opacity(
+        opacity: _isCoolingDown ? 0.68 : 1,
+        child: GestureDetector(
+          onTap: _isCoolingDown ? null : _handleTap,
+          behavior: HitTestBehavior.opaque,
+          child: AnimatedContainer(
+            duration: DesignSystem.durationFast,
+            curve: DesignSystem.easeOutQuart,
+            transform: Matrix4.identity()
+              ..translateByDouble(
+                0.0,
+                _isHovered && !_isCoolingDown ? -2.0 : 0.0,
+                0.0,
+                1.0,
               ),
-              const SizedBox(width: 6),
-              Text(
-                widget.label,
-                style: TextStyle(
-                  fontSize: DesignSystem.textSm,
-                  fontWeight: DesignSystem.weightSemibold,
-                  color: scheme.onSurface,
-                  letterSpacing: -0.1,
+            constraints: const BoxConstraints(
+              maxWidth: 240,
+            ),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 9,
+            ),
+            decoration: BoxDecoration(
+              color: chipBg,
+              borderRadius: BorderRadius.circular(DesignSystem.radiusFull),
+              border: Border.all(color: borderColor),
+              boxShadow: _isHovered && !_isCoolingDown
+                  ? [
+                      BoxShadow(
+                        color: shadowColor,
+                        blurRadius: 18,
+                        offset: const Offset(0, 10),
+                      ),
+                    ]
+                  : const [],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.play_circle_fill_rounded,
+                  size: 16,
+                  color: _isCoolingDown
+                      ? scheme.onSurface.withValues(alpha: 0.52)
+                      : accent,
                 ),
-              ),
-              const SizedBox(width: 8),
-              DiscoverLatencyIndicator(latencyMs: widget.latencyMs),
-            ],
+                const SizedBox(width: 6),
+                Text(
+                  widget.label,
+                  style: TextStyle(
+                    fontSize: DesignSystem.textSm,
+                    fontWeight: DesignSystem.weightSemibold,
+                    color: scheme.onSurface.withValues(
+                      alpha: _isCoolingDown ? 0.62 : 1,
+                    ),
+                    letterSpacing: -0.1,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                DiscoverLatencyIndicator(latencyMs: widget.latencyMs),
+              ],
+            ),
           ),
         ),
       ),

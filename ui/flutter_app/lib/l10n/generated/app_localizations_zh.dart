@@ -242,6 +242,34 @@ class SZh extends S {
   String get quickPlayFailed => '快速播放失败，请重试';
 
   @override
+  String get followSeriesStart => '追剧';
+
+  @override
+  String get followSeriesActive => '追剧中';
+
+  @override
+  String get followSeriesCancel => '取消追剧';
+
+  @override
+  String get followSeriesUpdated => '新集';
+
+  @override
+  String followSeriesStarted(String title) {
+    return '已开始追剧：$title';
+  }
+
+  @override
+  String followSeriesCanceled(String title) {
+    return '已取消追剧：$title';
+  }
+
+  @override
+  String get followSeriesUnavailable => '未找到可追剧的 Emby 剧集';
+
+  @override
+  String get discoverBookmarksSortedByUpdates => '已优先显示有新集的追剧收藏。';
+
+  @override
   String get discoverOpen => '打开';
 
   @override

@@ -13,6 +13,7 @@ class DiscoverPosterCard extends StatefulWidget {
     this.onTap,
     this.quickPlayButtons = const [],
     this.overlayAction,
+    this.overlayBadge,
     this.overlayActionAlwaysVisible = false,
   });
 
@@ -22,6 +23,7 @@ class DiscoverPosterCard extends StatefulWidget {
   final VoidCallback? onTap;
   final List<Widget> quickPlayButtons;
   final Widget? overlayAction;
+  final Widget? overlayBadge;
   final bool overlayActionAlwaysVisible;
 
   @override
@@ -47,7 +49,7 @@ class _DiscoverPosterCardState extends State<DiscoverPosterCard> {
           onExit: (_) => setState(() => _isHovered = false),
           child: GestureDetector(
             onTap: widget.onTap,
-            behavior: HitTestBehavior.opaque,
+            behavior: HitTestBehavior.deferToChild,
             child: AnimatedContainer(
               duration: DesignSystem.durationNormal,
               curve: DesignSystem.easeOutQuart,
@@ -91,6 +93,19 @@ class _DiscoverPosterCardState extends State<DiscoverPosterCard> {
                               )
                             else
                               _PosterFallback(item: widget.item),
+                            if (widget.overlayBadge != null)
+                              Positioned(
+                                right: 12,
+                                bottom: 12,
+                                child: AnimatedOpacity(
+                                  duration: DesignSystem.durationFast,
+                                  opacity: widget.overlayActionAlwaysVisible ||
+                                          _isHovered
+                                      ? 1.0
+                                      : 0.92,
+                                  child: widget.overlayBadge!,
+                                ),
+                              ),
                             if (widget.overlayAction != null)
                               Positioned(
                                 top: 12,
@@ -108,19 +123,21 @@ class _DiscoverPosterCardState extends State<DiscoverPosterCard> {
                               left: 0,
                               right: 0,
                               bottom: 0,
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topCenter,
-                                    end: Alignment.bottomCenter,
-                                    colors: [
-                                      Colors.transparent,
-                                      Colors.black.withValues(alpha: 0.12),
-                                      Colors.black.withValues(alpha: 0.48),
-                                    ],
+                              child: IgnorePointer(
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                      colors: [
+                                        Colors.transparent,
+                                        Colors.black.withValues(alpha: 0.12),
+                                        Colors.black.withValues(alpha: 0.48),
+                                      ],
+                                    ),
                                   ),
+                                  child: SizedBox(height: resolvedWidth * 0.24),
                                 ),
-                                child: SizedBox(height: resolvedWidth * 0.24),
                               ),
                             ),
                           ],
@@ -148,7 +165,10 @@ class _DiscoverPosterCardState extends State<DiscoverPosterCard> {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: DesignSystem.textSm,
-                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.5),
                       fontWeight: DesignSystem.weightMedium,
                       height: 1.15,
                     ),

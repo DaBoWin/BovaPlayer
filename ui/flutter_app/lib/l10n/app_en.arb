@@ -117,6 +117,24 @@
   },
   "bookmarkSaveFailed": "Failed to save bookmark, please try again",
   "quickPlayFailed": "Quick play failed, please try again",
+  "followSeriesStart": "Follow",
+  "followSeriesActive": "Following",
+  "followSeriesCancel": "Unfollow",
+  "followSeriesUpdated": "New episode",
+  "followSeriesStarted": "Started following: {title}",
+  "@followSeriesStarted": {
+    "placeholders": {
+      "title": { "type": "String" }
+    }
+  },
+  "followSeriesCanceled": "Stopped following: {title}",
+  "@followSeriesCanceled": {
+    "placeholders": {
+      "title": { "type": "String" }
+    }
+  },
+  "followSeriesUnavailable": "No Emby series available for following",
+  "discoverBookmarksSortedByUpdates": "Followed shows with new episodes are shown first.",
 
   "discoverOpen": "Open",
   "discoverFeatured": "Featured",

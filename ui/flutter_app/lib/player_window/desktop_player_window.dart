@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -17,9 +19,9 @@ import '../unified_player_page.dart';
 
 const String kMainAppWindowType = 'main';
 const String kPlayerAppWindowType = 'player';
+const String kPlayerWindowChannelName = 'bovaplayer/player_window';
 
-bool get supportsDetachedPlayerWindow =>
-    !kIsWeb && Platform.isMacOS;
+bool get supportsDetachedPlayerWindow => !kIsWeb && Platform.isMacOS;
 
 class AppWindowArguments {
   const AppWindowArguments({required this.type, this.payload});
@@ -151,6 +153,17 @@ enum PlayerLaunchMode {
 class DesktopPlayerLauncher {
   const DesktopPlayerLauncher._();
 
+  static Future<WindowController?> _findExistingPlayerWindow() async {
+    final windows = await WindowController.getAll();
+    for (final window in windows) {
+      final parsed = AppWindowArguments.tryParse(window.arguments);
+      if (parsed?.type == kPlayerAppWindowType) {
+        return window;
+      }
+    }
+    return null;
+  }
+
   static Future<PlayerLaunchMode> openPlayer({
     required BuildContext context,
     required String url,
@@ -177,6 +190,19 @@ class DesktopPlayerLauncher {
         startPositionMs: startPosition?.inMilliseconds,
         startTimeTicks: startTimeTicks,
       );
+      final existingWindow = await _findExistingPlayerWindow();
+      if (existingWindow != null) {
+        try {
+          await existingWindow.invokeMethod<void>(
+              'playPayload', payload.toJson());
+          await existingWindow.show();
+          return PlayerLaunchMode.detachedWindow;
+        } on PlatformException {
+          // Fall through to creating a new window if the existing one is stale.
+        } on MissingPluginException {
+          // Fall through to creating a new window if the existing one is stale.
+        }
+      }
       final controller = await WindowController.create(
         WindowConfiguration(
           hiddenAtLaunch: true,
@@ -229,10 +255,64 @@ WindowOptions playerWindowOptions(DesktopPlayerPayload payload) =>
       title: payload.title.isEmpty ? 'BovaPlayer' : payload.title,
     );
 
-class DesktopPlayerWindowApp extends StatelessWidget {
+class DesktopPlayerWindowApp extends StatefulWidget {
   const DesktopPlayerWindowApp({super.key, required this.payload});
 
   final DesktopPlayerPayload payload;
+
+  @override
+  State<DesktopPlayerWindowApp> createState() => _DesktopPlayerWindowAppState();
+}
+
+class _DesktopPlayerWindowAppState extends State<DesktopPlayerWindowApp> {
+  WindowController? _windowController;
+  late DesktopPlayerPayload _payload;
+
+  @override
+  void initState() {
+    super.initState();
+    _payload = widget.payload;
+    _registerPlayerWindowChannel();
+  }
+
+  Future<void> _registerPlayerWindowChannel() async {
+    try {
+      final controller = await WindowController.fromCurrentEngine();
+      _windowController = controller;
+      await controller.setWindowMethodHandler((call) async {
+        switch (call.method) {
+          case 'playPayload':
+            final arguments = call.arguments;
+            if (arguments is! Map) {
+              throw ArgumentError('Invalid playPayload arguments: $arguments');
+            }
+            final nextPayload = DesktopPlayerPayload.fromJson(
+              arguments.cast<String, dynamic>(),
+            );
+            if (!mounted) return null;
+            setState(() {
+              _payload = nextPayload;
+            });
+            await windowManager.show();
+            await windowManager.focus();
+            return null;
+          default:
+            throw MissingPluginException(
+              'Not implemented player window method: ${call.method}',
+            );
+        }
+      });
+    } catch (_) {
+      // Ignore channel registration failures and fall back to standalone window creation.
+    }
+  }
+
+  @override
+  void dispose() {
+    unawaited(
+        _windowController?.setWindowMethodHandler(null) ?? Future.value());
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -242,23 +322,26 @@ class DesktopPlayerWindowApp extends StatelessWidget {
     return ChangeNotifierProvider(
       create: (_) => auth_provider.AuthProvider(authService),
       child: MaterialApp(
-        title: payload.title,
+        title: _payload.title,
         debugShowCheckedModeBanner: false,
         theme: AppTheme.darkTheme,
         darkTheme: AppTheme.darkTheme,
         themeMode: ThemeMode.dark,
         home: MdkPlayerPage(
-          url: payload.url,
-          title: payload.title,
-          httpHeaders: payload.httpHeaders,
-          subtitles: payload.subtitles,
-          itemId: payload.itemId,
-          serverUrl: payload.serverUrl,
-          accessToken: payload.accessToken,
-          userId: payload.userId,
+          key: ValueKey(
+            '${_payload.itemId ?? _payload.url}-${_payload.startPositionMs ?? 0}',
+          ),
+          url: _payload.url,
+          title: _payload.title,
+          httpHeaders: _payload.httpHeaders,
+          subtitles: _payload.subtitles,
+          itemId: _payload.itemId,
+          serverUrl: _payload.serverUrl,
+          accessToken: _payload.accessToken,
+          userId: _payload.userId,
           isSubWindow: true,
-          startPosition: payload.startPosition,
-          startTimeTicks: payload.startTimeTicks,
+          startPosition: _payload.startPosition,
+          startTimeTicks: _payload.startTimeTicks,
         ),
       ),
     );

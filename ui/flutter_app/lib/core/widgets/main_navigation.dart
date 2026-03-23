@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -14,6 +15,7 @@ import '../../features/discover/pages/discover_bookmarks_page.dart';
 import '../../features/discover/pages/discover_page.dart';
 import '../../features/discover/pages/discover_search_page.dart';
 import '../../features/discover/services/discover_bookmark_service.dart';
+import '../../features/discover/services/discover_follow_series_service.dart';
 import '../../features/discover/services/discover_library_resolver_service.dart';
 import '../../features/discover/services/tmdb_service.dart';
 import '../../features/settings/pages/settings_page.dart';
@@ -64,14 +66,22 @@ class _MainNavigationState extends State<MainNavigation> {
       DiscoverLibraryResolverService();
   final DiscoverBookmarkService _discoverBookmarkService =
       DiscoverBookmarkService();
+  final DiscoverFollowSeriesService _discoverFollowSeriesService =
+      DiscoverFollowSeriesService();
   final EmbyQuickPlayService _embyQuickPlayService = EmbyQuickPlayService();
+  final Set<String> _discoverQuickPlayInFlight = <String>{};
   final TmdbService _tmdbService = TmdbService();
 
   final Map<String, Future<List<DiscoverLibraryMatch>>>
       _discoverMatchFutureCache = {};
   final Map<String, TmdbMediaItem> _discoverBookmarksByKey = {};
+  final Map<String, DiscoverFollowSeriesState> _discoverFollowStates = {};
+  final Set<String> _discoverFollowRefreshingKeys = {};
   final ValueNotifier<List<TmdbMediaItem>> _discoverBookmarksNotifier =
       ValueNotifier<List<TmdbMediaItem>>(const []);
+  final ValueNotifier<Map<String, DiscoverFollowSeriesState>>
+      _discoverFollowStatesNotifier =
+      ValueNotifier<Map<String, DiscoverFollowSeriesState>>(const {});
 
   _AppSection _currentSection = _AppSection.discover;
   bool _isSidebarExpanded = true;
@@ -102,6 +112,7 @@ class _MainNavigationState extends State<MainNavigation> {
 
   Future<void> _loadDiscoverBookmarks() async {
     final bookmarks = await _discoverBookmarkService.loadBookmarks();
+    final followStates = await _discoverFollowSeriesService.loadStates();
     if (!mounted) return;
     setState(() {
       _discoverBookmarksByKey
@@ -109,8 +120,12 @@ class _MainNavigationState extends State<MainNavigation> {
         ..addEntries(
           bookmarks.map((item) => MapEntry(_discoverItemKey(item), item)),
         );
-      _discoverBookmarksNotifier.value = List.unmodifiable(bookmarks);
+      _discoverFollowStates
+        ..clear()
+        ..addAll(followStates);
+      _publishDiscoverState();
     });
+    unawaited(_refreshDiscoverFollowStates());
   }
 
   @override
@@ -119,7 +134,9 @@ class _MainNavigationState extends State<MainNavigation> {
         Provider.of<auth_provider.AuthProvider>(context, listen: false);
     authProvider.removeListener(_onAuthStateChanged);
     _discoverLibraryResolver.dispose();
+    _discoverFollowSeriesService.dispose();
     _discoverBookmarksNotifier.dispose();
+    _discoverFollowStatesNotifier.dispose();
     super.dispose();
   }
 
@@ -226,6 +243,138 @@ class _MainNavigationState extends State<MainNavigation> {
 
   String _discoverItemKey(TmdbMediaItem item) => '${item.mediaType}-${item.id}';
 
+  List<TmdbMediaItem> _sortedDiscoverBookmarks() {
+    final originalBookmarks =
+        _discoverBookmarksByKey.values.toList(growable: false);
+    final orderIndexByKey = <String, int>{
+      for (var index = 0; index < originalBookmarks.length; index++)
+        _discoverItemKey(originalBookmarks[index]): index,
+    };
+    final bookmarks = List<TmdbMediaItem>.from(originalBookmarks);
+    bookmarks.sort((left, right) {
+      final leftState = _discoverFollowStates[_discoverItemKey(left)];
+      final rightState = _discoverFollowStates[_discoverItemKey(right)];
+      final leftPriority = leftState?.hasNewEpisodes == true ? 1 : 0;
+      final rightPriority = rightState?.hasNewEpisodes == true ? 1 : 0;
+      final priorityCompare = rightPriority.compareTo(leftPriority);
+      if (priorityCompare != 0) {
+        return priorityCompare;
+      }
+
+      final leftIndex = orderIndexByKey[_discoverItemKey(left)] ?? 1 << 30;
+      final rightIndex = orderIndexByKey[_discoverItemKey(right)] ?? 1 << 30;
+      return leftIndex.compareTo(rightIndex);
+    });
+    return bookmarks;
+  }
+
+  void _publishDiscoverState() {
+    _discoverBookmarksNotifier.value =
+        List.unmodifiable(_sortedDiscoverBookmarks());
+    _discoverFollowStatesNotifier.value = Map.unmodifiable(
+      Map<String, DiscoverFollowSeriesState>.from(_discoverFollowStates),
+    );
+  }
+
+  DiscoverFollowSeriesState? _followStateFor(TmdbMediaItem item) {
+    return _discoverFollowStates[_discoverItemKey(item)];
+  }
+
+  bool _canFollowItem(TmdbMediaItem item,
+      [List<DiscoverLibraryMatch>? matches]) {
+    if (item.mediaType != 'tv') return false;
+    if (matches == null) return false;
+    return _discoverFollowSeriesService.exactSeriesMatches(matches).isNotEmpty;
+  }
+
+  Future<void> _toggleDiscoverFollowSeries(TmdbMediaItem item) async {
+    final key = _discoverItemKey(item);
+    final existingState = _followStateFor(item);
+
+    if (existingState?.isFollowing == true) {
+      final updatedState = existingState!.copyWith(
+        isFollowing: false,
+        hasNewEpisodes: false,
+        clearLastCheckedAt: true,
+      );
+      _discoverFollowStates[key] = updatedState;
+      await _discoverFollowSeriesService.upsertState(key, updatedState);
+      if (!mounted) return;
+      setState(_publishDiscoverState);
+      _showWorkspaceSnackBar(S.of(context).followSeriesCanceled(item.title));
+      return;
+    }
+
+    final matches = await _resolveDiscoverMatches(item);
+    final exactMatches =
+        _discoverFollowSeriesService.exactSeriesMatches(matches);
+    if (exactMatches.isEmpty) {
+      if (!mounted) return;
+      _showWorkspaceSnackBar(S.of(context).followSeriesUnavailable,
+          isError: true);
+      return;
+    }
+
+    final selected = exactMatches.first;
+    final updatedState = DiscoverFollowSeriesState(
+      isFollowing: true,
+      followedAt: DateTime.now(),
+      sourceId: selected.source.id,
+      embyItemId: selected.itemId,
+      matchedByTmdbId: true,
+      hasNewEpisodes: false,
+    );
+    _discoverFollowStates[key] = updatedState;
+    await _discoverFollowSeriesService.upsertState(key, updatedState);
+    if (!mounted) return;
+    setState(_publishDiscoverState);
+    _showWorkspaceSnackBar(S.of(context).followSeriesStarted(item.title));
+    unawaited(_refreshDiscoverFollowState(item));
+  }
+
+  Future<void> _refreshDiscoverFollowStates() async {
+    final candidates = _discoverBookmarksByKey.values
+        .where((item) {
+          final state = _followStateFor(item);
+          return item.mediaType == 'tv' && state?.isFollowing == true;
+        })
+        .take(10)
+        .toList(growable: false);
+
+    for (final item in candidates) {
+      await _refreshDiscoverFollowState(item);
+    }
+  }
+
+  Future<void> _refreshDiscoverFollowState(TmdbMediaItem item) async {
+    final key = _discoverItemKey(item);
+    final state = _followStateFor(item);
+    if (state == null || !state.isFollowing) return;
+    if (_discoverFollowRefreshingKeys.contains(key)) return;
+
+    _discoverFollowRefreshingKeys.add(key);
+    try {
+      final matches = await _resolveDiscoverMatches(item);
+      final result = await _discoverFollowSeriesService.refreshState(
+        state: state,
+        matches: matches,
+      );
+      final updatedState = state.copyWith(
+        sourceId: result.sourceId,
+        embyItemId: result.embyItemId,
+        matchedByTmdbId: result.sourceId != null && result.embyItemId != null,
+        hasNewEpisodes: result.hasNewEpisodes,
+        lastCheckedAt: DateTime.now(),
+      );
+      _discoverFollowStates[key] = updatedState;
+      await _discoverFollowSeriesService.upsertState(key, updatedState);
+      if (!mounted) return;
+      setState(_publishDiscoverState);
+    } finally {
+      _discoverFollowRefreshingKeys.remove(key);
+    }
+  }
+
   Future<List<DiscoverLibraryMatch>> _resolveDiscoverMatches(
     TmdbMediaItem item,
   ) {
@@ -239,6 +388,13 @@ class _MainNavigationState extends State<MainNavigation> {
     TmdbMediaItem item,
     DiscoverLibraryMatch match,
   ) async {
+    final quickPlayKey =
+        '${_discoverItemKey(item)}-${match.source.id}-${match.itemId}';
+    if (_discoverQuickPlayInFlight.contains(quickPlayKey)) {
+      return;
+    }
+
+    _discoverQuickPlayInFlight.add(quickPlayKey);
     try {
       await _embyQuickPlayService.play(
         context: context,
@@ -252,6 +408,8 @@ class _MainNavigationState extends State<MainNavigation> {
     } catch (error) {
       if (!mounted) return;
       _showWorkspaceSnackBar(S.of(context).quickPlayFailed, isError: true);
+    } finally {
+      _discoverQuickPlayInFlight.remove(quickPlayKey);
     }
   }
 
@@ -264,17 +422,28 @@ class _MainNavigationState extends State<MainNavigation> {
       final wasBookmarked = _isBookmarked(item);
       final updated = await _discoverBookmarkService.toggleBookmark(item);
       if (!mounted) return;
+      final updatedKeys = updated.map(_discoverItemKey).toSet();
+      final removedKeys = _discoverFollowStates.keys
+          .where((key) => !updatedKeys.contains(key))
+          .toList(growable: false);
+      for (final key in removedKeys) {
+        _discoverFollowStates.remove(key);
+        await _discoverFollowSeriesService.removeState(key);
+      }
       setState(() {
         _discoverBookmarksByKey
           ..clear()
           ..addEntries(
             updated.map((entry) => MapEntry(_discoverItemKey(entry), entry)),
           );
-        _discoverBookmarksNotifier.value = List.unmodifiable(updated);
+        _publishDiscoverState();
       });
+      if (!mounted) return;
       final l = S.of(context);
       _showWorkspaceSnackBar(
-        wasBookmarked ? l.bookmarkRemoved(item.title) : l.bookmarkAdded(item.title),
+        wasBookmarked
+            ? l.bookmarkRemoved(item.title)
+            : l.bookmarkAdded(item.title),
       );
     } catch (error) {
       if (!mounted) return;
@@ -384,11 +553,14 @@ class _MainNavigationState extends State<MainNavigation> {
       DiscoverBookmarksPage(
         embedded: DesignSystem.isDesktop(context),
         bookmarksListenable: _discoverBookmarksNotifier,
+        followStatesListenable: _discoverFollowStatesNotifier,
         imageBuilder: _tmdbService.imageUrl,
         onExploreItem: _handleDiscoverExplore,
         resolveLibraryMatches: _resolveDiscoverMatches,
         onQuickPlayMatch: _handleDiscoverQuickPlay,
         onToggleBookmark: _toggleDiscoverBookmark,
+        onToggleFollowSeries: _toggleDiscoverFollowSeries,
+        canFollowItem: _canFollowItem,
         isBookmarked: _isBookmarked,
       ),
       desktopTitle: 'Bookmarks',
@@ -516,7 +688,8 @@ class _MainNavigationState extends State<MainNavigation> {
     if (!mounted) return;
 
     if (matches.isEmpty) {
-      _showWorkspaceSnackBar(S.of(context).discoverNotFoundInLibrary(item.title),
+      _showWorkspaceSnackBar(
+          S.of(context).discoverNotFoundInLibrary(item.title),
           isError: true);
       return;
     }
@@ -999,7 +1172,8 @@ class _MainNavigationState extends State<MainNavigation> {
             color: theme.colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(11),
             border: Border.all(
-              color: theme.dividerTheme.color?.withValues(alpha: 0.92) ?? DesignSystem.neutral200,
+              color: theme.dividerTheme.color?.withValues(alpha: 0.92) ??
+                  DesignSystem.neutral200,
             ),
             boxShadow: DesignSystem.shadowSm,
           ),
@@ -1225,7 +1399,8 @@ class _MainNavigationState extends State<MainNavigation> {
     final isCyberpunk = themeMode == AppThemeMode.cyberpunk;
     final isSweetie = themeMode == AppThemeMode.sweetiePro;
     final isSpecial = isCyberpunk || isSweetie;
-    final specialNeon = isSweetie ? AppTheme.sweetieHotPink : AppTheme.cyberNeon;
+    final specialNeon =
+        isSweetie ? AppTheme.sweetieHotPink : AppTheme.cyberNeon;
     final specialBg = isSweetie ? AppTheme.sweetieBg : AppTheme.cyberBg;
     final specialCard = isSweetie ? AppTheme.sweetieCard : AppTheme.cyberCard;
 
@@ -1295,7 +1470,8 @@ class _MainNavigationState extends State<MainNavigation> {
                         BoxShadow(
                           color: isSpecial
                               ? specialNeon.withValues(alpha: 0.04)
-                              : const Color(0xFF111827).withValues(alpha: isDark ? 0.2 : 0.06),
+                              : const Color(0xFF111827)
+                                  .withValues(alpha: isDark ? 0.2 : 0.06),
                           blurRadius: 28,
                           offset: const Offset(0, 18),
                         ),
@@ -1317,9 +1493,8 @@ class _MainNavigationState extends State<MainNavigation> {
                                 : _shouldShowTopBarBackButton()
                                     ? _handleTopBarBack
                                     : null,
-                            actions: _showSettings
-                                ? const []
-                                : _buildTopActions(),
+                            actions:
+                                _showSettings ? const [] : _buildTopActions(),
                           ),
                           Expanded(
                             child: ColoredBox(
@@ -1351,9 +1526,13 @@ class _MainNavigationState extends State<MainNavigation> {
     final isCyberpunk = themeMode == AppThemeMode.cyberpunk;
     final isSweetieMobile = themeMode == AppThemeMode.sweetiePro;
     final isSpecialMobile = isCyberpunk || isSweetieMobile;
-    final specialNeonMobile = isSweetieMobile ? AppTheme.sweetieHotPink : AppTheme.cyberNeon;
-    final specialBgMobile = isSweetieMobile ? AppTheme.sweetieBg : AppTheme.cyberBg;
-    final specialCardMobile = isSweetieMobile ? AppTheme.sweetieCard : AppTheme.cyberCard;    final mobileTopActions = _buildMobileTopActions();
+    final specialNeonMobile =
+        isSweetieMobile ? AppTheme.sweetieHotPink : AppTheme.cyberNeon;
+    final specialBgMobile =
+        isSweetieMobile ? AppTheme.sweetieBg : AppTheme.cyberBg;
+    final specialCardMobile =
+        isSweetieMobile ? AppTheme.sweetieCard : AppTheme.cyberCard;
+    final mobileTopActions = _buildMobileTopActions();
     final currentPage = AnimatedSwitcher(
       duration: DesignSystem.durationNormal,
       switchInCurve: DesignSystem.easeOutQuart,

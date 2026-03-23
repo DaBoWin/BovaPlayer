@@ -101,11 +101,11 @@ class AccountPalette {
   static AccountPalette forType(AccountType type, AccountColors c) {
     switch (type) {
       case AccountType.free:
-        return AccountPalette(
-          base: const Color(0xFFFFD2E6),
-          surface: const Color(0xFFFFF4F8),
-          deep: c.accent,
-          text: c.accent,
+        return const AccountPalette(
+          base: Color(0xFFFBCFE8),
+          surface: Color(0xFFFFF4FA),
+          deep: Color(0xFFE11D48),
+          text: Color(0xFFE11D48),
           icon: Icons.person_outline,
         );
       case AccountType.pro:

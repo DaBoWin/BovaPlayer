@@ -57,6 +57,10 @@ class _AccountPageState extends State<AccountPage>
       ),
     );
     _animationController.forward();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<AuthProvider>().refreshUser();
+    });
   }
 
   @override
