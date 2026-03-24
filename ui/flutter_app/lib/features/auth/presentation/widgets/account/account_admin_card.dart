@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../../core/theme/design_system.dart';
 import '../../../../../l10n/generated/app_localizations.dart';
+import '../../pages/pricing_admin_page.dart';
 import '../../pages/redemption_admin_page.dart';
 import 'account_theme.dart';
 
@@ -28,6 +29,20 @@ class AccountAdminCard extends StatelessWidget {
                 : const Color(0xFFFFF1E6),
           ),
           const SizedBox(height: DesignSystem.space4),
+          _ActionTile(
+            icon: Icons.sell_outlined,
+            title: l.accountPricingManagement,
+            subtitle: l.accountPricingDesc,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const PricingAdminPage(),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: DesignSystem.space3),
           _ActionTile(
             icon: Icons.confirmation_number_outlined,
             title: l.accountRedemptionManagement,

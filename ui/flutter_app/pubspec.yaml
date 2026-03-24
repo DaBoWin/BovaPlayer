@@ -43,6 +43,7 @@ dependencies:
   flutter_dotenv: ^5.1.0
   device_info_plus: ^10.1.0
   url_launcher: ^6.2.5
+  webview_flutter: ^4.13.0
   image_picker: ^1.2.1
 
 dev_dependencies:

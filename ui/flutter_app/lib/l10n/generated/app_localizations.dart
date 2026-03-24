@@ -1933,6 +1933,18 @@ abstract class S {
   /// **'Generate, view and manage redemption codes'**
   String get accountRedemptionDesc;
 
+  /// No description provided for @accountPricingManagement.
+  ///
+  /// In en, this message translates to:
+  /// **'Pricing Management'**
+  String get accountPricingManagement;
+
+  /// No description provided for @accountPricingDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit pricing_configs to keep storefront and checkout amounts in sync.'**
+  String get accountPricingDesc;
+
   /// No description provided for @accountUpgradeTitle.
   ///
   /// In en, this message translates to:
@@ -2850,6 +2862,522 @@ abstract class S {
   /// In en, this message translates to:
   /// **'Supported'**
   String get pricingSupported;
+
+  /// No description provided for @pricingUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'Not included'**
+  String get pricingUnsupported;
+
+  /// No description provided for @pricingPeriodYear.
+  ///
+  /// In en, this message translates to:
+  /// **'/ year'**
+  String get pricingPeriodYear;
+
+  /// No description provided for @pricingBadgeMostPopular.
+  ///
+  /// In en, this message translates to:
+  /// **'Most Popular'**
+  String get pricingBadgeMostPopular;
+
+  /// No description provided for @pricingBadgeBestForTeams.
+  ///
+  /// In en, this message translates to:
+  /// **'Best for Teams'**
+  String get pricingBadgeBestForTeams;
+
+  /// No description provided for @pricingBadgeBestValue.
+  ///
+  /// In en, this message translates to:
+  /// **'Best Value'**
+  String get pricingBadgeBestValue;
+
+  /// No description provided for @pricingWorkspace.
+  ///
+  /// In en, this message translates to:
+  /// **'Membership Workspace'**
+  String get pricingWorkspace;
+
+  /// No description provided for @pricingIncluded.
+  ///
+  /// In en, this message translates to:
+  /// **'Included'**
+  String get pricingIncluded;
+
+  /// No description provided for @pricingLoadConfigsFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load pricing configs: {error}'**
+  String pricingLoadConfigsFailed(String error);
+
+  /// No description provided for @pricingProcessing.
+  ///
+  /// In en, this message translates to:
+  /// **'Processing...'**
+  String get pricingProcessing;
+
+  /// No description provided for @pricingWaitingForConfirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for payment confirmation...'**
+  String get pricingWaitingForConfirmation;
+
+  /// No description provided for @pricingPaymentSuccessTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment successful'**
+  String get pricingPaymentSuccessTitle;
+
+  /// No description provided for @pricingPaymentSuccessMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Your subscription benefits have been refreshed. You can now view the latest membership status in Account Center.'**
+  String get pricingPaymentSuccessMessage;
+
+  /// No description provided for @pricingViewAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'View Account'**
+  String get pricingViewAccount;
+
+  /// No description provided for @pricingPaymentPendingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment result not confirmed yet'**
+  String get pricingPaymentPendingTitle;
+
+  /// No description provided for @pricingPaymentPendingMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'The payment result has not finished syncing. You can check your subscription status later in Account Center. If payment was completed, it usually takes effect shortly.'**
+  String get pricingPaymentPendingMessage;
+
+  /// No description provided for @pricingPaymentFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment failed'**
+  String get pricingPaymentFailedTitle;
+
+  /// No description provided for @pricingPaymentFailedMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment was not completed. Please try again later.'**
+  String get pricingPaymentFailedMessage;
+
+  /// No description provided for @pricingReopenPayment.
+  ///
+  /// In en, this message translates to:
+  /// **'Reopen payment page'**
+  String get pricingReopenPayment;
+
+  /// No description provided for @pricingPaymentCancelledTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment cancelled'**
+  String get pricingPaymentCancelledTitle;
+
+  /// No description provided for @pricingPaymentCancelledMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'You cancelled this payment. Reopen the payment page if you want to continue.'**
+  String get pricingPaymentCancelledMessage;
+
+  /// No description provided for @pricingPaymentExpiredTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment expired'**
+  String get pricingPaymentExpiredTitle;
+
+  /// No description provided for @pricingPaymentExpiredMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'The current order has expired. Please create a new order.'**
+  String get pricingPaymentExpiredMessage;
+
+  /// No description provided for @pricingAcknowledge.
+  ///
+  /// In en, this message translates to:
+  /// **'Got it'**
+  String get pricingAcknowledge;
+
+  /// No description provided for @pricingPaymentFlowFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment flow failed'**
+  String get pricingPaymentFlowFailedTitle;
+
+  /// No description provided for @pricingPaymentFlowFailedMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'An exception occurred while creating the order or checking payment status: {error}'**
+  String pricingPaymentFlowFailedMessage(String error);
+
+  /// No description provided for @pricingClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get pricingClose;
+
+  /// No description provided for @pricingCheckoutUnavailableTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment page unavailable'**
+  String get pricingCheckoutUnavailableTitle;
+
+  /// No description provided for @pricingCheckoutUnavailableMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'The order did not return a valid payment link.'**
+  String get pricingCheckoutUnavailableMessage;
+
+  /// No description provided for @pricingCheckoutTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Complete payment'**
+  String get pricingCheckoutTitle;
+
+  /// No description provided for @pricingCheckoutInstruction.
+  ///
+  /// In en, this message translates to:
+  /// **'Please complete payment inside the app, then tap \"I have completed payment\" below.'**
+  String get pricingCheckoutInstruction;
+
+  /// No description provided for @pricingOrderId.
+  ///
+  /// In en, this message translates to:
+  /// **'Order ID: {id}'**
+  String pricingOrderId(String id);
+
+  /// No description provided for @pricingAmountValue.
+  ///
+  /// In en, this message translates to:
+  /// **'Amount: ¥{amount}'**
+  String pricingAmountValue(String amount);
+
+  /// No description provided for @pricingExpiresAtValue.
+  ///
+  /// In en, this message translates to:
+  /// **'Valid until: {date}'**
+  String pricingExpiresAtValue(String date);
+
+  /// No description provided for @pricingPaymentCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'I have completed payment'**
+  String get pricingPaymentCompleted;
+
+  /// No description provided for @pricingStarter.
+  ///
+  /// In en, this message translates to:
+  /// **'Starter'**
+  String get pricingStarter;
+
+  /// No description provided for @pricingAdminTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Pricing Management'**
+  String get pricingAdminTitle;
+
+  /// No description provided for @pricingAdminRefreshTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh pricing configs'**
+  String get pricingAdminRefreshTooltip;
+
+  /// No description provided for @pricingAdminWorkspace.
+  ///
+  /// In en, this message translates to:
+  /// **'Pricing Workspace'**
+  String get pricingAdminWorkspace;
+
+  /// No description provided for @pricingAdminHeadline.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage plan pricing from the database'**
+  String get pricingAdminHeadline;
+
+  /// No description provided for @pricingAdminDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Changes here become the single source of truth for storefront pricing and backend order creation. You can review inactive plans, adjust quotas, and update payment copy.'**
+  String get pricingAdminDescription;
+
+  /// No description provided for @pricingAdminStatTotalPlans.
+  ///
+  /// In en, this message translates to:
+  /// **'Total plans'**
+  String get pricingAdminStatTotalPlans;
+
+  /// No description provided for @pricingAdminStatActivePlans.
+  ///
+  /// In en, this message translates to:
+  /// **'Active'**
+  String get pricingAdminStatActivePlans;
+
+  /// No description provided for @pricingAdminStatHighestPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Highest price'**
+  String get pricingAdminStatHighestPrice;
+
+  /// No description provided for @pricingAdminFilterAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get pricingAdminFilterAll;
+
+  /// No description provided for @pricingAdminFilterActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Active'**
+  String get pricingAdminFilterActive;
+
+  /// No description provided for @pricingAdminFilterInactive.
+  ///
+  /// In en, this message translates to:
+  /// **'Inactive'**
+  String get pricingAdminFilterInactive;
+
+  /// No description provided for @pricingAdminEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No pricing configs to display'**
+  String get pricingAdminEmptyTitle;
+
+  /// No description provided for @pricingAdminEmptyHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Make sure pricing_configs has been initialized in the database.'**
+  String get pricingAdminEmptyHint;
+
+  /// No description provided for @pricingAdminStatusActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Active'**
+  String get pricingAdminStatusActive;
+
+  /// No description provided for @pricingAdminStatusInactive.
+  ///
+  /// In en, this message translates to:
+  /// **'Inactive'**
+  String get pricingAdminStatusInactive;
+
+  /// No description provided for @pricingAdminEdit.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get pricingAdminEdit;
+
+  /// No description provided for @pricingAdminPriceLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Price'**
+  String get pricingAdminPriceLabel;
+
+  /// No description provided for @pricingAdminPeriodLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Period'**
+  String get pricingAdminPeriodLabel;
+
+  /// No description provided for @pricingAdminServersLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Servers'**
+  String get pricingAdminServersLabel;
+
+  /// No description provided for @pricingAdminDevicesLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Devices'**
+  String get pricingAdminDevicesLabel;
+
+  /// No description provided for @pricingAdminStorageLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cloud storage'**
+  String get pricingAdminStorageLabel;
+
+  /// No description provided for @pricingAdminSortLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Sort order'**
+  String get pricingAdminSortLabel;
+
+  /// No description provided for @pricingAdminPaymentCopyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment copy'**
+  String get pricingAdminPaymentCopyTitle;
+
+  /// No description provided for @pricingAdminPaymentSubject.
+  ///
+  /// In en, this message translates to:
+  /// **'Subject: {value}'**
+  String pricingAdminPaymentSubject(String value);
+
+  /// No description provided for @pricingAdminPaymentBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Body: {value}'**
+  String pricingAdminPaymentBody(String value);
+
+  /// No description provided for @pricingAdminLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to load pricing configs: {error}'**
+  String pricingAdminLoadFailed(String error);
+
+  /// No description provided for @pricingAdminUpdateSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Updated {name}'**
+  String pricingAdminUpdateSuccess(String name);
+
+  /// No description provided for @pricingAdminUpdateFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to update pricing config: {error}'**
+  String pricingAdminUpdateFailed(String error);
+
+  /// No description provided for @pricingAdminPeriodMonth.
+  ///
+  /// In en, this message translates to:
+  /// **'Monthly'**
+  String get pricingAdminPeriodMonth;
+
+  /// No description provided for @pricingAdminPeriodYear.
+  ///
+  /// In en, this message translates to:
+  /// **'Yearly'**
+  String get pricingAdminPeriodYear;
+
+  /// No description provided for @pricingAdminPeriodOneTime.
+  ///
+  /// In en, this message translates to:
+  /// **'One-time'**
+  String get pricingAdminPeriodOneTime;
+
+  /// No description provided for @pricingAdminEditPlanTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit plan: {planId}'**
+  String pricingAdminEditPlanTitle(String planId);
+
+  /// No description provided for @pricingAdminFieldDisplayName.
+  ///
+  /// In en, this message translates to:
+  /// **'Display name'**
+  String get pricingAdminFieldDisplayName;
+
+  /// No description provided for @pricingAdminFieldDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Description'**
+  String get pricingAdminFieldDescription;
+
+  /// No description provided for @pricingAdminFieldPriceCny.
+  ///
+  /// In en, this message translates to:
+  /// **'Price (CNY)'**
+  String get pricingAdminFieldPriceCny;
+
+  /// No description provided for @pricingAdminFieldBillingPeriod.
+  ///
+  /// In en, this message translates to:
+  /// **'Billing period'**
+  String get pricingAdminFieldBillingPeriod;
+
+  /// No description provided for @pricingAdminFieldAccountType.
+  ///
+  /// In en, this message translates to:
+  /// **'Account type'**
+  String get pricingAdminFieldAccountType;
+
+  /// No description provided for @pricingAdminFieldSubscriptionType.
+  ///
+  /// In en, this message translates to:
+  /// **'Subscription type'**
+  String get pricingAdminFieldSubscriptionType;
+
+  /// No description provided for @pricingAdminFieldDurationDaysOptional.
+  ///
+  /// In en, this message translates to:
+  /// **'Duration (days, optional)'**
+  String get pricingAdminFieldDurationDaysOptional;
+
+  /// No description provided for @pricingAdminFieldMaxServers.
+  ///
+  /// In en, this message translates to:
+  /// **'Max servers'**
+  String get pricingAdminFieldMaxServers;
+
+  /// No description provided for @pricingAdminFieldMaxDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'Max devices'**
+  String get pricingAdminFieldMaxDevices;
+
+  /// No description provided for @pricingAdminFieldStorageQuotaMb.
+  ///
+  /// In en, this message translates to:
+  /// **'Cloud storage quota (MB)'**
+  String get pricingAdminFieldStorageQuotaMb;
+
+  /// No description provided for @pricingAdminFieldSortOrder.
+  ///
+  /// In en, this message translates to:
+  /// **'Sort order'**
+  String get pricingAdminFieldSortOrder;
+
+  /// No description provided for @pricingAdminFieldPaymentSubject.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment subject'**
+  String get pricingAdminFieldPaymentSubject;
+
+  /// No description provided for @pricingAdminFieldPaymentBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment body'**
+  String get pricingAdminFieldPaymentBody;
+
+  /// No description provided for @pricingAdminInvalidPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter a valid price'**
+  String get pricingAdminInvalidPrice;
+
+  /// No description provided for @pricingAdminInvalidInteger.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter an integer'**
+  String get pricingAdminInvalidInteger;
+
+  /// No description provided for @pricingAdminInvalidNonNegativeInteger.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter a non-negative integer'**
+  String get pricingAdminInvalidNonNegativeInteger;
+
+  /// No description provided for @pricingAdminRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Required'**
+  String get pricingAdminRequired;
+
+  /// No description provided for @pricingAdminEnablePlan.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable this plan'**
+  String get pricingAdminEnablePlan;
+
+  /// No description provided for @pricingAdminEnablePlanHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Disabled plans will not be shown on the purchase page, but they remain visible here.'**
+  String get pricingAdminEnablePlanHint;
 
   /// No description provided for @pricingUnlimited.
   ///

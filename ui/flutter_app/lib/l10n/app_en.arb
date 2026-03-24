@@ -476,6 +476,8 @@
   "accountAdminDesc": "Manage redemption codes and backend config.",
   "accountRedemptionManagement": "Redemption Codes",
   "accountRedemptionDesc": "Generate, view and manage redemption codes",
+  "accountPricingManagement": "Pricing Management",
+  "accountPricingDesc": "Edit pricing_configs to keep storefront and checkout amounts in sync.",
 
   "accountUpgradeTitle": "Membership Upgrade",
   "accountUpgradeToLifetime": "Upgrade to Lifetime",
@@ -664,6 +666,147 @@
   "pricingPrioritySupport": "Priority Support",
   "pricingLifetimeUpdates": "Lifetime Updates",
   "pricingSupported": "Supported",
+  "pricingUnsupported": "Not included",
+  "pricingPeriodYear": "/ year",
+  "pricingBadgeMostPopular": "Most Popular",
+  "pricingBadgeBestForTeams": "Best for Teams",
+  "pricingBadgeBestValue": "Best Value",
+  "pricingWorkspace": "Membership Workspace",
+  "pricingIncluded": "Included",
+  "pricingLoadConfigsFailed": "Failed to load pricing configs: {error}",
+  "@pricingLoadConfigsFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "pricingProcessing": "Processing...",
+  "pricingWaitingForConfirmation": "Waiting for payment confirmation...",
+  "pricingPaymentSuccessTitle": "Payment successful",
+  "pricingPaymentSuccessMessage": "Your subscription benefits have been refreshed. You can now view the latest membership status in Account Center.",
+  "pricingViewAccount": "View Account",
+  "pricingPaymentPendingTitle": "Payment result not confirmed yet",
+  "pricingPaymentPendingMessage": "The payment result has not finished syncing. You can check your subscription status later in Account Center. If payment was completed, it usually takes effect shortly.",
+  "pricingPaymentFailedTitle": "Payment failed",
+  "pricingPaymentFailedMessage": "Payment was not completed. Please try again later.",
+  "pricingReopenPayment": "Reopen payment page",
+  "pricingPaymentCancelledTitle": "Payment cancelled",
+  "pricingPaymentCancelledMessage": "You cancelled this payment. Reopen the payment page if you want to continue.",
+  "pricingPaymentExpiredTitle": "Payment expired",
+  "pricingPaymentExpiredMessage": "The current order has expired. Please create a new order.",
+  "pricingAcknowledge": "Got it",
+  "pricingPaymentFlowFailedTitle": "Payment flow failed",
+  "pricingPaymentFlowFailedMessage": "An exception occurred while creating the order or checking payment status: {error}",
+  "@pricingPaymentFlowFailedMessage": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "pricingClose": "Close",
+  "pricingCheckoutUnavailableTitle": "Payment page unavailable",
+  "pricingCheckoutUnavailableMessage": "The order did not return a valid payment link.",
+  "pricingCheckoutTitle": "Complete payment",
+  "pricingCheckoutInstruction": "Please complete payment inside the app, then tap \"I have completed payment\" below.",
+  "pricingOrderId": "Order ID: {id}",
+  "@pricingOrderId": {
+    "placeholders": {
+      "id": { "type": "String" }
+    }
+  },
+  "pricingAmountValue": "Amount: ¥{amount}",
+  "@pricingAmountValue": {
+    "placeholders": {
+      "amount": { "type": "String" }
+    }
+  },
+  "pricingExpiresAtValue": "Valid until: {date}",
+  "@pricingExpiresAtValue": {
+    "placeholders": {
+      "date": { "type": "String" }
+    }
+  },
+  "pricingPaymentCompleted": "I have completed payment",
+  "pricingStarter": "Starter",
+  "pricingAdminTitle": "Pricing Management",
+  "pricingAdminRefreshTooltip": "Refresh pricing configs",
+  "pricingAdminWorkspace": "Pricing Workspace",
+  "pricingAdminHeadline": "Manage plan pricing from the database",
+  "pricingAdminDescription": "Changes here become the single source of truth for storefront pricing and backend order creation. You can review inactive plans, adjust quotas, and update payment copy.",
+  "pricingAdminStatTotalPlans": "Total plans",
+  "pricingAdminStatActivePlans": "Active",
+  "pricingAdminStatHighestPrice": "Highest price",
+  "pricingAdminFilterAll": "All",
+  "pricingAdminFilterActive": "Active",
+  "pricingAdminFilterInactive": "Inactive",
+  "pricingAdminEmptyTitle": "No pricing configs to display",
+  "pricingAdminEmptyHint": "Make sure pricing_configs has been initialized in the database.",
+  "pricingAdminStatusActive": "Active",
+  "pricingAdminStatusInactive": "Inactive",
+  "pricingAdminEdit": "Edit",
+  "pricingAdminPriceLabel": "Price",
+  "pricingAdminPeriodLabel": "Period",
+  "pricingAdminServersLabel": "Servers",
+  "pricingAdminDevicesLabel": "Devices",
+  "pricingAdminStorageLabel": "Cloud storage",
+  "pricingAdminSortLabel": "Sort order",
+  "pricingAdminPaymentCopyTitle": "Payment copy",
+  "pricingAdminPaymentSubject": "Subject: {value}",
+  "@pricingAdminPaymentSubject": {
+    "placeholders": {
+      "value": { "type": "String" }
+    }
+  },
+  "pricingAdminPaymentBody": "Body: {value}",
+  "@pricingAdminPaymentBody": {
+    "placeholders": {
+      "value": { "type": "String" }
+    }
+  },
+  "pricingAdminLoadFailed": "Failed to load pricing configs: {error}",
+  "@pricingAdminLoadFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "pricingAdminUpdateSuccess": "Updated {name}",
+  "@pricingAdminUpdateSuccess": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "pricingAdminUpdateFailed": "Failed to update pricing config: {error}",
+  "@pricingAdminUpdateFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "pricingAdminPeriodMonth": "Monthly",
+  "pricingAdminPeriodYear": "Yearly",
+  "pricingAdminPeriodOneTime": "One-time",
+  "pricingAdminEditPlanTitle": "Edit plan: {planId}",
+  "@pricingAdminEditPlanTitle": {
+    "placeholders": {
+      "planId": { "type": "String" }
+    }
+  },
+  "pricingAdminFieldDisplayName": "Display name",
+  "pricingAdminFieldDescription": "Description",
+  "pricingAdminFieldPriceCny": "Price (CNY)",
+  "pricingAdminFieldBillingPeriod": "Billing period",
+  "pricingAdminFieldAccountType": "Account type",
+  "pricingAdminFieldSubscriptionType": "Subscription type",
+  "pricingAdminFieldDurationDaysOptional": "Duration (days, optional)",
+  "pricingAdminFieldMaxServers": "Max servers",
+  "pricingAdminFieldMaxDevices": "Max devices",
+  "pricingAdminFieldStorageQuotaMb": "Cloud storage quota (MB)",
+  "pricingAdminFieldSortOrder": "Sort order",
+  "pricingAdminFieldPaymentSubject": "Payment subject",
+  "pricingAdminFieldPaymentBody": "Payment body",
+  "pricingAdminInvalidPrice": "Please enter a valid price",
+  "pricingAdminInvalidInteger": "Please enter an integer",
+  "pricingAdminInvalidNonNegativeInteger": "Please enter a non-negative integer",
+  "pricingAdminRequired": "Required",
+  "pricingAdminEnablePlan": "Enable this plan",
+  "pricingAdminEnablePlanHint": "Disabled plans will not be shown on the purchase page, but they remain visible here.",
   "pricingUnlimited": "Unlimited",
   "pricingFaq": "FAQ",
   "pricingFaqDesc": "Most frequently asked questions before purchasing or redeeming.",

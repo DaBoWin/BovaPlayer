@@ -1016,6 +1016,13 @@ class SEn extends S {
       'Generate, view and manage redemption codes';
 
   @override
+  String get accountPricingManagement => 'Pricing Management';
+
+  @override
+  String get accountPricingDesc =>
+      'Edit pricing_configs to keep storefront and checkout amounts in sync.';
+
+  @override
   String get accountUpgradeTitle => 'Membership Upgrade';
 
   @override
@@ -1504,6 +1511,299 @@ class SEn extends S {
 
   @override
   String get pricingSupported => 'Supported';
+
+  @override
+  String get pricingUnsupported => 'Not included';
+
+  @override
+  String get pricingPeriodYear => '/ year';
+
+  @override
+  String get pricingBadgeMostPopular => 'Most Popular';
+
+  @override
+  String get pricingBadgeBestForTeams => 'Best for Teams';
+
+  @override
+  String get pricingBadgeBestValue => 'Best Value';
+
+  @override
+  String get pricingWorkspace => 'Membership Workspace';
+
+  @override
+  String get pricingIncluded => 'Included';
+
+  @override
+  String pricingLoadConfigsFailed(String error) {
+    return 'Failed to load pricing configs: $error';
+  }
+
+  @override
+  String get pricingProcessing => 'Processing...';
+
+  @override
+  String get pricingWaitingForConfirmation =>
+      'Waiting for payment confirmation...';
+
+  @override
+  String get pricingPaymentSuccessTitle => 'Payment successful';
+
+  @override
+  String get pricingPaymentSuccessMessage =>
+      'Your subscription benefits have been refreshed. You can now view the latest membership status in Account Center.';
+
+  @override
+  String get pricingViewAccount => 'View Account';
+
+  @override
+  String get pricingPaymentPendingTitle => 'Payment result not confirmed yet';
+
+  @override
+  String get pricingPaymentPendingMessage =>
+      'The payment result has not finished syncing. You can check your subscription status later in Account Center. If payment was completed, it usually takes effect shortly.';
+
+  @override
+  String get pricingPaymentFailedTitle => 'Payment failed';
+
+  @override
+  String get pricingPaymentFailedMessage =>
+      'Payment was not completed. Please try again later.';
+
+  @override
+  String get pricingReopenPayment => 'Reopen payment page';
+
+  @override
+  String get pricingPaymentCancelledTitle => 'Payment cancelled';
+
+  @override
+  String get pricingPaymentCancelledMessage =>
+      'You cancelled this payment. Reopen the payment page if you want to continue.';
+
+  @override
+  String get pricingPaymentExpiredTitle => 'Payment expired';
+
+  @override
+  String get pricingPaymentExpiredMessage =>
+      'The current order has expired. Please create a new order.';
+
+  @override
+  String get pricingAcknowledge => 'Got it';
+
+  @override
+  String get pricingPaymentFlowFailedTitle => 'Payment flow failed';
+
+  @override
+  String pricingPaymentFlowFailedMessage(String error) {
+    return 'An exception occurred while creating the order or checking payment status: $error';
+  }
+
+  @override
+  String get pricingClose => 'Close';
+
+  @override
+  String get pricingCheckoutUnavailableTitle => 'Payment page unavailable';
+
+  @override
+  String get pricingCheckoutUnavailableMessage =>
+      'The order did not return a valid payment link.';
+
+  @override
+  String get pricingCheckoutTitle => 'Complete payment';
+
+  @override
+  String get pricingCheckoutInstruction =>
+      'Please complete payment inside the app, then tap \"I have completed payment\" below.';
+
+  @override
+  String pricingOrderId(String id) {
+    return 'Order ID: $id';
+  }
+
+  @override
+  String pricingAmountValue(String amount) {
+    return 'Amount: ¥$amount';
+  }
+
+  @override
+  String pricingExpiresAtValue(String date) {
+    return 'Valid until: $date';
+  }
+
+  @override
+  String get pricingPaymentCompleted => 'I have completed payment';
+
+  @override
+  String get pricingStarter => 'Starter';
+
+  @override
+  String get pricingAdminTitle => 'Pricing Management';
+
+  @override
+  String get pricingAdminRefreshTooltip => 'Refresh pricing configs';
+
+  @override
+  String get pricingAdminWorkspace => 'Pricing Workspace';
+
+  @override
+  String get pricingAdminHeadline => 'Manage plan pricing from the database';
+
+  @override
+  String get pricingAdminDescription =>
+      'Changes here become the single source of truth for storefront pricing and backend order creation. You can review inactive plans, adjust quotas, and update payment copy.';
+
+  @override
+  String get pricingAdminStatTotalPlans => 'Total plans';
+
+  @override
+  String get pricingAdminStatActivePlans => 'Active';
+
+  @override
+  String get pricingAdminStatHighestPrice => 'Highest price';
+
+  @override
+  String get pricingAdminFilterAll => 'All';
+
+  @override
+  String get pricingAdminFilterActive => 'Active';
+
+  @override
+  String get pricingAdminFilterInactive => 'Inactive';
+
+  @override
+  String get pricingAdminEmptyTitle => 'No pricing configs to display';
+
+  @override
+  String get pricingAdminEmptyHint =>
+      'Make sure pricing_configs has been initialized in the database.';
+
+  @override
+  String get pricingAdminStatusActive => 'Active';
+
+  @override
+  String get pricingAdminStatusInactive => 'Inactive';
+
+  @override
+  String get pricingAdminEdit => 'Edit';
+
+  @override
+  String get pricingAdminPriceLabel => 'Price';
+
+  @override
+  String get pricingAdminPeriodLabel => 'Period';
+
+  @override
+  String get pricingAdminServersLabel => 'Servers';
+
+  @override
+  String get pricingAdminDevicesLabel => 'Devices';
+
+  @override
+  String get pricingAdminStorageLabel => 'Cloud storage';
+
+  @override
+  String get pricingAdminSortLabel => 'Sort order';
+
+  @override
+  String get pricingAdminPaymentCopyTitle => 'Payment copy';
+
+  @override
+  String pricingAdminPaymentSubject(String value) {
+    return 'Subject: $value';
+  }
+
+  @override
+  String pricingAdminPaymentBody(String value) {
+    return 'Body: $value';
+  }
+
+  @override
+  String pricingAdminLoadFailed(String error) {
+    return 'Failed to load pricing configs: $error';
+  }
+
+  @override
+  String pricingAdminUpdateSuccess(String name) {
+    return 'Updated $name';
+  }
+
+  @override
+  String pricingAdminUpdateFailed(String error) {
+    return 'Failed to update pricing config: $error';
+  }
+
+  @override
+  String get pricingAdminPeriodMonth => 'Monthly';
+
+  @override
+  String get pricingAdminPeriodYear => 'Yearly';
+
+  @override
+  String get pricingAdminPeriodOneTime => 'One-time';
+
+  @override
+  String pricingAdminEditPlanTitle(String planId) {
+    return 'Edit plan: $planId';
+  }
+
+  @override
+  String get pricingAdminFieldDisplayName => 'Display name';
+
+  @override
+  String get pricingAdminFieldDescription => 'Description';
+
+  @override
+  String get pricingAdminFieldPriceCny => 'Price (CNY)';
+
+  @override
+  String get pricingAdminFieldBillingPeriod => 'Billing period';
+
+  @override
+  String get pricingAdminFieldAccountType => 'Account type';
+
+  @override
+  String get pricingAdminFieldSubscriptionType => 'Subscription type';
+
+  @override
+  String get pricingAdminFieldDurationDaysOptional =>
+      'Duration (days, optional)';
+
+  @override
+  String get pricingAdminFieldMaxServers => 'Max servers';
+
+  @override
+  String get pricingAdminFieldMaxDevices => 'Max devices';
+
+  @override
+  String get pricingAdminFieldStorageQuotaMb => 'Cloud storage quota (MB)';
+
+  @override
+  String get pricingAdminFieldSortOrder => 'Sort order';
+
+  @override
+  String get pricingAdminFieldPaymentSubject => 'Payment subject';
+
+  @override
+  String get pricingAdminFieldPaymentBody => 'Payment body';
+
+  @override
+  String get pricingAdminInvalidPrice => 'Please enter a valid price';
+
+  @override
+  String get pricingAdminInvalidInteger => 'Please enter an integer';
+
+  @override
+  String get pricingAdminInvalidNonNegativeInteger =>
+      'Please enter a non-negative integer';
+
+  @override
+  String get pricingAdminRequired => 'Required';
+
+  @override
+  String get pricingAdminEnablePlan => 'Enable this plan';
+
+  @override
+  String get pricingAdminEnablePlanHint =>
+      'Disabled plans will not be shown on the purchase page, but they remain visible here.';
 
   @override
   String get pricingUnlimited => 'Unlimited';

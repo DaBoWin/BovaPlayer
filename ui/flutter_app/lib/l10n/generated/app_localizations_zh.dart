@@ -986,6 +986,12 @@ class SZh extends S {
   String get accountRedemptionDesc => '生成、查看和维护兑换码状态';
 
   @override
+  String get accountPricingManagement => '价格管理';
+
+  @override
+  String get accountPricingDesc => '直接编辑 pricing_configs，保持前台展示与支付金额一致。';
+
+  @override
   String get accountUpgradeTitle => 'Membership Upgrade';
 
   @override
@@ -1453,6 +1459,288 @@ class SZh extends S {
 
   @override
   String get pricingSupported => '支持';
+
+  @override
+  String get pricingUnsupported => '不支持';
+
+  @override
+  String get pricingPeriodYear => '/ 年';
+
+  @override
+  String get pricingBadgeMostPopular => '最受欢迎';
+
+  @override
+  String get pricingBadgeBestForTeams => '团队首选';
+
+  @override
+  String get pricingBadgeBestValue => '最超值';
+
+  @override
+  String get pricingWorkspace => '会员工作区';
+
+  @override
+  String get pricingIncluded => '包含';
+
+  @override
+  String pricingLoadConfigsFailed(String error) {
+    return '加载价格配置失败：$error';
+  }
+
+  @override
+  String get pricingProcessing => '处理中...';
+
+  @override
+  String get pricingWaitingForConfirmation => '等待支付确认...';
+
+  @override
+  String get pricingPaymentSuccessTitle => '支付成功';
+
+  @override
+  String get pricingPaymentSuccessMessage => '订阅权益已刷新，你现在可以在账户中心查看最新会员状态。';
+
+  @override
+  String get pricingViewAccount => '查看账户';
+
+  @override
+  String get pricingPaymentPendingTitle => '暂未确认支付结果';
+
+  @override
+  String get pricingPaymentPendingMessage =>
+      '支付结果还没有同步完成。你可以稍后前往账户中心查看订阅状态，若已扣款通常会在短时间内生效。';
+
+  @override
+  String get pricingPaymentFailedTitle => '支付失败';
+
+  @override
+  String get pricingPaymentFailedMessage => '支付未完成，请稍后重试。';
+
+  @override
+  String get pricingReopenPayment => '重新打开支付页';
+
+  @override
+  String get pricingPaymentCancelledTitle => '支付已取消';
+
+  @override
+  String get pricingPaymentCancelledMessage => '你已取消本次支付，如需继续开通可以重新打开支付页面。';
+
+  @override
+  String get pricingPaymentExpiredTitle => '支付已过期';
+
+  @override
+  String get pricingPaymentExpiredMessage => '当前订单已过期，请重新发起下单。';
+
+  @override
+  String get pricingAcknowledge => '我知道了';
+
+  @override
+  String get pricingPaymentFlowFailedTitle => '支付流程失败';
+
+  @override
+  String pricingPaymentFlowFailedMessage(String error) {
+    return '创建订单或查询支付状态时出现异常：$error';
+  }
+
+  @override
+  String get pricingClose => '关闭';
+
+  @override
+  String get pricingCheckoutUnavailableTitle => '支付页不可用';
+
+  @override
+  String get pricingCheckoutUnavailableMessage => '订单未返回可用的支付链接。';
+
+  @override
+  String get pricingCheckoutTitle => '完成支付';
+
+  @override
+  String get pricingCheckoutInstruction => '请直接在应用内完成支付，支付成功后点击下方“我已完成支付”。';
+
+  @override
+  String pricingOrderId(String id) {
+    return '订单号：$id';
+  }
+
+  @override
+  String pricingAmountValue(String amount) {
+    return '金额：¥$amount';
+  }
+
+  @override
+  String pricingExpiresAtValue(String date) {
+    return '有效期至：$date';
+  }
+
+  @override
+  String get pricingPaymentCompleted => '我已完成支付';
+
+  @override
+  String get pricingStarter => '入门版';
+
+  @override
+  String get pricingAdminTitle => '价格管理';
+
+  @override
+  String get pricingAdminRefreshTooltip => '刷新价格配置';
+
+  @override
+  String get pricingAdminWorkspace => '价格工作区';
+
+  @override
+  String get pricingAdminHeadline => '统一管理数据库中的套餐价格';
+
+  @override
+  String get pricingAdminDescription =>
+      '这里修改后的价格会作为前端展示与后端下单的统一来源。支持查看停用套餐、调整限额与更新支付文案。';
+
+  @override
+  String get pricingAdminStatTotalPlans => '套餐总数';
+
+  @override
+  String get pricingAdminStatActivePlans => '启用中';
+
+  @override
+  String get pricingAdminStatHighestPrice => '最高价格';
+
+  @override
+  String get pricingAdminFilterAll => '全部';
+
+  @override
+  String get pricingAdminFilterActive => '启用中';
+
+  @override
+  String get pricingAdminFilterInactive => '已停用';
+
+  @override
+  String get pricingAdminEmptyTitle => '没有可显示的价格配置';
+
+  @override
+  String get pricingAdminEmptyHint => '请先确认数据库中已初始化 pricing_configs 数据。';
+
+  @override
+  String get pricingAdminStatusActive => '启用中';
+
+  @override
+  String get pricingAdminStatusInactive => '已停用';
+
+  @override
+  String get pricingAdminEdit => '编辑';
+
+  @override
+  String get pricingAdminPriceLabel => '价格';
+
+  @override
+  String get pricingAdminPeriodLabel => '周期';
+
+  @override
+  String get pricingAdminServersLabel => '服务器数';
+
+  @override
+  String get pricingAdminDevicesLabel => '设备数';
+
+  @override
+  String get pricingAdminStorageLabel => '云存储';
+
+  @override
+  String get pricingAdminSortLabel => '排序';
+
+  @override
+  String get pricingAdminPaymentCopyTitle => '支付文案';
+
+  @override
+  String pricingAdminPaymentSubject(String value) {
+    return 'Subject: $value';
+  }
+
+  @override
+  String pricingAdminPaymentBody(String value) {
+    return 'Body: $value';
+  }
+
+  @override
+  String pricingAdminLoadFailed(String error) {
+    return '加载价格配置失败：$error';
+  }
+
+  @override
+  String pricingAdminUpdateSuccess(String name) {
+    return '已更新 $name';
+  }
+
+  @override
+  String pricingAdminUpdateFailed(String error) {
+    return '更新价格配置失败：$error';
+  }
+
+  @override
+  String get pricingAdminPeriodMonth => '按月';
+
+  @override
+  String get pricingAdminPeriodYear => '按年';
+
+  @override
+  String get pricingAdminPeriodOneTime => '一次性';
+
+  @override
+  String pricingAdminEditPlanTitle(String planId) {
+    return '编辑套餐：$planId';
+  }
+
+  @override
+  String get pricingAdminFieldDisplayName => '展示名称';
+
+  @override
+  String get pricingAdminFieldDescription => '描述';
+
+  @override
+  String get pricingAdminFieldPriceCny => '价格（CNY）';
+
+  @override
+  String get pricingAdminFieldBillingPeriod => '计费周期';
+
+  @override
+  String get pricingAdminFieldAccountType => '账户类型';
+
+  @override
+  String get pricingAdminFieldSubscriptionType => '订阅类型';
+
+  @override
+  String get pricingAdminFieldDurationDaysOptional => '时长（天，可选）';
+
+  @override
+  String get pricingAdminFieldMaxServers => '服务器上限';
+
+  @override
+  String get pricingAdminFieldMaxDevices => '设备上限';
+
+  @override
+  String get pricingAdminFieldStorageQuotaMb => '云存储额度（MB）';
+
+  @override
+  String get pricingAdminFieldSortOrder => '排序值';
+
+  @override
+  String get pricingAdminFieldPaymentSubject => '支付标题 Subject';
+
+  @override
+  String get pricingAdminFieldPaymentBody => '支付说明 Body';
+
+  @override
+  String get pricingAdminInvalidPrice => '请输入有效价格';
+
+  @override
+  String get pricingAdminInvalidInteger => '请输入整数';
+
+  @override
+  String get pricingAdminInvalidNonNegativeInteger => '请输入非负整数';
+
+  @override
+  String get pricingAdminRequired => '必填项';
+
+  @override
+  String get pricingAdminEnablePlan => '启用该套餐';
+
+  @override
+  String get pricingAdminEnablePlanHint => '关闭后不会在购买页展示，但仍可在此页面查看。';
 
   @override
   String get pricingUnlimited => '无限';

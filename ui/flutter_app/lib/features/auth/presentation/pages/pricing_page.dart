@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
+import '../../../../core/config/env_config.dart';
 import '../../../../core/theme/design_system.dart';
 import '../../../../core/widgets/bova_button.dart';
 import '../../../../core/widgets/bova_text_field.dart';
 import '../../../../features/billing/domain/entities/billing_plan.dart';
+import '../../../../features/billing/domain/entities/payment_order.dart';
 import '../../../../features/billing/domain/entities/payment_status.dart';
+import '../../../../features/billing/domain/entities/pricing_config.dart';
 import '../../../../features/billing/presentation/providers/billing_provider.dart';
 import '../../../../l10n/generated/app_localizations.dart';
 import '../providers/auth_provider.dart';
@@ -26,75 +30,168 @@ class PricingPage extends StatefulWidget {
 
 class _PricingPageState extends State<PricingPage> {
   final ScrollController _scrollController = ScrollController();
+  bool _hasRequestedPricingConfigs = false;
 
-  List<_PlanSpec> _buildPlans(S l10n) => [
-        _PlanSpec(
-          id: 'free',
-          title: l10n.pricingPlanFree,
-          price: l10n.pricingPlanFreePrice,
-          period: l10n.pricingPlanFreePeriod,
-          badge: 'Starter',
-          icon: Icons.person_outline,
-          accent: DesignSystem.neutral700,
-          accentSoft: DesignSystem.neutral100,
-          description: l10n.pricingPlanFreeDesc,
-          cta: l10n.pricingPlanFreeCta,
-          features: [
-            l10n.pricingPlanFreeFeature1,
-            l10n.pricingPlanFreeFeature2,
-            l10n.pricingPlanFreeFeature3,
-            l10n.pricingPlanFreeFeature4,
-            l10n.pricingPlanFreeFeature5,
-          ],
-        ),
-        _PlanSpec(
-          id: 'pro_monthly',
-          title: l10n.pricingPlanPro,
-          price: l10n.pricingPlanProPrice,
-          period: l10n.pricingPlanProPeriod,
-          badge: 'Most Popular',
-          icon: Icons.workspace_premium_outlined,
-          accent: const Color(0xFFA21CAF),
-          accentSoft: const Color(0xFFFAF5FF),
-          description: l10n.pricingPlanProDesc,
-          cta: l10n.pricingPlanProCta,
-          isFeatured: true,
-          features: [
-            l10n.pricingPlanProFeature1,
-            l10n.pricingPlanProFeature2,
-            l10n.pricingPlanProFeature3,
-            l10n.pricingPlanProFeature4,
-            l10n.pricingPlanProFeature5,
-            l10n.pricingPlanProFeature6,
-          ],
-        ),
-        _PlanSpec(
-          id: 'lifetime',
-          title: l10n.pricingPlanLifetime,
-          price: l10n.pricingPlanLifetimePrice,
-          period: l10n.pricingPlanLifetimePeriod,
-          badge: 'Best Value',
-          icon: Icons.auto_awesome_outlined,
-          accent: DesignSystem.accent700,
-          accentSoft: const Color(0xFFFFFBEB),
-          description: l10n.pricingPlanLifetimeDesc,
-          cta: l10n.pricingPlanLifetimeCta,
-          features: [
-            l10n.pricingPlanLifetimeFeature1,
-            l10n.pricingPlanLifetimeFeature2,
-            l10n.pricingPlanLifetimeFeature3,
-            l10n.pricingPlanLifetimeFeature4,
-            l10n.pricingPlanLifetimeFeature5,
-            l10n.pricingPlanLifetimeFeature6,
-            l10n.pricingPlanLifetimeFeature7,
-          ],
-        ),
-      ];
+  List<_PlanSpec> _buildPlans(S l10n, BillingProvider billingProvider) {
+    final pricingByPlanId = <String, PricingConfig>{
+      for (final config in billingProvider.pricingConfigs)
+        if (config.isActive) config.planId: config,
+    };
+
+    return [
+      _buildFreePlan(l10n),
+      _buildPlanFromConfig(
+        l10n,
+        pricingByPlanId['pro_monthly'],
+        planId: 'pro_monthly',
+        fallbackTitle: l10n.pricingPlanPro,
+        fallbackPrice: l10n.pricingPlanProPrice,
+        fallbackPeriod: l10n.pricingPlanProPeriod,
+        fallbackDescription: l10n.pricingPlanProDesc,
+        fallbackBadge: l10n.pricingBadgeMostPopular,
+        fallbackCta: l10n.pricingPlanProCta,
+        fallbackFeatures: [
+          l10n.pricingPlanProFeature1,
+          l10n.pricingPlanProFeature2,
+          l10n.pricingPlanProFeature3,
+          l10n.pricingPlanProFeature4,
+          l10n.pricingPlanProFeature5,
+          l10n.pricingPlanProFeature6,
+        ],
+        icon: Icons.workspace_premium_outlined,
+        accent: const Color(0xFFA21CAF),
+        accentSoft: const Color(0xFFFAF5FF),
+        isFeatured: true,
+      ),
+      _buildPlanFromConfig(
+        l10n,
+        pricingByPlanId['lifetime'],
+        planId: 'lifetime',
+        fallbackTitle: l10n.pricingPlanLifetime,
+        fallbackPrice: l10n.pricingPlanLifetimePrice,
+        fallbackPeriod: l10n.pricingPlanLifetimePeriod,
+        fallbackDescription: l10n.pricingPlanLifetimeDesc,
+        fallbackBadge: l10n.pricingBadgeBestValue,
+        fallbackCta: l10n.pricingPlanLifetimeCta,
+        fallbackFeatures: [
+          l10n.pricingPlanLifetimeFeature1,
+          l10n.pricingPlanLifetimeFeature2,
+          l10n.pricingPlanLifetimeFeature3,
+          l10n.pricingPlanLifetimeFeature4,
+          l10n.pricingPlanLifetimeFeature5,
+          l10n.pricingPlanLifetimeFeature6,
+          l10n.pricingPlanLifetimeFeature7,
+        ],
+        icon: Icons.auto_awesome_outlined,
+        accent: DesignSystem.accent700,
+        accentSoft: const Color(0xFFFFFBEB),
+      ),
+    ];
+  }
+
+  _PlanSpec _buildFreePlan(S l10n) {
+    return _PlanSpec(
+      id: 'free',
+      title: l10n.pricingPlanFree,
+      price: l10n.pricingPlanFreePrice,
+      period: l10n.pricingPlanFreePeriod,
+      badge: l10n.pricingStarter,
+      icon: Icons.person_outline,
+      accent: DesignSystem.neutral700,
+      accentSoft: DesignSystem.neutral100,
+      description: l10n.pricingPlanFreeDesc,
+      cta: l10n.pricingPlanFreeCta,
+      features: [
+        l10n.pricingPlanFreeFeature1,
+        l10n.pricingPlanFreeFeature2,
+        l10n.pricingPlanFreeFeature3,
+        l10n.pricingPlanFreeFeature4,
+        l10n.pricingPlanFreeFeature5,
+      ],
+      priceValue: 0,
+      maxServers: 10,
+      maxDevices: 2,
+      storageQuotaMb: 100,
+      supportsGithubSync: false,
+      supportsPrioritySupport: false,
+      supportsLifetimeUpdates: false,
+    );
+  }
+
+  _PlanSpec _buildPlanFromConfig(
+    S l10n,
+    PricingConfig? config, {
+    required String planId,
+    required String fallbackTitle,
+    required String fallbackPrice,
+    required String fallbackPeriod,
+    required String fallbackDescription,
+    required String fallbackBadge,
+    required String fallbackCta,
+    required List<String> fallbackFeatures,
+    required IconData icon,
+    required Color accent,
+    required Color accentSoft,
+    bool isFeatured = false,
+  }) {
+    final effectiveConfig = config;
+    return _PlanSpec(
+      id: effectiveConfig?.planId ?? planId,
+      title: effectiveConfig?.displayName.trim().isNotEmpty == true
+          ? effectiveConfig!.displayName
+          : fallbackTitle,
+      price: effectiveConfig != null
+          ? _formatPrice(effectiveConfig.priceCny)
+          : fallbackPrice,
+      period: effectiveConfig != null
+          ? _displayPeriod(effectiveConfig, l10n)
+          : fallbackPeriod,
+      badge: _badgeForPlanId(effectiveConfig?.planId, fallbackBadge, l10n),
+      icon: icon,
+      accent: accent,
+      accentSoft: accentSoft,
+      description: effectiveConfig?.description.trim().isNotEmpty == true
+          ? effectiveConfig!.description
+          : fallbackDescription,
+      cta: fallbackCta,
+      features: fallbackFeatures,
+      isFeatured: isFeatured,
+      priceValue: effectiveConfig?.priceCny,
+      maxServers: effectiveConfig?.maxServers,
+      maxDevices: effectiveConfig?.maxDevices,
+      storageQuotaMb: effectiveConfig?.storageQuotaMb,
+      supportsGithubSync: effectiveConfig != null,
+      supportsPrioritySupport: effectiveConfig != null,
+      supportsLifetimeUpdates: effectiveConfig?.isLifetime ?? false,
+    );
+  }
+
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final l10n = S.of(context);
+      final billingProvider = context.read<BillingProvider>();
+      if (!_hasRequestedPricingConfigs &&
+          !billingProvider.isLoadingPricingConfigs &&
+          billingProvider.pricingConfigs.isEmpty) {
+        _hasRequestedPricingConfigs = true;
+        billingProvider.loadPricingConfigs().catchError((Object error) {
+          debugPrint('[BillingUI] loadPricingConfigs error: $error');
+          if (!mounted) {
+            return <PricingConfig>[];
+          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(l10n.pricingLoadConfigsFailed(error.toString())),
+              backgroundColor: DesignSystem.error,
+            ),
+          );
+          return <PricingConfig>[];
+        });
+      }
+
       if (!_isMobile(context)) return;
       Future.delayed(const Duration(milliseconds: 280), () {
         if (!mounted || !_scrollController.hasClients) return;
@@ -123,7 +220,8 @@ class _PricingPageState extends State<PricingPage> {
     final isMobile = _isMobile(context);
     final user = context.watch<AuthProvider>().user;
     final currentPlanId = _currentPlanId(user);
-    final plans = _buildPlans(l10n);
+    final billingProvider = context.watch<BillingProvider>();
+    final plans = _buildPlans(l10n, billingProvider);
 
     return Scaffold(
       backgroundColor: _pricingCanvas,
@@ -157,13 +255,23 @@ class _PricingPageState extends State<PricingPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _buildHero(l10n),
+                _buildHero(l10n, plans),
                 const SizedBox(height: DesignSystem.space5),
-                isMobile
-                    ? _buildMobileLayout(plans, currentPlanId, l10n)
-                    : _buildDesktopLayout(plans, currentPlanId, l10n),
-                const SizedBox(height: DesignSystem.space5),
-                _buildFeatureComparison(plans, currentPlanId, l10n),
+                if (billingProvider.isLoadingPricingConfigs &&
+                    billingProvider.pricingConfigs.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: DesignSystem.space6),
+                    child: Center(
+                      child: CircularProgressIndicator(color: _pricingAccent),
+                    ),
+                  )
+                else ...[
+                  isMobile
+                      ? _buildMobileLayout(plans, currentPlanId, l10n)
+                      : _buildDesktopLayout(plans, currentPlanId, l10n),
+                  const SizedBox(height: DesignSystem.space5),
+                  _buildFeatureComparison(plans, currentPlanId, l10n),
+                ],
                 const SizedBox(height: DesignSystem.space5),
                 _buildFAQ(l10n),
               ],
@@ -174,7 +282,17 @@ class _PricingPageState extends State<PricingPage> {
     );
   }
 
-  Widget _buildHero(S l10n) {
+  Widget _buildHero(S l10n, List<_PlanSpec> plans) {
+    final paidPlans = plans.where((plan) => plan.id != 'free').toList(growable: false);
+    final maxDevices = paidPlans
+        .map((plan) => plan.maxDevices)
+        .whereType<int>()
+        .fold<int>(0, (previous, value) => value > previous ? value : previous);
+    final maxStorageMb = paidPlans
+        .map((plan) => plan.storageQuotaMb)
+        .whereType<int>()
+        .fold<int>(0, (previous, value) => value > previous ? value : previous);
+
     return _buildPanel(
       padding: EdgeInsets.zero,
       child: Container(
@@ -204,9 +322,9 @@ class _PricingPageState extends State<PricingPage> {
                   color: _pricingAccentSoft,
                   borderRadius: BorderRadius.circular(DesignSystem.radiusFull),
                 ),
-                child: const Text(
-                  'Membership Workspace',
-                  style: TextStyle(
+                child: Text(
+                  l10n.pricingWorkspace,
+                  style: const TextStyle(
                     fontSize: DesignSystem.textXs,
                     fontWeight: DesignSystem.weightSemibold,
                     color: _pricingAccent,
@@ -238,9 +356,15 @@ class _PricingPageState extends State<PricingPage> {
                 spacing: DesignSystem.space3,
                 runSpacing: DesignSystem.space3,
                 children: [
-                  _HeroStat(label: l10n.pricingCrossDeviceSync, value: 'Included'),
-                  _HeroStat(label: l10n.pricingDeviceQuota, value: 'Up to Unlimited'),
-                  _HeroStat(label: l10n.pricingCloudStorage, value: '100 MB → 5 GB'),
+                  _HeroStat(label: l10n.pricingCrossDeviceSync, value: l10n.pricingIncluded),
+                  _HeroStat(
+                    label: l10n.pricingDeviceQuota,
+                    value: maxDevices > 0 ? _formatLimit(maxDevices, l10n) : '—',
+                  ),
+                  _HeroStat(
+                    label: l10n.pricingCloudStorage,
+                    value: maxStorageMb > 0 ? _formatStorage(maxStorageMb) : '—',
+                  ),
                 ],
               ),
             ],
@@ -474,13 +598,47 @@ class _PricingPageState extends State<PricingPage> {
             child: Column(
               children: [
                 _buildComparisonHeader(plans, currentPlanId),
-                _buildComparisonRow(l10n.pricingServerCount, ['10', l10n.pricingUnlimited, l10n.pricingUnlimited]),
-                _buildComparisonRow(l10n.pricingDeviceCount, ['2', '5', l10n.pricingUnlimited]),
-                _buildComparisonRow(l10n.pricingCloudStorage, const ['100 MB', '1 GB', '5 GB']),
-                _buildComparisonRow(l10n.pricingGitHubSync, ['—', l10n.pricingSupported, l10n.pricingSupported]),
-                _buildComparisonRow(l10n.pricingPrioritySupport, ['—', l10n.pricingSupported, l10n.pricingSupported]),
-                _buildComparisonRow(l10n.pricingLifetimeUpdates, ['—', '—', l10n.pricingSupported],
-                    isLast: true),
+                _buildComparisonRow(
+                  l10n.pricingServerCount,
+                  plans
+                      .map((plan) => _formatLimit(plan.maxServers, l10n))
+                      .toList(growable: false),
+                ),
+                _buildComparisonRow(
+                  l10n.pricingDeviceCount,
+                  plans
+                      .map((plan) => _formatLimit(plan.maxDevices, l10n))
+                      .toList(growable: false),
+                ),
+                _buildComparisonRow(
+                  l10n.pricingCloudStorage,
+                  plans
+                      .map((plan) => _formatStorage(plan.storageQuotaMb))
+                      .toList(growable: false),
+                ),
+                _buildComparisonRow(
+                  l10n.pricingGitHubSync,
+                  plans
+                      .map((plan) => _formatSupport(plan.supportsGithubSync, l10n))
+                      .toList(growable: false),
+                ),
+                _buildComparisonRow(
+                  l10n.pricingPrioritySupport,
+                  plans
+                      .map(
+                        (plan) => _formatSupport(plan.supportsPrioritySupport, l10n),
+                      )
+                      .toList(growable: false),
+                ),
+                _buildComparisonRow(
+                  l10n.pricingLifetimeUpdates,
+                  plans
+                      .map(
+                        (plan) => _formatSupport(plan.supportsLifetimeUpdates, l10n),
+                      )
+                      .toList(growable: false),
+                  isLast: true,
+                ),
               ],
             ),
           ),
@@ -644,6 +802,12 @@ class _PricingPageState extends State<PricingPage> {
 
   Future<void> _handlePurchase(BuildContext context, String plan) async {
     final l10n = S.of(context);
+    final billingProvider = Provider.of<BillingProvider>(context, listen: false);
+    final planSpec = _buildPlans(l10n, billingProvider).firstWhere(
+      (item) => item.id == plan,
+      orElse: () => _buildFreePlan(l10n),
+    );
+    debugPrint('[BillingUI] _handlePurchase start: plan=$plan');
     final codeController = TextEditingController();
 
     final result = await showDialog<String>(
@@ -691,7 +855,7 @@ class _PricingPageState extends State<PricingPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '${_getPlanName(plan, l10n)} · ${_getPlanPrice(plan, l10n)}',
+                '${planSpec.title} · ${planSpec.price}${planSpec.period}',
                 style: const TextStyle(
                   fontSize: DesignSystem.textSm,
                   color: DesignSystem.neutral600,
@@ -760,11 +924,17 @@ class _PricingPageState extends State<PricingPage> {
     );
 
     codeController.dispose();
-    if (result == null) return;
+    debugPrint('[BillingUI] _handlePurchase dialog result: $result');
+    if (result == null) {
+      debugPrint('[BillingUI] _handlePurchase cancelled by user');
+      return;
+    }
 
     if (result.startsWith('redeem:')) {
+      debugPrint('[BillingUI] _handlePurchase entering redeem flow');
       await _redeemCode(result.substring(7));
     } else if (result == 'pay') {
+      debugPrint('[BillingUI] _handlePurchase entering payment flow');
       await _startPaymentFlow(plan);
     }
   }
@@ -839,6 +1009,7 @@ class _PricingPageState extends State<PricingPage> {
   Future<void> _startPaymentFlow(String planId) async {
     final l10n = S.of(context);
     final billingPlan = BillingPlan.tryParse(planId);
+    debugPrint('[BillingUI] _startPaymentFlow start: planId=$planId parsedPlan=${billingPlan?.id} apiBaseUrl=${EnvConfig.apiBaseUrl}');
     if (billingPlan == null || billingPlan == BillingPlan.free) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -851,38 +1022,31 @@ class _PricingPageState extends State<PricingPage> {
 
     final billingProvider = Provider.of<BillingProvider>(context, listen: false);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final supabase = Supabase.instance.client;
+    final accessToken = supabase.auth.currentSession?.accessToken;
+    debugPrint('[BillingUI] session state before createOrder: hasSession=${supabase.auth.currentSession != null} userId=${supabase.auth.currentUser?.id} authState=${authProvider.state.name} accessToken=$accessToken');
 
     _showBlockingLoading();
 
     try {
       final order = await billingProvider.createOrder(plan: billingPlan);
+      debugPrint('[BillingUI] createOrder success: orderId=${order.id} paymentUrlHost=${Uri.tryParse(order.paymentUrl)?.host} qrCodeUrlHost=${Uri.tryParse(order.qrCodeUrl ?? '')?.host}');
 
       _dismissBlockingLoading();
 
-      final launched = await _launchPaymentUrl(order.paymentUrl);
-      if (!launched) {
+      final paymentSheetCompleted = await _showPaymentCheckoutDialog(order);
+      debugPrint('[BillingUI] payment checkout dialog completed: completed=$paymentSheetCompleted orderId=${order.id}');
+      if (!paymentSheetCompleted) {
         billingProvider.clearState();
-        if (!mounted) return;
-        await _showPaymentStatusDialog(
-          title: '无法打开支付页面',
-          message: '订单已创建，但未能自动打开支付链接。你可以重试打开支付页，或稍后前往账户中心查看订阅状态。',
-          confirmText: '重试打开',
-          onConfirm: () => _launchPaymentUrl(order.paymentUrl),
-        );
+        debugPrint('[BillingUI] payment checkout dialog cancelled by user');
         return;
       }
 
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('已打开支付页面，请完成支付后返回应用等待确认'),
-          backgroundColor: DesignSystem.success,
-        ),
-      );
-
-      _showBlockingLoading(message: '等待支付确认...');
+      debugPrint('[BillingUI] waitForPayment start: orderId=${order.id}');
+      _showBlockingLoading(message: l10n.pricingWaitingForConfirmation);
 
       final status = await billingProvider.waitForPayment(orderId: order.id);
+      debugPrint('[BillingUI] waitForPayment completed: orderId=${order.id} state=${status.state.name} isPaid=${status.isPaid} message=${status.message}');
 
       _dismissBlockingLoading();
 
@@ -891,11 +1055,11 @@ class _PricingPageState extends State<PricingPage> {
         billingProvider.clearState();
         if (!mounted) return;
         await _showPaymentStatusDialog(
-          title: '支付成功',
+          title: l10n.pricingPaymentSuccessTitle,
           message: status.message?.trim().isNotEmpty == true
               ? status.message!
-              : '订阅权益已刷新，你现在可以在账户中心查看最新会员状态。',
-          confirmText: '查看账户',
+              : l10n.pricingPaymentSuccessMessage,
+          confirmText: l10n.pricingViewAccount,
           onConfirm: _openAccountCenter,
         );
         return;
@@ -906,41 +1070,41 @@ class _PricingPageState extends State<PricingPage> {
         case PaymentOrderState.pending:
         case PaymentOrderState.unknown:
           await _showPaymentStatusDialog(
-            title: '暂未确认支付结果',
+            title: l10n.pricingPaymentPendingTitle,
             message: status.message?.trim().isNotEmpty == true
                 ? status.message!
-                : '支付结果还没有同步完成。你可以稍后前往账户中心查看订阅状态，若已扣款通常会在短时间内生效。',
-            confirmText: '查看账户',
+                : l10n.pricingPaymentPendingMessage,
+            confirmText: l10n.pricingViewAccount,
             onConfirm: _openAccountCenter,
           );
           break;
         case PaymentOrderState.failed:
           await _showPaymentStatusDialog(
-            title: '支付失败',
+            title: l10n.pricingPaymentFailedTitle,
             message: status.message?.trim().isNotEmpty == true
                 ? status.message!
-                : '支付未完成，请稍后重试。',
-            confirmText: '重新打开支付页',
-            onConfirm: () => _launchPaymentUrl(order.paymentUrl),
+                : l10n.pricingPaymentFailedMessage,
+            confirmText: l10n.pricingReopenPayment,
+            onConfirm: () => _showPaymentCheckoutDialog(order),
           );
           break;
         case PaymentOrderState.cancelled:
           await _showPaymentStatusDialog(
-            title: '支付已取消',
+            title: l10n.pricingPaymentCancelledTitle,
             message: status.message?.trim().isNotEmpty == true
                 ? status.message!
-                : '你已取消本次支付，如需继续开通可以重新打开支付页面。',
-            confirmText: '重新打开支付页',
-            onConfirm: () => _launchPaymentUrl(order.paymentUrl),
+                : l10n.pricingPaymentCancelledMessage,
+            confirmText: l10n.pricingReopenPayment,
+            onConfirm: () => _showPaymentCheckoutDialog(order),
           );
           break;
         case PaymentOrderState.expired:
           await _showPaymentStatusDialog(
-            title: '支付已过期',
+            title: l10n.pricingPaymentExpiredTitle,
             message: status.message?.trim().isNotEmpty == true
                 ? status.message!
-                : '当前订单已过期，请重新发起下单。',
-            confirmText: '我知道了',
+                : l10n.pricingPaymentExpiredMessage,
+            confirmText: l10n.pricingAcknowledge,
           );
           break;
         case PaymentOrderState.paid:
@@ -948,14 +1112,16 @@ class _PricingPageState extends State<PricingPage> {
       }
 
       billingProvider.clearState();
+      debugPrint('[BillingUI] payment flow finished with non-paid state, provider state cleared');
     } catch (error) {
       _dismissBlockingLoading();
       billingProvider.clearState();
+      debugPrint('[BillingUI] payment flow exception: $error');
       if (!mounted) return;
       await _showPaymentStatusDialog(
-        title: '支付流程失败',
-        message: '创建订单或查询支付状态时出现异常：$error',
-        confirmText: '我知道了',
+        title: l10n.pricingPaymentFlowFailedTitle,
+        message: l10n.pricingPaymentFlowFailedMessage(error.toString()),
+        confirmText: l10n.pricingAcknowledge,
       );
     }
   }
@@ -968,7 +1134,8 @@ class _PricingPageState extends State<PricingPage> {
     return 'free';
   }
 
-  void _showBlockingLoading({String message = '处理中...'}) {
+  void _showBlockingLoading({String? message}) {
+    final l10n = S.of(context);
     showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -990,7 +1157,7 @@ class _PricingPageState extends State<PricingPage> {
               const SizedBox(width: DesignSystem.space4),
               Flexible(
                 child: Text(
-                  message,
+                  message ?? l10n.pricingProcessing,
                   style: const TextStyle(
                     fontSize: DesignSystem.textSm,
                     color: DesignSystem.neutral700,
@@ -1020,6 +1187,7 @@ class _PricingPageState extends State<PricingPage> {
     Future<void> Function()? onConfirm,
   }) async {
     if (!mounted) return;
+    final l10n = S.of(context);
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -1045,9 +1213,9 @@ class _PricingPageState extends State<PricingPage> {
           if (onConfirm != null)
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text(
-                '关闭',
-                style: TextStyle(color: DesignSystem.neutral600),
+              child: Text(
+                l10n.pricingClose,
+                style: const TextStyle(color: DesignSystem.neutral600),
               ),
             ),
           FilledButton(
@@ -1073,34 +1241,256 @@ class _PricingPageState extends State<PricingPage> {
     await Navigator.of(context).pushNamed('/account');
   }
 
-  String _getPlanName(String plan, S l10n) {
-    switch (plan) {
-      case 'pro_monthly':
-        return l10n.pricingProMonthly;
+  Future<bool> _showPaymentCheckoutDialog(PaymentOrder order) async {
+    if (!mounted) return false;
+
+    final l10n = S.of(context);
+    final paymentUrl = order.paymentUrl.trim();
+    debugPrint('[BillingUI] _showPaymentCheckoutDialog: orderId=${order.id} paymentUrl=$paymentUrl');
+
+    final initialUri = Uri.tryParse(paymentUrl);
+    if (initialUri == null ||
+        !(initialUri.scheme == 'http' || initialUri.scheme == 'https')) {
+      debugPrint('[BillingUI] _showPaymentCheckoutDialog invalid payment url: $paymentUrl');
+      return await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (dialogContext) => AlertDialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(DesignSystem.radiusXl),
+              ),
+              title: Text(l10n.pricingCheckoutUnavailableTitle),
+              content: SelectableText(
+                paymentUrl.isEmpty
+                    ? l10n.pricingCheckoutUnavailableMessage
+                    : paymentUrl,
+                style: const TextStyle(color: DesignSystem.neutral600, height: 1.5),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: Text(l10n.cancel),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+    }
+
+    final controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onNavigationRequest: (request) {
+            final uri = Uri.tryParse(request.url);
+            final isHttp = uri != null && (uri.scheme == 'http' || uri.scheme == 'https');
+            debugPrint('[BillingUI] payment webview navigate: ${request.url} isMainFrame=${request.isMainFrame}');
+            if (isHttp) {
+              return NavigationDecision.navigate;
+            }
+            debugPrint('[BillingUI] payment webview blocked non-http scheme: ${request.url}');
+            return NavigationDecision.prevent;
+          },
+          onWebResourceError: (error) {
+            debugPrint('[BillingUI] payment webview error: code=${error.errorCode} type=${error.errorType} desc=${error.description}');
+          },
+        ),
+      )
+      ..loadRequest(initialUri);
+
+    return await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) {
+            final screenSize = MediaQuery.of(dialogContext).size;
+            final dialogWidth = screenSize.width >= 980 ? 860.0 : screenSize.width - 48;
+            final dialogHeight = screenSize.height >= 900 ? 760.0 : screenSize.height - 96;
+
+            return AlertDialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(DesignSystem.radiusXl),
+              ),
+              titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+              contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+              actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              title: Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: _pricingAccentSoft,
+                      borderRadius: BorderRadius.circular(DesignSystem.radiusLg),
+                    ),
+                    child: const Icon(
+                      Icons.account_balance_wallet_rounded,
+                      color: _pricingAccent,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: DesignSystem.space3),
+                  Expanded(
+                    child: Text(
+                      l10n.pricingCheckoutTitle,
+                      style: const TextStyle(
+                        color: DesignSystem.neutral900,
+                        fontWeight: DesignSystem.weightSemibold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: dialogWidth,
+                height: dialogHeight,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      l10n.pricingCheckoutInstruction,
+                      style: const TextStyle(
+                        color: DesignSystem.neutral600,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: DesignSystem.space4),
+                    Expanded(
+                      child: Container(
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(DesignSystem.radiusLg),
+                          border: Border.all(color: _pricingPanelBorder),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: WebViewWidget(controller: controller),
+                      ),
+                    ),
+                    const SizedBox(height: DesignSystem.space4),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(DesignSystem.space4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(DesignSystem.radiusLg),
+                        border: Border.all(color: _pricingPanelBorder),
+                      ),
+                      child: Wrap(
+                        spacing: DesignSystem.space5,
+                        runSpacing: DesignSystem.space2,
+                        children: [
+                          Text(
+                            l10n.pricingOrderId(order.id),
+                            style: const TextStyle(
+                              color: DesignSystem.neutral700,
+                              fontWeight: DesignSystem.weightMedium,
+                            ),
+                          ),
+                          Text(
+                            l10n.pricingAmountValue(order.amountCny.toStringAsFixed(2)),
+                            style: const TextStyle(
+                              color: DesignSystem.neutral600,
+                            ),
+                          ),
+                          if (order.expiresAt != null)
+                            Text(
+                              l10n.pricingExpiresAtValue(
+                                order.expiresAt!.toLocal().toString(),
+                              ),
+                              style: const TextStyle(
+                                color: DesignSystem.neutral600,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: Text(
+                    l10n.cancel,
+                    style: const TextStyle(color: DesignSystem.neutral600),
+                  ),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _pricingAccent,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: Text(l10n.pricingPaymentCompleted),
+                ),
+              ],
+            );
+          },
+        ) ??
+        false;
+  }
+
+
+
+  String _formatPrice(double priceCny) {
+    if (priceCny == priceCny.roundToDouble()) {
+      return '¥${priceCny.toStringAsFixed(0)}';
+    }
+    return '¥${priceCny.toStringAsFixed(1)}';
+  }
+
+  String _displayPeriod(PricingConfig config, S l10n) {
+    switch (config.billingPeriod.trim()) {
+      case 'month':
+        return l10n.pricingPlanProPeriod;
+      case 'year':
+        return l10n.pricingPeriodYear;
       case 'lifetime':
-        return l10n.pricingPlanLifetime;
+      case 'one_time':
+        return l10n.pricingPlanLifetimePeriod;
       default:
-        return l10n.pricingPlanFree;
+        return config.isLifetime ? l10n.pricingPlanLifetimePeriod : l10n.pricingPlanProPeriod;
     }
   }
 
-  String _getPlanPrice(String plan, S l10n) {
-    switch (plan) {
+  String _badgeForPlanId(String? planId, String fallbackBadge, S l10n) {
+    switch (planId) {
       case 'pro_monthly':
-        return l10n.pricingProMonthlyPrice;
+        return l10n.pricingBadgeMostPopular;
+      case 'pro_yearly':
+        return l10n.pricingBadgeBestForTeams;
       case 'lifetime':
-        return l10n.pricingLifetimeOnce;
+        return l10n.pricingBadgeBestValue;
       default:
-        return l10n.pricingPlanFreePrice;
+        return fallbackBadge;
     }
   }
 
-  Future<bool> _launchPaymentUrl(String url) async {
-    final uri = Uri.parse(url);
-    if (!await canLaunchUrl(uri)) {
-      return false;
+  String _formatLimit(int? value, S l10n) {
+    if (value == null || value <= 0) {
+      return '—';
     }
-    return launchUrl(uri, mode: LaunchMode.externalApplication);
+    return '$value';
+  }
+
+  String _formatStorage(int? storageQuotaMb) {
+    if (storageQuotaMb == null || storageQuotaMb <= 0) {
+      return '—';
+    }
+    if (storageQuotaMb >= 1024) {
+      final storageGb = storageQuotaMb / 1024;
+      if (storageGb == storageGb.roundToDouble()) {
+        return '${storageGb.toStringAsFixed(0)} GB';
+      }
+      return '${storageGb.toStringAsFixed(1)} GB';
+    }
+    return '$storageQuotaMb MB';
+  }
+
+  String _formatSupport(bool enabled, S l10n) {
+    return enabled ? l10n.pricingIncluded : l10n.pricingUnsupported;
   }
 }
 
@@ -1283,6 +1673,13 @@ class _PlanSpec {
     required this.cta,
     required this.features,
     this.isFeatured = false,
+    this.priceValue,
+    this.maxServers,
+    this.maxDevices,
+    this.storageQuotaMb,
+    this.supportsGithubSync = false,
+    this.supportsPrioritySupport = false,
+    this.supportsLifetimeUpdates = false,
   });
 
   final String id;
@@ -1297,4 +1694,11 @@ class _PlanSpec {
   final String cta;
   final List<String> features;
   final bool isFeatured;
+  final double? priceValue;
+  final int? maxServers;
+  final int? maxDevices;
+  final int? storageQuotaMb;
+  final bool supportsGithubSync;
+  final bool supportsPrioritySupport;
+  final bool supportsLifetimeUpdates;
 }

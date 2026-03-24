@@ -19,7 +19,7 @@ export type PlanConfig = {
 export const planConfigs: Record<string, PlanConfig> = {
   pro_monthly: {
     planId: 'pro_monthly',
-    amountCny: 9,
+    amountCny: 6.9,
     subject: 'BovaPlayer Pro 月付',
     body: 'BovaPlayer Pro 月付订阅',
     subscriptionType: 'pro_monthly',
@@ -35,7 +35,7 @@ export const planConfigs: Record<string, PlanConfig> = {
   },
   lifetime: {
     planId: 'lifetime',
-    amountCny: 298,
+    amountCny: 69,
     subject: 'BovaPlayer 永久版',
     body: 'BovaPlayer 永久版订阅',
     subscriptionType: 'lifetime',

@@ -131,6 +131,172 @@ CREATE INDEX IF NOT EXISTS idx_payment_orders_transaction_id ON public.payment_o
 CREATE INDEX IF NOT EXISTS idx_payment_orders_subscription_id ON public.payment_orders(subscription_id);
 CREATE INDEX IF NOT EXISTS idx_payment_orders_created_at ON public.payment_orders(created_at DESC);
 
+-- ============================================
+-- 1.2 pricing_configs 表
+--    说明：前端展示价格、后端创建订单、支付完成发放权益统一从这里读取
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.pricing_configs (
+    plan_id VARCHAR(32) PRIMARY KEY CHECK (plan_id IN ('pro_monthly', 'pro_yearly', 'lifetime')),
+    display_name TEXT NOT NULL,
+    description TEXT,
+    price_cny DECIMAL(10,2) NOT NULL CHECK (price_cny >= 0),
+    currency VARCHAR(10) NOT NULL DEFAULT 'CNY',
+    billing_period TEXT,
+    subject TEXT NOT NULL,
+    body TEXT,
+    subscription_type VARCHAR(32) NOT NULL CHECK (subscription_type IN ('pro_monthly', 'pro_yearly', 'lifetime')),
+    account_type VARCHAR(20) NOT NULL CHECK (account_type IN ('pro', 'lifetime')),
+    duration_days INT CHECK (duration_days IS NULL OR duration_days > 0),
+    max_servers INT NOT NULL DEFAULT -1,
+    max_devices INT NOT NULL DEFAULT 5,
+    storage_quota_mb INT NOT NULL DEFAULT 1024,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    sort_order INT NOT NULL DEFAULT 0,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pricing_configs_active_sort
+    ON public.pricing_configs(is_active, sort_order, plan_id);
+
+INSERT INTO public.pricing_configs (
+    plan_id,
+    display_name,
+    description,
+    price_cny,
+    currency,
+    billing_period,
+    subject,
+    body,
+    subscription_type,
+    account_type,
+    duration_days,
+    max_servers,
+    max_devices,
+    storage_quota_mb,
+    is_active,
+    sort_order
+) VALUES
+    (
+        'pro_monthly',
+        'Pro 月付',
+        'BovaPlayer Pro 月付订阅',
+        6.90,
+        'CNY',
+        'monthly',
+        'BovaPlayer Pro 月付',
+        'BovaPlayer Pro 月付订阅',
+        'pro_monthly',
+        'pro',
+        30,
+        -1,
+        5,
+        1024,
+        TRUE,
+        10
+    ),
+    (
+        'pro_yearly',
+        'Pro 年付',
+        'BovaPlayer Pro 年付订阅',
+        68.00,
+        'CNY',
+        'yearly',
+        'BovaPlayer Pro 年付',
+        'BovaPlayer Pro 年付订阅',
+        'pro_yearly',
+        'pro',
+        365,
+        -1,
+        5,
+        1024,
+        TRUE,
+        20
+    ),
+    (
+        'lifetime',
+        '永久版',
+        'BovaPlayer 永久版订阅',
+        69.00,
+        'CNY',
+        'lifetime',
+        'BovaPlayer 永久版',
+        'BovaPlayer 永久版订阅',
+        'lifetime',
+        'lifetime',
+        NULL,
+        -1,
+        -1,
+        5120,
+        TRUE,
+        30
+    )
+ON CONFLICT (plan_id) DO UPDATE
+SET display_name = EXCLUDED.display_name,
+    description = EXCLUDED.description,
+    price_cny = EXCLUDED.price_cny,
+    currency = EXCLUDED.currency,
+    billing_period = EXCLUDED.billing_period,
+    subject = EXCLUDED.subject,
+    body = EXCLUDED.body,
+    subscription_type = EXCLUDED.subscription_type,
+    account_type = EXCLUDED.account_type,
+    duration_days = EXCLUDED.duration_days,
+    max_servers = EXCLUDED.max_servers,
+    max_devices = EXCLUDED.max_devices,
+    storage_quota_mb = EXCLUDED.storage_quota_mb,
+    is_active = EXCLUDED.is_active,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = NOW();
+
+ALTER TABLE public.pricing_configs ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "public_read_pricing_configs" ON public.pricing_configs;
+CREATE POLICY "public_read_pricing_configs" ON public.pricing_configs
+    FOR SELECT
+    USING (TRUE);
+
+DROP POLICY IF EXISTS "admin_update_pricing_configs" ON public.pricing_configs;
+CREATE POLICY "admin_update_pricing_configs" ON public.pricing_configs
+    FOR UPDATE
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.users
+            WHERE id = auth.uid()
+              AND is_admin = true
+        )
+    )
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM public.users
+            WHERE id = auth.uid()
+              AND is_admin = true
+        )
+    );
+
+DROP POLICY IF EXISTS "admin_insert_pricing_configs" ON public.pricing_configs;
+CREATE POLICY "admin_insert_pricing_configs" ON public.pricing_configs
+    FOR INSERT
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM public.users
+            WHERE id = auth.uid()
+              AND is_admin = true
+        )
+    );
+
+DROP POLICY IF EXISTS "admin_delete_pricing_configs" ON public.pricing_configs;
+CREATE POLICY "admin_delete_pricing_configs" ON public.pricing_configs
+    FOR DELETE
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.users
+            WHERE id = auth.uid()
+              AND is_admin = true
+        )
+    );
+
 ALTER TABLE public.payment_orders ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "users_read_own_payment_orders" ON public.payment_orders;
@@ -277,6 +443,12 @@ CREATE TRIGGER update_subscriptions_updated_at
 DROP TRIGGER IF EXISTS update_payment_orders_updated_at ON public.payment_orders;
 CREATE TRIGGER update_payment_orders_updated_at
     BEFORE UPDATE ON public.payment_orders
+    FOR EACH ROW
+    EXECUTE FUNCTION public.update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_pricing_configs_updated_at ON public.pricing_configs;
+CREATE TRIGGER update_pricing_configs_updated_at
+    BEFORE UPDATE ON public.pricing_configs
     FOR EACH ROW
     EXECUTE FUNCTION public.update_updated_at_column();
 
@@ -785,6 +957,179 @@ BEGIN
         END;
 
     RETURN v_result;
+END;
+$$;
+
+-- ============================================
+-- 7.1 查询价格配置 RPC
+-- ============================================
+CREATE OR REPLACE FUNCTION public.list_pricing_configs(
+    p_include_inactive BOOLEAN DEFAULT FALSE
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_is_admin BOOLEAN := FALSE;
+    v_result JSONB;
+BEGIN
+    SELECT COALESCE(is_admin, FALSE) INTO v_is_admin
+    FROM public.users
+    WHERE id = auth.uid();
+
+    SELECT jsonb_build_object(
+        'success', true,
+        'plans', COALESCE(jsonb_agg(
+            jsonb_build_object(
+                'plan_id', pc.plan_id,
+                'display_name', pc.display_name,
+                'description', pc.description,
+                'price_cny', pc.price_cny,
+                'currency', pc.currency,
+                'billing_period', pc.billing_period,
+                'subject', pc.subject,
+                'body', pc.body,
+                'subscription_type', pc.subscription_type,
+                'account_type', pc.account_type,
+                'duration_days', pc.duration_days,
+                'max_servers', pc.max_servers,
+                'max_devices', pc.max_devices,
+                'storage_quota_mb', pc.storage_quota_mb,
+                'is_active', pc.is_active,
+                'sort_order', pc.sort_order,
+                'metadata', pc.metadata,
+                'created_at', pc.created_at,
+                'updated_at', pc.updated_at
+            ) ORDER BY pc.sort_order ASC, pc.plan_id ASC
+        ), '[]'::jsonb)
+    ) INTO v_result
+    FROM public.pricing_configs pc
+    WHERE p_include_inactive IS TRUE
+       OR pc.is_active = TRUE;
+
+    IF p_include_inactive IS TRUE AND v_is_admin IS NOT TRUE THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'message', '无权限查看未启用价格配置'
+        );
+    END IF;
+
+    RETURN v_result;
+END;
+$$;
+
+-- ============================================
+-- 7.2 更新价格配置 RPC（管理员）
+-- ============================================
+CREATE OR REPLACE FUNCTION public.update_pricing_config(
+    p_plan_id TEXT,
+    p_price_cny NUMERIC DEFAULT NULL,
+    p_display_name TEXT DEFAULT NULL,
+    p_description TEXT DEFAULT NULL,
+    p_billing_period TEXT DEFAULT NULL,
+    p_subject TEXT DEFAULT NULL,
+    p_body TEXT DEFAULT NULL,
+    p_duration_days INT DEFAULT NULL,
+    p_max_servers INT DEFAULT NULL,
+    p_max_devices INT DEFAULT NULL,
+    p_storage_quota_mb INT DEFAULT NULL,
+    p_is_active BOOLEAN DEFAULT NULL,
+    p_sort_order INT DEFAULT NULL,
+    p_metadata JSONB DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_is_admin BOOLEAN := FALSE;
+    v_plan public.pricing_configs%ROWTYPE;
+BEGIN
+    SELECT COALESCE(is_admin, FALSE) INTO v_is_admin
+    FROM public.users
+    WHERE id = auth.uid();
+
+    IF v_is_admin IS NOT TRUE THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'message', '无权限：仅管理员可修改价格配置'
+        );
+    END IF;
+
+    IF TRIM(COALESCE(p_plan_id, '')) = '' THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'message', '方案 ID 不能为空'
+        );
+    END IF;
+
+    IF p_price_cny IS NOT NULL AND p_price_cny < 0 THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'message', '价格不能小于 0'
+        );
+    END IF;
+
+    IF p_duration_days IS NOT NULL AND p_duration_days <= 0 THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'message', 'duration_days 必须大于 0'
+        );
+    END IF;
+
+    UPDATE public.pricing_configs
+    SET price_cny = COALESCE(p_price_cny, price_cny),
+        display_name = COALESCE(NULLIF(TRIM(p_display_name), ''), display_name),
+        description = COALESCE(p_description, description),
+        billing_period = COALESCE(NULLIF(TRIM(p_billing_period), ''), billing_period),
+        subject = COALESCE(NULLIF(TRIM(p_subject), ''), subject),
+        body = COALESCE(p_body, body),
+        duration_days = CASE
+            WHEN account_type = 'lifetime' THEN NULL
+            ELSE COALESCE(p_duration_days, duration_days)
+        END,
+        max_servers = COALESCE(p_max_servers, max_servers),
+        max_devices = COALESCE(p_max_devices, max_devices),
+        storage_quota_mb = COALESCE(p_storage_quota_mb, storage_quota_mb),
+        is_active = COALESCE(p_is_active, is_active),
+        sort_order = COALESCE(p_sort_order, sort_order),
+        metadata = COALESCE(p_metadata, metadata)
+    WHERE plan_id = TRIM(p_plan_id)
+    RETURNING * INTO v_plan;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'message', '价格配置不存在'
+        );
+    END IF;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'message', '价格配置更新成功',
+        'plan', jsonb_build_object(
+            'plan_id', v_plan.plan_id,
+            'display_name', v_plan.display_name,
+            'description', v_plan.description,
+            'price_cny', v_plan.price_cny,
+            'currency', v_plan.currency,
+            'billing_period', v_plan.billing_period,
+            'subject', v_plan.subject,
+            'body', v_plan.body,
+            'subscription_type', v_plan.subscription_type,
+            'account_type', v_plan.account_type,
+            'duration_days', v_plan.duration_days,
+            'max_servers', v_plan.max_servers,
+            'max_devices', v_plan.max_devices,
+            'storage_quota_mb', v_plan.storage_quota_mb,
+            'is_active', v_plan.is_active,
+            'sort_order', v_plan.sort_order,
+            'metadata', v_plan.metadata,
+            'created_at', v_plan.created_at,
+            'updated_at', v_plan.updated_at
+        )
+    );
 END;
 $$;
 

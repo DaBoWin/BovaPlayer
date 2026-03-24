@@ -1,11 +1,12 @@
 import type { Request, Response } from 'express';
+import crypto from 'node:crypto';
 
 import { config } from '../lib/config.js';
 import { jsonError, jsonOk } from '../lib/http.js';
 import {
   buildMerchantOrderId,
   coerceStringRecord,
-  planConfigs,
+  getPricingConfig,
   signYipay,
 } from '../lib/payment.js';
 import { createAdminClient, requireUser } from '../lib/supabase.js';
@@ -31,20 +32,21 @@ export async function createPaymentOrder(req: Request, res: Response) {
     const planId = String(body.plan ?? '').trim();
     const paymentMethod = String(body.payment_method ?? 'alipay').trim().toLowerCase();
 
-    const plan = planConfigs[planId];
-    if (!plan) {
-      return res.status(400).json(jsonError('无效的订阅方案'));
-    }
-
     if (paymentMethod !== 'alipay') {
       return res.status(400).json(jsonError('当前仅支持支付宝支付'));
     }
 
     const supabase = createAdminClient();
+    const plan = await getPricingConfig(supabase, planId);
+    if (!plan) {
+      return res.status(400).json(jsonError('无效或未启用的订阅方案'));
+    }
+
     const merchantOrderId = buildMerchantOrderId(user.id, planId);
     const paymentOrderId = crypto.randomUUID();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 15 * 60 * 1000);
+    const currency = (plan.currency ?? 'CNY').trim() || 'CNY';
 
     const notifyUrl = `${config.apiPublicBaseUrl.replace(/\/$/, '')}/api/payment/notify/yipay`;
     const returnUrl = `${config.paymentReturnUrl.replace(/\/$/, '')}/api/payment/return/yipay`;
@@ -127,7 +129,7 @@ export async function createPaymentOrder(req: Request, res: Response) {
       merchant_order_id: merchantOrderId,
       provider_order_id: providerOrderId || null,
       amount_cny: plan.amountCny,
-      currency: 'CNY',
+      currency,
       subject: plan.subject,
       body: plan.body,
       payment_url: paymentUrl,
@@ -136,6 +138,18 @@ export async function createPaymentOrder(req: Request, res: Response) {
       raw_create_response: gatewayJson,
       metadata: {
         supabase_user_id: user.id,
+        plan_config: {
+          display_name: plan.displayName,
+          description: plan.description,
+          billing_period: plan.billingPeriod,
+          account_type: plan.accountType,
+          duration_days: plan.expiresDays,
+          max_servers: plan.maxServers,
+          max_devices: plan.maxDevices,
+          storage_quota_mb: plan.storageQuotaMb,
+          sort_order: plan.sortOrder,
+          metadata: plan.metadata ?? {},
+        },
       },
     });
 
@@ -149,6 +163,7 @@ export async function createPaymentOrder(req: Request, res: Response) {
         order_id: paymentOrderId,
         plan: plan.planId,
         amount_cny: plan.amountCny,
+        currency,
         payment_url: paymentUrl,
         qr_code_url: qrCodeUrl || null,
         status: 'pending',
