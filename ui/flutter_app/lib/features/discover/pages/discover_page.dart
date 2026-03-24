@@ -15,12 +15,14 @@ import '../widgets/discover_latency_indicator.dart';
 import '../widgets/discover_matched_source_strip.dart';
 import '../widgets/discover_poster_card.dart';
 import '../services/discover_library_resolver_service.dart';
+import '../services/tmdb_service.dart';
 import '../widgets/discover_section_row.dart';
 
 class DiscoverPage extends StatefulWidget {
   const DiscoverPage({
     super.key,
     required this.feed,
+    required this.tmdbService,
     this.onExploreItem,
     this.resolveLibraryMatches,
     this.onQuickPlayMatch,
@@ -30,6 +32,7 @@ class DiscoverPage extends StatefulWidget {
   });
 
   final DiscoverFeed feed;
+  final TmdbService tmdbService;
   final Future<void> Function(TmdbMediaItem item)? onExploreItem;
   final Future<List<DiscoverLibraryMatch>> Function(TmdbMediaItem item)?
       resolveLibraryMatches;
@@ -52,7 +55,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
   @override
   void initState() {
     super.initState();
-    _controller = DiscoverController();
+    _controller = DiscoverController(service: widget.tmdbService);
     _controller.load(widget.feed, force: true);
   }
 

@@ -536,6 +536,7 @@ class _MainNavigationState extends State<MainNavigation> {
     await _openDiscoverWorkspacePage(
       DiscoverSearchPage(
         embedded: DesignSystem.isDesktop(context),
+        tmdbService: _tmdbService,
         onExploreItem: _handleDiscoverExplore,
         resolveLibraryMatches: _resolveDiscoverMatches,
         onQuickPlayMatch: _handleDiscoverQuickPlay,
@@ -1066,6 +1067,7 @@ class _MainNavigationState extends State<MainNavigation> {
           navigatorKey: _discoverNavigatorKey,
           child: DiscoverPage(
             feed: DiscoverFeed.home,
+            tmdbService: _tmdbService,
             onExploreItem: _handleDiscoverExplore,
             resolveLibraryMatches: _resolveDiscoverMatches,
             onQuickPlayMatch: _handleDiscoverQuickPlay,
@@ -1078,6 +1080,7 @@ class _MainNavigationState extends State<MainNavigation> {
           navigatorKey: _moviesNavigatorKey,
           child: DiscoverPage(
             feed: DiscoverFeed.movies,
+            tmdbService: _tmdbService,
             onExploreItem: _handleDiscoverExplore,
             resolveLibraryMatches: _resolveDiscoverMatches,
             onQuickPlayMatch: _handleDiscoverQuickPlay,
@@ -1090,6 +1093,7 @@ class _MainNavigationState extends State<MainNavigation> {
           navigatorKey: _showsNavigatorKey,
           child: DiscoverPage(
             feed: DiscoverFeed.shows,
+            tmdbService: _tmdbService,
             onExploreItem: _handleDiscoverExplore,
             resolveLibraryMatches: _resolveDiscoverMatches,
             onQuickPlayMatch: _handleDiscoverQuickPlay,
@@ -1132,6 +1136,7 @@ class _MainNavigationState extends State<MainNavigation> {
         return DiscoverPage(
           key: ValueKey(_discoverFeed),
           feed: _discoverFeed,
+          tmdbService: _tmdbService,
           onExploreItem: _handleDiscoverExplore,
           resolveLibraryMatches: _resolveDiscoverMatches,
           onQuickPlayMatch: _handleDiscoverQuickPlay,

@@ -9,6 +9,7 @@ import '../../../widgets/custom_app_bar.dart';
 import '../controllers/discover_search_controller.dart';
 import '../models/tmdb_media_item.dart';
 import '../services/discover_library_resolver_service.dart';
+import '../services/tmdb_service.dart';
 import '../widgets/discover_bookmark_button.dart';
 import '../widgets/discover_matched_source_strip.dart';
 import '../widgets/discover_poster_card.dart';
@@ -17,6 +18,7 @@ class DiscoverSearchPage extends StatefulWidget {
   const DiscoverSearchPage({
     super.key,
     this.embedded = false,
+    required this.tmdbService,
     required this.onExploreItem,
     required this.resolveLibraryMatches,
     required this.onQuickPlayMatch,
@@ -26,6 +28,7 @@ class DiscoverSearchPage extends StatefulWidget {
   });
 
   final bool embedded;
+  final TmdbService tmdbService;
   final Future<void> Function(TmdbMediaItem item) onExploreItem;
   final Future<List<DiscoverLibraryMatch>> Function(TmdbMediaItem item)
       resolveLibraryMatches;
@@ -46,7 +49,7 @@ class _DiscoverSearchPageState extends State<DiscoverSearchPage> {
   @override
   void initState() {
     super.initState();
-    _controller = DiscoverSearchController();
+    _controller = DiscoverSearchController(service: widget.tmdbService);
     _textController = TextEditingController()
       ..addListener(() {
         if (mounted) setState(() {});
