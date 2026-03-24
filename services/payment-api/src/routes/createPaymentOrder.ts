@@ -49,7 +49,7 @@ export async function createPaymentOrder(req: Request, res: Response) {
     const currency = (plan.currency ?? 'CNY').trim() || 'CNY';
 
     const notifyUrl = `${config.apiPublicBaseUrl.replace(/\/$/, '')}/api/payment/notify/yipay`;
-    const returnUrl = `${config.paymentReturnUrl.replace(/\/$/, '')}/api/payment/return/yipay`;
+    const returnUrl = `${config.apiPublicBaseUrl.replace(/\/$/, '')}/api/payment/return/yipay`;
 
     const gatewayParams = coerceStringRecord({
       pid: config.yipayPid,

@@ -62,6 +62,6 @@ export async function handleYipayReturn(req: Request, res: Response) {
 }
 
 function redirectWithStatus(res: Response, status: 'success' | 'pending' | 'fail') {
-  const target = `${config.paymentReturnUrl.replace(/\/$/, '')}/account?pay=${status}`;
+  const target = `${config.paymentReturnUrl.replace(/\/$/, '')}/#/account?pay=${status}`;
   return res.redirect(302, target);
 }

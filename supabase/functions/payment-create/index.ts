@@ -56,7 +56,7 @@ serve(async (req) => {
     const expiresAt = new Date(now.getTime() + 15 * 60 * 1000);
 
     const notifyUrl = `${getEnv('API_PUBLIC_BASE_URL').replace(/\/$/, '')}/api/payment/notify/yipay`;
-    const returnUrl = `${getEnv('PAYMENT_RETURN_URL').replace(/\/$/, '')}/api/payment/return/yipay`;
+    const returnUrl = `${getEnv('API_PUBLIC_BASE_URL').replace(/\/$/, '')}/api/payment/return/yipay`;
 
     const gatewayParams = coerceStringRecord({
       pid: getEnv('YIPAY_PID'),

@@ -79,6 +79,6 @@ serve(async (req) => {
 });
 
 function redirectWithStatus(status: 'success' | 'pending' | 'fail') {
-  const target = `${getEnv('PAYMENT_RETURN_URL').replace(/\/$/, '')}/account?pay=${status}`;
+  const target = `${getEnv('PAYMENT_RETURN_URL').replace(/\/$/, '')}/#/account?pay=${status}`;
   return Response.redirect(target, 302);
 }

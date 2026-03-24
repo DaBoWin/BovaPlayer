@@ -100,8 +100,10 @@ class _PricingAdminPageState extends State<PricingAdminPage> {
     final l10n = S.of(context);
     switch (config.billingPeriod.trim()) {
       case 'month':
+      case 'monthly':
         return l10n.pricingAdminPeriodMonth;
       case 'year':
+      case 'yearly':
         return l10n.pricingAdminPeriodYear;
       case 'lifetime':
       case 'one_time':
@@ -109,6 +111,13 @@ class _PricingAdminPageState extends State<PricingAdminPage> {
       default:
         return config.billingPeriod;
     }
+  }
+
+  String _formatLimit(int limit) {
+    if (limit < 0) {
+      return S.of(context).pricingUnlimited;
+    }
+    return '$limit';
   }
 
   Color _planColor(PricingConfig config) {
@@ -487,8 +496,8 @@ class _PricingAdminPageState extends State<PricingAdminPage> {
             children: [
               _MetaItem(label: l10n.pricingAdminPriceLabel, value: _formatPrice(config.priceCny)),
               _MetaItem(label: l10n.pricingAdminPeriodLabel, value: _formatPeriod(config)),
-              _MetaItem(label: l10n.pricingAdminServersLabel, value: '${config.maxServers}'),
-              _MetaItem(label: l10n.pricingAdminDevicesLabel, value: '${config.maxDevices}'),
+              _MetaItem(label: l10n.pricingAdminServersLabel, value: _formatLimit(config.maxServers)),
+              _MetaItem(label: l10n.pricingAdminDevicesLabel, value: _formatLimit(config.maxDevices)),
               _MetaItem(label: l10n.pricingAdminStorageLabel, value: _formatStorage(config.storageQuotaMb)),
               _MetaItem(label: l10n.pricingAdminSortLabel, value: '${config.sortOrder}'),
             ],
@@ -750,13 +759,13 @@ class _PricingConfigEditorDialogState extends State<_PricingConfigEditorDialog> 
                   controller: _maxServersController,
                   label: l10n.pricingAdminFieldMaxServers,
                   keyboardType: TextInputType.number,
-                  validator: _validateRequiredInt,
+                  validator: _validateLimitInt,
                 ),
                 _buildTextField(
                   controller: _maxDevicesController,
                   label: l10n.pricingAdminFieldMaxDevices,
                   keyboardType: TextInputType.number,
-                  validator: _validateRequiredInt,
+                  validator: _validateLimitInt,
                 ),
                 _buildTextField(
                   controller: _storageController,
@@ -846,13 +855,21 @@ class _PricingConfigEditorDialogState extends State<_PricingConfigEditorDialog> 
     required List<T> items,
     required ValueChanged<T?> onChanged,
   }) {
+    final normalizedItems = _normalizedDropdownItems(items);
+    final normalizedInitialValue = _normalizeDropdownValue(initialValue);
+    final effectiveInitialValue = normalizedItems.contains(normalizedInitialValue)
+        ? normalizedInitialValue
+        : normalizedItems.isNotEmpty
+        ? normalizedItems.first
+        : null;
+
     return DropdownButtonFormField<T>(
-      initialValue: initialValue,
+      initialValue: effectiveInitialValue,
       decoration: InputDecoration(
         labelText: label,
         border: const OutlineInputBorder(),
       ),
-      items: items
+      items: normalizedItems
           .map(
             (item) => DropdownMenuItem<T>(
               value: item,
@@ -860,8 +877,47 @@ class _PricingConfigEditorDialogState extends State<_PricingConfigEditorDialog> 
             ),
           )
           .toList(growable: false),
-      onChanged: onChanged,
+      onChanged: (value) {
+        if (value == null) {
+          onChanged(null);
+          return;
+        }
+        onChanged(_normalizeDropdownValue(value));
+      },
     );
+  }
+
+  List<T> _normalizedDropdownItems<T>(List<T> items) {
+    final result = <T>[];
+    final seen = <String>{};
+
+    for (final item in items) {
+      final normalized = _normalizeDropdownValue(item);
+      final key = normalized.toString();
+      if (seen.add(key)) {
+        result.add(normalized);
+      }
+    }
+
+    return result;
+  }
+
+  T _normalizeDropdownValue<T>(T value) {
+    if (value is String) {
+      switch (value) {
+        case 'monthly':
+          return 'month' as T;
+        case 'yearly':
+          return 'year' as T;
+        case 'pro_monthly':
+        case 'pro_yearly':
+          return 'subscription' as T;
+        case 'lifetime':
+          return 'one_time' as T;
+      }
+    }
+
+    return value;
   }
 
   String _formatDropdownItem<T>(T item) {
@@ -885,6 +941,14 @@ class _PricingConfigEditorDialogState extends State<_PricingConfigEditorDialog> 
       default:
         return value;
     }
+  }
+
+  String? _validateLimitInt(String? value) {
+    final parsed = int.tryParse((value ?? '').trim());
+    if (parsed == null || parsed < -1) {
+      return S.of(context).pricingAdminInvalidInteger;
+    }
+    return null;
   }
 
   String? _validateRequiredInt(String? value) {
